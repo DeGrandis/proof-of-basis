@@ -28,15 +28,31 @@ Environment: `BTCTAX_ADDR` (default `127.0.0.1:8080`, the image uses
 
 | Area | Status |
 |---|---|
-| Wallets | xpub/ypub/zpub (and tpub/upub/vpub for testing), script-type override incl. Taproot (BIP86), gap-limit scan via Fulcrum, TLS cert pinned on first use |
+| Wallets | xpub/ypub/zpub (and testnet forms) or an output descriptor: `pkh`, `wpkh`, `sh(wpkh)`, `tr(KEY)`, `wsh`/`sh(wsh)`/`sh` with `multi`/`sortedmulti`, `<0;1>` paths, checksum verified. Gap-limit scan via Fulcrum, TLS cert pinned on first use |
 | Imports | Coinbase, River, Strike, Fold, auto-detected. Strike and Fold column names are best guesses until checked against real export headers |
 | Tracing | Exchange withdrawal to wallet, wallet to exchange deposit, wallet to wallet, exchange to exchange; by txid, then address, then unique amount+time |
 | Labeling | Spend, sold, gift, donation, lost, income, gift received, P2P purchase, refund, untracked wallet, manual match |
 | Basis | FIFO, LIFO, specific lot; universal pool before 2025, per wallet from 1 Jan 2025 (Rev. Proc. 2024-28); network fee on own transfers carried into basis or treated as a disposal |
 | Output | Per-year short/long gains, income, estimated tax at your rates, Form 8949-style CSV, flow-of-funds graph |
 
-Prices for spends and income come from your own exchange trades on that day,
-or from a daily price CSV you import. Nothing is fetched.
+## Prices
+
+Spends and income need a fair market value. Daily BTC/USD closes come from,
+in order of preference: prices you imported or updated, the history baked
+into the binary, then prices implied by your own trades that day.
+
+The image build fetches the latest history (`--build-arg PRICE_SOURCE=yahoo`
+by default, `coinmetrics` for data back to 2010, `none` to skip) and falls
+back to the committed `internal/prices/data/btcusd-daily.csv` if the source
+is unreachable. To refresh the committed file:
+
+```sh
+go run ./cmd/btctax prices fetch -source yahoo
+go run ./cmd/btctax prices fetch -source coinmetrics -from 2010-07-17   # fills 2010-2014
+```
+
+At runtime the app contacts a price source only when you press **Update
+prices** in Settings. New sources implement `prices.Source`.
 
 ## Develop
 
@@ -68,6 +84,7 @@ internal/importers  CSV handler interface and per-platform handlers
 internal/trace      matching exchange records to chain activity, labeling queue
 internal/lots       cost-basis engine
 internal/tax        jurisdiction rules (US)
+internal/prices     price sources (Yahoo, Coin Metrics) and the baked-in history
 internal/store      SQLite persistence
 internal/app        HTTP API and report
 web/static          UI (plain JS, no build step)

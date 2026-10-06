@@ -22,6 +22,7 @@ import (
 	"btctax/internal/electrum"
 	"btctax/internal/importers"
 	"btctax/internal/lots"
+	"btctax/internal/prices"
 	"btctax/internal/scan"
 	"btctax/internal/store"
 	"btctax/internal/tax"
@@ -34,10 +35,11 @@ type Server struct {
 	static   fs.FS
 	password string
 	scanMu   sync.Mutex
+	bundled  map[string]int64
 }
 
 func New(st *store.Store, static fs.FS, password string) *Server {
-	return &Server{st: st, static: static, password: password}
+	return &Server{st: st, static: static, password: password, bundled: prices.Bundled()}
 }
 
 var defaults = map[string]string{
@@ -51,6 +53,7 @@ var defaults = map[string]string{
 	"feeMode":      string(lots.FeeCarry),
 	"rateShort":    "24",
 	"rateLong":     "15",
+	"priceSource":  "yahoo",
 }
 
 func (s *Server) settings() map[string]string {
@@ -78,6 +81,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/labels", s.postLabel)
 	mux.HandleFunc("DELETE /api/labels/{key}", s.deleteLabel)
 	mux.HandleFunc("POST /api/prices", s.postPrices)
+	mux.HandleFunc("GET /api/prices", s.priceInfo)
+	mux.HandleFunc("POST /api/prices/fetch", s.fetchPrices)
 	mux.HandleFunc("GET /api/export/8949.csv", s.export8949)
 	mux.Handle("GET /", http.FileServerFS(s.static))
 	return s.secure(mux)
@@ -139,6 +144,11 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		case "method":
 			if !validMethod(v) {
 				fail(w, 400, fmt.Errorf("method must be fifo, lifo or specific"))
+				return
+			}
+		case "priceSource":
+			if _, ok := prices.Get(v); !ok {
+				fail(w, 400, fmt.Errorf("unknown price source %q", v))
 				return
 			}
 		case "feeMode":
@@ -217,8 +227,18 @@ type walletIn struct {
 	Gap    int    `json:"gap"`
 }
 
-func (s *Server) parseWallet(in walletIn) (*wallet.Account, error) {
-	return wallet.ParseExtendedKey(in.Key, wallet.ScriptType(in.Script), s.st.Setting("regtest", "false") == "true")
+func (s *Server) parseWallet(in walletIn) (wallet.Deriver, error) {
+	return wallet.Parse(in.Key, wallet.ScriptType(in.Script), s.st.Setting("regtest", "false") == "true")
+}
+
+func describe(d wallet.Deriver) (kind, script string) {
+	switch v := d.(type) {
+	case *wallet.Account:
+		return v.Prefix, string(v.Script)
+	case *wallet.Descriptor:
+		return "descriptor", v.Kind()
+	}
+	return "", ""
 }
 
 // previewWallet shows the first addresses so the user can check them
@@ -243,7 +263,8 @@ func (s *Server) previewWallet(w http.ResponseWriter, r *http.Request) {
 		}
 		addrs = append(addrs, a.Address)
 	}
-	writeJSON(w, map[string]any{"script": acct.Script, "prefix": acct.Prefix, "addresses": addrs})
+	kind, script := describe(acct)
+	writeJSON(w, map[string]any{"script": script, "prefix": kind, "addresses": addrs})
 }
 
 func (s *Server) addWallet(w http.ResponseWriter, r *http.Request) {
@@ -265,7 +286,13 @@ func (s *Server) addWallet(w http.ResponseWriter, r *http.Request) {
 	if in.Gap <= 0 {
 		in.Gap = 20
 	}
-	id, err := s.st.AddWallet(in.Name, strings.TrimSpace(in.Key), string(acct.Script), min(in.Gap, 1000))
+	_, script := describe(acct)
+	if _, ok := acct.(*wallet.Descriptor); ok {
+		in.Script = "" // the descriptor itself defines the script
+	} else {
+		in.Script = script
+	}
+	id, err := s.st.AddWallet(in.Name, strings.TrimSpace(in.Key), in.Script, min(in.Gap, 1000))
 	if err != nil {
 		fail(w, 400, err)
 		return
@@ -531,4 +558,68 @@ func LogRequests(h http.Handler) http.Handler {
 		}
 		log.Printf("%s %s %s", r.Method, p, time.Since(start).Round(time.Millisecond))
 	})
+}
+
+func (s *Server) priceInfo(w http.ResponseWriter, r *http.Request) {
+	stored, err := s.st.Prices()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	span := func(m map[string]int64) map[string]any {
+		first, last := "", ""
+		for d := range m {
+			if first == "" || d < first {
+				first = d
+			}
+			if d > last {
+				last = d
+			}
+		}
+		return map[string]any{"days": len(m), "first": first, "last": last}
+	}
+	var srcs []map[string]string
+	for _, p := range prices.All() {
+		srcs = append(srcs, map[string]string{"id": p.ID(), "name": p.Name(), "host": p.Host()})
+	}
+	writeJSON(w, map[string]any{"bundled": span(s.bundled), "stored": span(stored), "sources": srcs})
+}
+
+// fetchPrices runs only when the user presses the button: it is the one
+// place the running app contacts anything other than their own node.
+func (s *Server) fetchPrices(w http.ResponseWriter, r *http.Request) {
+	src, ok := prices.Get(s.st.Setting("priceSource", defaults["priceSource"]))
+	if !ok {
+		fail(w, 400, errors.New("no price source configured"))
+		return
+	}
+	stored, err := s.st.Prices()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	last := ""
+	for _, m := range []map[string]int64{s.bundled, stored} {
+		for d := range m {
+			if d > last {
+				last = d
+			}
+		}
+	}
+	from := time.Date(2010, 7, 17, 0, 0, 0, 0, time.UTC)
+	if t, err := time.Parse("2006-01-02", last); err == nil {
+		from = t.AddDate(0, 0, -7)
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	got, err := src.Fetch(ctx, from, time.Now())
+	if err != nil {
+		fail(w, 502, err)
+		return
+	}
+	if err := s.st.PutPrices(got, src.ID()); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"days": len(got), "source": src.Name()})
 }

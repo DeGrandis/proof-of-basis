@@ -29,6 +29,7 @@ type AccountView struct {
 	ChainSats *int64 `json:"chainSats"` // per the wallet scan, wallets only
 	Basis     int64  `json:"basis"`
 	ScannedAt string `json:"scannedAt,omitempty"`
+	Script    string `json:"script,omitempty"`
 	ID        int64  `json:"id"`
 }
 
@@ -159,6 +160,10 @@ func (s *Server) buildReport() (*Report, error) {
 		if a.Kind == "wallet" {
 			b := a.Balance
 			v.ChainSats = &b
+			v.Script = a.Script
+			if v.Script == "" {
+				v.Script = "descriptor"
+			}
 		}
 		r.Accounts = append(r.Accounts, v)
 		seen[a.Name] = true
@@ -255,11 +260,16 @@ func (s *Server) priceTable(ex []trace.ExEvent) (*priceTable, error) {
 			implied[d].sats += e.Sats
 		}
 	}
+	// Lowest priority first: prices implied by the user's own trades, then
+	// the history baked into the binary, then imported or fetched prices.
 	p := &priceTable{days: map[string]int64{}}
 	for d, a := range implied {
 		p.days[d] = lots.MulDiv(a.cents, 100_000_000, a.sats)
 	}
-	for d, c := range imported { // imported prices win
+	for d, c := range s.bundled {
+		p.days[d] = c
+	}
+	for d, c := range imported {
 		p.days[d] = c
 	}
 	return p, nil

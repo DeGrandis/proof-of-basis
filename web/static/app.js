@@ -80,7 +80,7 @@ function renderOverview() {
 function renderWallets() {
   const ws = (report.accounts || []).filter((a) => a.kind === "wallet");
   $("#wallets-table tbody").innerHTML = ws.map((a) => `<tr>
-    <td>${esc(a.name)}</td><td></td><td class="num">${btc(a.chainSats ?? 0)}</td><td class="small muted">${esc(a.scannedAt || "never")}</td>
+    <td>${esc(a.name)}</td><td>${esc(a.script)}</td><td class="num">${btc(a.chainSats ?? 0)}</td><td class="small muted">${esc(a.scannedAt || "never")}</td>
     <td><button data-scan="${a.id}">Scan</button> <button class="link" data-del="${a.id}">Remove</button></td></tr>`).join("")
     || `<tr><td colspan="5" class="muted">No wallets yet.</td></tr>`;
 }
@@ -277,6 +277,11 @@ window.addEventListener("resize", () => { if ($("#graph").classList.contains("on
 
 // Settings
 async function loadSettings() {
+  const pi = await api("/api/prices");
+  $("#price-source").innerHTML = pi.sources.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+  const span = (x) => (x.days ? `${x.days} days, ${x.first} to ${x.last}` : "none");
+  $("#price-line").textContent = `Built in: ${span(pi.bundled)}. Imported or updated: ${span(pi.stored)}.`;
+  priceHosts = Object.fromEntries(pi.sources.map((x) => [x.id, x.host]));
   const s = await api("/api/settings");
   const f = $("#settings-form");
   for (const [k, v] of Object.entries(s)) if (f.elements[k]) f.elements[k].value = v;
@@ -292,6 +297,18 @@ $("#settings-form").addEventListener("submit", async (e) => {
     loadSettings();
     refresh();
   } catch (err) { toast(err.message); }
+});
+let priceHosts = {};
+$("#fetch-prices-btn").addEventListener("click", async () => {
+  const src = $("#price-source").value;
+  if (!confirm(`This contacts ${priceHosts[src] || src} to download BTC/USD daily prices. Nothing about you or your wallets is sent. Continue?`)) return;
+  try {
+    await post("/api/settings", { priceSource: src });
+    const r = await post("/api/prices/fetch", {});
+    toast(`Updated ${r.days} days from ${r.source}`);
+    loadSettings();
+    refresh();
+  } catch (e) { toast("Price update failed: " + e.message); }
 });
 $("#test-btn").addEventListener("click", async () => {
   try {

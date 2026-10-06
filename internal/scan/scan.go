@@ -65,14 +65,14 @@ type Result struct {
 
 // Wallet scans receive and change chains until gap consecutive unused
 // addresses, then fetches and summarises every transaction.
-func Wallet(src Source, acct *wallet.Account, gap int) (*Result, error) {
+func Wallet(src Source, acct wallet.Deriver, gap int) (*Result, error) {
 	if gap <= 0 {
 		gap = 20
 	}
 	res := &Result{Used: map[string]bool{}}
 	ours := map[string]bool{} // address strings
 	heights := map[string]int64{}
-	for chain := uint32(0); chain <= 1; chain++ {
+	for chain := uint32(0); chain < acct.Chains(); chain++ {
 		unused := 0
 		for i := uint32(0); unused < gap; i++ {
 			a, err := acct.Derive(chain, i)
@@ -123,7 +123,7 @@ func Wallet(src Source, acct *wallet.Account, gap int) (*Result, error) {
 	ourOuts := map[outpoint]int64{}
 	for txid, m := range msgs {
 		for i, o := range m.TxOut {
-			if ours[addrOf(o.PkScript, acct.Params)] {
+			if ours[addrOf(o.PkScript, acct.Network())] {
 				ourOuts[outpoint{txid, uint32(i)}] = o.Value
 			}
 		}
@@ -155,7 +155,7 @@ func Wallet(src Source, acct *wallet.Account, gap int) (*Result, error) {
 		}
 		var outTotal int64
 		for i, o := range m.TxOut {
-			a := addrOf(o.PkScript, acct.Params)
+			a := addrOf(o.PkScript, acct.Network())
 			mine := ours[a]
 			t.Outputs = append(t.Outputs, Output{uint32(i), a, o.Value, mine})
 			outTotal += o.Value

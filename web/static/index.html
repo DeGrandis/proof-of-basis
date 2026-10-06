@@ -38,10 +38,10 @@
     <h2>Add a wallet</h2>
     <form id="wallet-form" class="card grid">
       <label>Name <input name="name" required placeholder="Cold storage"></label>
-      <label class="wide">Extended public key <input name="key" required placeholder="xpub… / ypub… / zpub…" autocomplete="off" spellcheck="false"></label>
+      <label class="wide">Extended public key or output descriptor <input name="key" required placeholder="zpub…  or  wsh(sortedmulti(2,[…]xpub…/&lt;0;1&gt;/*,…))#checksum" autocomplete="off" spellcheck="false"></label>
       <label>Script type
         <select name="script">
-          <option value="">From key prefix</option>
+          <option value="">From key prefix or descriptor</option>
           <option value="p2wpkh">Native segwit (bc1q…)</option>
           <option value="p2sh-p2wpkh">Nested segwit (3…)</option>
           <option value="p2pkh">Legacy (1…)</option>
@@ -114,7 +114,11 @@
       <label>Network fees on own transfers <select name="feeMode"><option value="carry">Add to basis (no gain)</option><option value="dispose">Treat as a small sale</option></select></label>
       <label>Short-term rate % <input name="rateShort" inputmode="decimal"></label>
       <label>Long-term rate % <input name="rateLong" inputmode="decimal"></label>
-      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn">Test connection</button></div>
+      <h3 class="wide">Prices</h3>
+      <label>Price source <select name="priceSource" id="price-source"></select></label>
+      <div class="wide small muted" id="price-line"></div>
+      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn">Test connection</button><button type="button" id="fetch-prices-btn">Update prices</button></div>
+      <div class="wide small muted">Updating prices is the only time this app contacts anything besides your node, and only when you press the button. The image already includes daily history up to when it was built.</div>
     </form>
   </section>
 </main>

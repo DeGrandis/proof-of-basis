@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/base58"
@@ -149,22 +150,7 @@ func (a *Account) Derive(chain, index uint32) (Address, error) {
 	if err != nil {
 		return Address{}, err
 	}
-	compressed := pub.SerializeCompressed()
-	var addr btcutil.Address
-	switch a.Script {
-	case P2PKH:
-		addr, err = btcutil.NewAddressPubKeyHash(btcutil.Hash160(compressed), a.Params)
-	case P2WPKH:
-		addr, err = btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(compressed), a.Params)
-	case P2SHP2WPKH:
-		redeem := append([]byte{0x00, 0x14}, btcutil.Hash160(compressed)...)
-		addr, err = btcutil.NewAddressScriptHash(redeem, a.Params)
-	case P2TR:
-		tweaked := txscript.ComputeTaprootKeyNoScript(pub)
-		addr, err = btcutil.NewAddressTaproot(schnorr.SerializePubKey(tweaked), a.Params)
-	default:
-		err = fmt.Errorf("unknown script type %q", a.Script)
-	}
+	addr, err := a.addressFor(pub)
 	if err != nil {
 		return Address{}, err
 	}
@@ -173,6 +159,23 @@ func (a *Account) Derive(chain, index uint32) (Address, error) {
 		return Address{}, err
 	}
 	return Address{chain, index, addr.EncodeAddress(), spk, ScriptHash(spk)}, nil
+}
+
+func (a *Account) addressFor(pub *btcec.PublicKey) (btcutil.Address, error) {
+	compressed := pub.SerializeCompressed()
+	switch a.Script {
+	case P2PKH:
+		return btcutil.NewAddressPubKeyHash(btcutil.Hash160(compressed), a.Params)
+	case P2WPKH:
+		return btcutil.NewAddressWitnessPubKeyHash(btcutil.Hash160(compressed), a.Params)
+	case P2SHP2WPKH:
+		redeem := append([]byte{0x00, 0x14}, btcutil.Hash160(compressed)...)
+		return btcutil.NewAddressScriptHash(redeem, a.Params)
+	case P2TR:
+		tweaked := txscript.ComputeTaprootKeyNoScript(pub)
+		return btcutil.NewAddressTaproot(schnorr.SerializePubKey(tweaked), a.Params)
+	}
+	return nil, fmt.Errorf("unknown script type %q", a.Script)
 }
 
 // ScriptHash computes the Electrum protocol script hash for a scriptPubKey.
