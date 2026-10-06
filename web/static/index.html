@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC Tax</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>BTC Tax</h1>
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="wallets">Wallets</button>
+    <button data-tab="imports">Imports</button>
+    <button data-tab="review">Review <span id="review-count" class="pill" hidden></span></button>
+    <button data-tab="graph">Flow</button>
+    <button data-tab="taxes">Taxes</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+</header>
+<main>
+  <div id="toast" role="status" hidden></div>
+
+  <section id="overview" class="tab on">
+    <div id="setup-hint" class="card hint" hidden>
+      Start by connecting your Fulcrum server in <a href="#settings">Settings</a>, then add your wallets.
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <h2>Accounts</h2>
+    <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th></tr></thead><tbody></tbody></table></div>
+    <div id="warnings"></div>
+  </section>
+
+  <section id="wallets" class="tab">
+    <h2>Add a wallet</h2>
+    <form id="wallet-form" class="card grid">
+      <label>Name <input name="name" required placeholder="Cold storage"></label>
+      <label class="wide">Extended public key <input name="key" required placeholder="xpub… / ypub… / zpub…" autocomplete="off" spellcheck="false"></label>
+      <label>Script type
+        <select name="script">
+          <option value="">From key prefix</option>
+          <option value="p2wpkh">Native segwit (bc1q…)</option>
+          <option value="p2sh-p2wpkh">Nested segwit (3…)</option>
+          <option value="p2pkh">Legacy (1…)</option>
+          <option value="p2tr">Taproot (bc1p…)</option>
+        </select>
+      </label>
+      <label>Gap limit <input name="gap" type="number" min="1" max="1000" value="20"></label>
+      <div class="wide row">
+        <button type="button" id="preview-btn">Check addresses</button>
+        <button type="submit" class="primary">Add wallet</button>
+      </div>
+      <div id="preview" class="wide mono small"></div>
+    </form>
+    <h2>Your wallets</h2>
+    <div class="scroll"><table id="wallets-table"><thead><tr><th>Name</th><th>Script</th><th class="num">Balance</th><th>Last scan</th><th></th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="imports" class="tab">
+    <h2>Import exchange CSV</h2>
+    <form id="import-form" class="card grid">
+      <label class="wide">File <input name="file" type="file" accept=".csv,text/csv" required></label>
+      <label>Platform <select name="handler" id="handler-select"><option value="">Detect automatically</option></select></label>
+      <label>Account name <input name="account" placeholder="Defaults to the platform name"></label>
+      <div class="wide row"><button type="submit" class="primary">Import</button></div>
+    </form>
+    <p class="small muted">Files are parsed on this server and never leave it. Re-importing the same file is refused.</p>
+    <div class="scroll"><table id="imports-table"><thead><tr><th>File</th><th>Account</th><th>Platform</th><th class="num">Rows</th><th>Warnings</th><th></th></tr></thead><tbody></tbody></table></div>
+    <h2>Prices</h2>
+    <form id="price-form" class="card row">
+      <input name="file" type="file" accept=".csv" required>
+      <button type="submit">Import daily prices</button>
+      <span class="small muted">CSV with a date column and a close/price column (USD). Used for spends and income that have no price of their own.</span>
+    </form>
+  </section>
+
+  <section id="review" class="tab">
+    <h2>Needs a label</h2>
+    <p class="small muted">These moved BTC in or out of your tracked accounts and could not be matched to another of your accounts. Say what each one was.</p>
+    <div class="scroll"><table id="review-table"><thead><tr><th>Date</th><th>Account</th><th>Direction</th><th class="num">BTC</th><th>Details</th><th>What was it?</th></tr></thead><tbody></tbody></table></div>
+    <h2>Matched transfers</h2>
+    <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th>How</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="graph" class="tab">
+    <div class="row"><h2>Flow of funds</h2><span class="small muted">Click a sale to see which buys it came from.</span></div>
+    <div id="legend" class="row small"></div>
+    <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg></div>
+    <div id="graph-detail" class="card small" hidden></div>
+  </section>
+
+  <section id="taxes" class="tab">
+    <h2>By tax year</h2>
+    <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num">Estimated tax</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p class="small muted">An estimate using the rates in Settings, not tax advice. Loss carryforwards and the $3,000 ordinary-income offset are not applied yet.</p>
+    <h2>Disposals</h2>
+    <div class="scroll"><table id="disposals-table"><thead><tr><th>Sold</th><th>Acquired</th><th>Account</th><th class="num">BTC</th><th class="num">Proceeds</th><th class="num">Basis</th><th class="num">Gain</th><th>Term</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="settings" class="tab">
+    <h2>Your node</h2>
+    <form id="settings-form" class="card grid">
+      <label>Fulcrum host <input name="fulcrumHost" placeholder="192.168.1.10 or umbrel.local"></label>
+      <label>Port <input name="fulcrumPort" inputmode="numeric"></label>
+      <label>TLS <select name="fulcrumTLS"><option value="true">Yes (usually 50002)</option><option value="false">No (usually 50001)</option></select></label>
+      <label>Network <select name="regtest"><option value="false">Mainnet</option><option value="true">Regtest (testing)</option></select></label>
+      <div class="wide small muted" id="cert-line"></div>
+      <h3 class="wide">Tax</h3>
+      <label>Jurisdiction <select name="jurisdiction"><option value="us">United States</option></select></label>
+      <label>Cost basis method <select name="method"><option value="fifo">FIFO</option><option value="lifo">LIFO</option><option value="specific">Specific lot</option></select></label>
+      <label>Network fees on own transfers <select name="feeMode"><option value="carry">Add to basis (no gain)</option><option value="dispose">Treat as a small sale</option></select></label>
+      <label>Short-term rate % <input name="rateShort" inputmode="decimal"></label>
+      <label>Long-term rate % <input name="rateLong" inputmode="decimal"></label>
+      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn">Test connection</button></div>
+    </form>
+  </section>
+</main>
+</body>
+</html>

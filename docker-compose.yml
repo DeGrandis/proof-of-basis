@@ -1,0 +1,17 @@
+# Example: run next to your node. Point the app at your Fulcrum server in
+# Settings (for example the host's LAN IP, or a service name on the same
+# Docker network as Fulcrum).
+services:
+  btctax:
+    image: btctax:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # local only; change deliberately for LAN access
+    environment:
+      # BTCTAX_PASSWORD: change-me   # require a password (recommended on a LAN)
+      BTCTAX_ADDR: 0.0.0.0:8080
+    volumes:
+      - btctax-data:/data
+volumes:
+  btctax-data:

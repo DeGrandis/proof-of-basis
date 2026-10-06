@@ -1,0 +1,534 @@
+// Package app is the HTTP API and static UI.
+package app
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"btctax/internal/electrum"
+	"btctax/internal/importers"
+	"btctax/internal/lots"
+	"btctax/internal/scan"
+	"btctax/internal/store"
+	"btctax/internal/tax"
+	"btctax/internal/trace"
+	"btctax/internal/wallet"
+)
+
+type Server struct {
+	st       *store.Store
+	static   fs.FS
+	password string
+	scanMu   sync.Mutex
+}
+
+func New(st *store.Store, static fs.FS, password string) *Server {
+	return &Server{st: st, static: static, password: password}
+}
+
+var defaults = map[string]string{
+	"fulcrumHost":  "",
+	"fulcrumPort":  "50002",
+	"fulcrumTLS":   "true",
+	"fulcrumCert":  "",
+	"regtest":      "false",
+	"jurisdiction": "us",
+	"method":       string(tax.FIFO),
+	"feeMode":      string(lots.FeeCarry),
+	"rateShort":    "24",
+	"rateLong":     "15",
+}
+
+func (s *Server) settings() map[string]string {
+	m := map[string]string{}
+	for k, d := range defaults {
+		m[k] = s.st.Setting(k, d)
+	}
+	return m
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/settings", s.getSettings)
+	mux.HandleFunc("POST /api/settings", s.postSettings)
+	mux.HandleFunc("POST /api/fulcrum/test", s.testFulcrum)
+	mux.HandleFunc("POST /api/wallets/preview", s.previewWallet)
+	mux.HandleFunc("POST /api/wallets", s.addWallet)
+	mux.HandleFunc("POST /api/wallets/{id}/scan", s.scanWallet)
+	mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
+	mux.HandleFunc("GET /api/handlers", s.listHandlers)
+	mux.HandleFunc("GET /api/imports", s.listImports)
+	mux.HandleFunc("POST /api/imports", s.postImport)
+	mux.HandleFunc("DELETE /api/imports/{id}", s.deleteImport)
+	mux.HandleFunc("GET /api/report", s.getReport)
+	mux.HandleFunc("POST /api/labels", s.postLabel)
+	mux.HandleFunc("DELETE /api/labels/{key}", s.deleteLabel)
+	mux.HandleFunc("POST /api/prices", s.postPrices)
+	mux.HandleFunc("GET /api/export/8949.csv", s.export8949)
+	mux.Handle("GET /", http.FileServerFS(s.static))
+	return s.secure(mux)
+}
+
+// secure adds a strict CSP (no third-party anything) and optional password.
+func (s *Server) secure(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
+		if s.password != "" {
+			_, pw, ok := r.BasicAuth()
+			if !ok || subtle.ConstantTimeCompare([]byte(pw), []byte(s.password)) != 1 {
+				w.Header().Set("WWW-Authenticate", `Basic realm="btctax"`)
+				http.Error(w, "unauthorised", http.StatusUnauthorized)
+				return
+			}
+		}
+		// Reject cross-site writes (CSRF) from other pages in the browser.
+		if r.Method != http.MethodGet && r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+			http.Error(w, "cross-site request refused", http.StatusForbidden)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+
+func fail(w http.ResponseWriter, code int, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+}
+
+func decode(r *http.Request, v any) error {
+	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.settings()) }
+
+func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
+	var in map[string]string
+	if err := decode(r, &in); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	for k, v := range in {
+		if _, ok := defaults[k]; !ok && !strings.HasPrefix(k, "method:") {
+			fail(w, 400, fmt.Errorf("unknown setting %q", k))
+			return
+		}
+		switch k {
+		case "method":
+			if !validMethod(v) {
+				fail(w, 400, fmt.Errorf("method must be fifo, lifo or specific"))
+				return
+			}
+		case "feeMode":
+			if v != string(lots.FeeCarry) && v != string(lots.FeeAsDisposal) {
+				fail(w, 400, fmt.Errorf("feeMode must be carry or dispose"))
+				return
+			}
+		case "fulcrumHost", "fulcrumPort", "fulcrumTLS":
+			// A new server means a new certificate to pin.
+			if s.st.Setting(k, defaults[k]) != v {
+				s.st.SetSetting("fulcrumCert", "")
+			}
+		}
+		if strings.HasPrefix(k, "method:") && v != "" && !validMethod(v) {
+			fail(w, 400, fmt.Errorf("bad method %q", v))
+			return
+		}
+		if err := s.st.SetSetting(k, strings.TrimSpace(v)); err != nil {
+			fail(w, 500, err)
+			return
+		}
+	}
+	writeJSON(w, s.settings())
+}
+
+func validMethod(v string) bool {
+	for _, m := range (tax.US{}).Methods() {
+		if string(m) == v {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) dial(ctx context.Context) (*electrum.Client, error) {
+	set := s.settings()
+	if set["fulcrumHost"] == "" {
+		return nil, errors.New("set your Fulcrum server address first")
+	}
+	port, err := strconv.Atoi(set["fulcrumPort"])
+	if err != nil {
+		return nil, fmt.Errorf("bad Fulcrum port: %w", err)
+	}
+	c, err := electrum.Dial(ctx, electrum.Config{Host: set["fulcrumHost"], Port: port, TLS: set["fulcrumTLS"] == "true",
+		PinnedCertSHA256: set["fulcrumCert"]})
+	if err != nil {
+		return nil, err
+	}
+	if c.CertSHA256 != "" && set["fulcrumCert"] == "" {
+		s.st.SetSetting("fulcrumCert", c.CertSHA256) // trust on first use
+	}
+	return c, nil
+}
+
+func (s *Server) testFulcrum(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	c, err := s.dial(ctx)
+	if err != nil {
+		fail(w, 502, err)
+		return
+	}
+	defer c.Close()
+	tip, err := c.Tip()
+	if err != nil {
+		fail(w, 502, err)
+		return
+	}
+	writeJSON(w, map[string]any{"height": tip.Height, "cert": c.CertSHA256})
+}
+
+type walletIn struct {
+	Name   string `json:"name"`
+	Key    string `json:"key"`
+	Script string `json:"script"`
+	Gap    int    `json:"gap"`
+}
+
+func (s *Server) parseWallet(in walletIn) (*wallet.Account, error) {
+	return wallet.ParseExtendedKey(in.Key, wallet.ScriptType(in.Script), s.st.Setting("regtest", "false") == "true")
+}
+
+// previewWallet shows the first addresses so the user can check them
+// against their wallet software before saving.
+func (s *Server) previewWallet(w http.ResponseWriter, r *http.Request) {
+	var in walletIn
+	if err := decode(r, &in); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	acct, err := s.parseWallet(in)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	var addrs []string
+	for i := uint32(0); i < 3; i++ {
+		a, err := acct.Derive(0, i)
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		addrs = append(addrs, a.Address)
+	}
+	writeJSON(w, map[string]any{"script": acct.Script, "prefix": acct.Prefix, "addresses": addrs})
+}
+
+func (s *Server) addWallet(w http.ResponseWriter, r *http.Request) {
+	var in walletIn
+	if err := decode(r, &in); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		fail(w, 400, errors.New("give the wallet a name"))
+		return
+	}
+	acct, err := s.parseWallet(in)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	if in.Gap <= 0 {
+		in.Gap = 20
+	}
+	id, err := s.st.AddWallet(in.Name, strings.TrimSpace(in.Key), string(acct.Script), min(in.Gap, 1000))
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	writeJSON(w, map[string]any{"id": id})
+}
+
+// cachedSource serves raw transactions and headers from SQLite when it can.
+type cachedSource struct {
+	c  *electrum.Client
+	st *store.Store
+}
+
+func (c cachedSource) History(sh string) ([]electrum.HistoryItem, error) { return c.c.History(sh) }
+func (c cachedSource) RawTx(id string) (string, error) {
+	if h, ok := c.st.CachedTx(id); ok {
+		return h, nil
+	}
+	return c.c.RawTx(id)
+}
+func (c cachedSource) Header(h int64) (string, error) {
+	if x, ok := c.st.CachedHeader(h); ok {
+		return x, nil
+	}
+	x, err := c.c.Header(h)
+	if err == nil {
+		c.st.PutHeader(h, x)
+	}
+	return x, err
+}
+
+func (s *Server) scanWallet(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	a, err := s.st.Account(id)
+	if err != nil || a.Kind != "wallet" {
+		fail(w, 404, errors.New("no such wallet"))
+		return
+	}
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+	acct, err := s.parseWallet(walletIn{Key: a.XPub, Script: a.Script})
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	c, err := s.dial(ctx)
+	if err != nil {
+		fail(w, 502, err)
+		return
+	}
+	defer c.Close()
+	res, err := scan.Wallet(cachedSource{c, s.st}, acct, a.Gap)
+	if err != nil {
+		fail(w, 502, err)
+		return
+	}
+	if err := s.st.SaveScan(id, res); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"balance": res.Balance, "txs": len(res.Txs), "usedAddresses": len(res.Used)})
+}
+
+func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := s.st.DeleteAccount(id); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) listHandlers(w http.ResponseWriter, r *http.Request) {
+	var out []map[string]string
+	for _, h := range importers.All() {
+		out = append(out, map[string]string{"id": h.ID(), "name": h.Name()})
+	}
+	writeJSON(w, out)
+}
+
+func (s *Server) listImports(w http.ResponseWriter, r *http.Request) {
+	im, err := s.st.Imports()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, im)
+}
+
+func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	defer f.Close()
+	body, err := io.ReadAll(io.LimitReader(f, 64<<20))
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	h, evs, warns, err := importers.Import(strings.NewReader(string(body)), r.FormValue("handler"))
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("account"))
+	if name == "" {
+		name = h.Name()
+	}
+	acctID, err := s.st.ExchangeAccount(name, h.ID())
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	sum := sha256.Sum256(body)
+	id, err := s.st.AddImport(acctID, h.ID(), hdr.Filename, hex.EncodeToString(sum[:]), evs, warns)
+	if errors.Is(err, store.ErrDuplicate) {
+		fail(w, 409, err)
+		return
+	} else if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]any{"id": id, "handler": h.ID(), "account": name, "events": len(evs), "warnings": warns})
+}
+
+func (s *Server) deleteImport(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := s.st.DeleteImport(id); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) getReport(w http.ResponseWriter, r *http.Request) {
+	rep, err := s.buildReport()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, rep)
+}
+
+func (s *Server) postLabel(w http.ResponseWriter, r *http.Request) {
+	var l trace.Label
+	if err := decode(r, &l); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	if l.Key == "" || l.Category == "" {
+		fail(w, 400, errors.New("key and category are required"))
+		return
+	}
+	if err := s.st.SetLabel(l); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, l)
+}
+
+func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.DeleteLabel(r.PathValue("key")); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// postPrices imports a CSV of "date,price" rows (USD per BTC).
+func (s *Server) postPrices(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	defer f.Close()
+	t, err := importers.ReadTable(f)
+	if err != nil {
+		fail(w, 400, err)
+		return
+	}
+	di, pi := t.Col("date", "day", "timestamp", "time"), t.Col("close", "price", "usd", "close (usd)", "price (usd)")
+	if di < 0 || pi < 0 {
+		fail(w, 400, errors.New("expected a date column and a close/price column"))
+		return
+	}
+	out := map[string]int64{}
+	for _, row := range t.Rows {
+		if di >= len(row) || pi >= len(row) {
+			continue
+		}
+		d, err1 := importers.ParseTime(row[di])
+		c, err2 := importers.Cents(row[pi])
+		if err1 == nil && err2 == nil && c > 0 {
+			out[d.Format("2006-01-02")] = c
+		}
+	}
+	if err := s.st.PutPrices(out, "import"); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]int{"days": len(out)})
+}
+
+// export8949 writes a Form 8949-style CSV for one tax year.
+func (s *Server) export8949(w http.ResponseWriter, r *http.Request) {
+	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
+	rep, err := s.buildReport()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="form8949-%d.csv"`, year))
+	cw := csv.NewWriter(w)
+	cw.Write([]string{"Description", "Date acquired", "Date sold", "Proceeds", "Cost basis", "Gain or loss", "Term", "Account", "Source lot", "Note"})
+	money := func(c int64) string {
+		sign := ""
+		if c < 0 {
+			sign, c = "-", -c
+		}
+		return fmt.Sprintf("%s%d.%02d", sign, c/100, c%100)
+	}
+	for _, d := range rep.Disposals {
+		if d.Disposed.Year() != year {
+			continue
+		}
+		term, acq, note := "Short", d.Acquired.Format("01/02/2006"), ""
+		if d.LongTerm {
+			term = "Long"
+		}
+		if d.Missing {
+			acq, note = "VARIOUS", "basis unknown: missing records"
+		}
+		cw.Write([]string{fmt.Sprintf("%s BTC", satsStr(d.Sats)), acq, d.Disposed.Format("01/02/2006"),
+			money(d.Proceeds), money(d.Basis), money(d.Gain()), term, d.Account, d.OriginID, note})
+	}
+	cw.Flush()
+}
+
+func satsStr(s int64) string { return fmt.Sprintf("%d.%08d", s/100_000_000, s%100_000_000) }
+
+func LogRequests(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		h.ServeHTTP(w, r)
+		// Paths only: never log bodies, keys, addresses or amounts.
+		p := r.URL.Path
+		if strings.HasPrefix(p, "/api/labels/") {
+			p = "/api/labels/…"
+		}
+		log.Printf("%s %s %s", r.Method, p, time.Since(start).Round(time.Millisecond))
+	})
+}

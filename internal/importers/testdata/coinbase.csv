@@ -1,0 +1,8 @@
+Transactions
+User,synthetic-user,00000000-0000-0000-0000-000000000000
+ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+syn001,2021-01-10 15:00:00 UTC,Buy,BTC,0.01000000,USD,$30000.00,$300.00,$304.99,$4.99,Bought 0.01 BTC for $304.99 USD
+syn002,2021-02-01 12:00:00 UTC,Send,BTC,-0.00500000,USD,$33000.00,$165.00,$165.00,$0.00,Sent 0.005 BTC to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq
+syn003,2021-03-01 12:00:00 UTC,Buy,ETH,1.0,USD,$1500.00,$1500.00,$1510.00,$10.00,Bought 1 ETH
+syn004,2022-06-15 09:30:00 UTC,Sell,BTC,-0.00500000,USD,"$20,000.00",$100.00,$98.51,$1.49,Sold 0.005 BTC for $98.51 USD
+syn005,2022-07-01 00:00:00 UTC,Rewards Income,BTC,0.00001000,USD,$19000.00,$0.19,$0.19,$0.00,

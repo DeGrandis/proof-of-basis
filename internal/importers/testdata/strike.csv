@@ -1,0 +1,4 @@
+Transaction ID,Initiated Date (UTC),Initiated Time (UTC),Completed Date (UTC),Completed Time (UTC),Transaction Type,Amount 1,Currency 1,Fee 1,Amount 2,Currency 2,Fee 2,BTC Price,Balance 1,Balance 2,Description,Note,Destination,Status
+syn-s-1,Jan 05 2024,14:00:00,Jan 05 2024,14:00:01,Purchase,-250.00,USD,0.00,0.00560000,BTC,,44642.86,0.00,0.00560000,,,,Completed
+syn-s-2,Jan 09 2024,09:00:00,Jan 09 2024,09:10:00,Withdrawal,-0.00500000,BTC,0.00001500,,,,46000.00,,0.00058500,On-chain send,,bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq,Completed
+syn-s-3,Jan 10 2024,09:00:00,,,Withdrawal,-0.00010000,BTC,0,,,,46000.00,,,,,,Failed

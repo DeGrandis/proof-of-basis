@@ -1,0 +1,4 @@
+Date (UTC),Transaction Type,Description,Amount (BTC),Price per Coin (USD),Amount (USD),Fee (USD),Transaction ID
+2024-04-01T12:00:00Z,Purchase,Buy bitcoin,0.00150000,66666.67,-100.00,1.00,syn-f-1
+2024-04-02T12:00:00Z,Reward,Card cashback,0.00000300,67000.00,0.20,,syn-f-2
+2024-04-03T12:00:00Z,Withdrawal,Send to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq,-0.00100000,67000.00,,,syn-f-3
