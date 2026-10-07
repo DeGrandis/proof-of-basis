@@ -29,7 +29,7 @@ Environment: `BTCTAX_ADDR` (default `127.0.0.1:8080`, the image uses
 | Area | Status |
 |---|---|
 | Wallets | xpub/ypub/zpub (and testnet forms) or an output descriptor: `pkh`, `wpkh`, `sh(wpkh)`, `tr(KEY)`, `wsh`/`sh(wsh)`/`sh` with `multi`/`sortedmulti`, `<0;1>` paths, checksum verified. Gap-limit scan via Fulcrum, TLS cert pinned on first use |
-| Imports | Coinbase, River, Strike, Fold, auto-detected. Strike and Fold column names are best guesses until checked against real export headers |
+| Imports | Coinbase (incl. Card Spend as a disposal and converts into BTC), River, Strike (reversed transactions netted out), Fold (metadata and disclaimer rows skipped), auto-detected. Each row gets a stable ID, so importing an overlapping or longer export never duplicates rows |
 | Tracing | Exchange withdrawal to wallet, wallet to exchange deposit, wallet to wallet, exchange to exchange; by txid, then address, then unique amount+time |
 | Labeling | Spend, sold, gift, donation, lost, income, gift received, P2P purchase, refund, untracked wallet, manual match |
 | Basis | FIFO, LIFO, specific lot; universal pool before 2025, per wallet from 1 Jan 2025 (Rev. Proc. 2024-28); network fee on own transfers carried into basis or treated as a disposal |

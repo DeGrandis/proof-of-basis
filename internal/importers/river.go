@@ -93,12 +93,8 @@ func (river) Parse(t *Table) ([]Event, []Warning, error) {
 				r.feeFiat = abs(v)
 			}
 		}
-		// ASSUMPTION (verify against a real export header/sample): the sent
-		// amount on a withdrawal includes the network fee, so the on-chain
-		// output is sent minus fee. Matching tolerates either way.
-		if r.btc < 0 && r.fiat == 0 && r.feeSats > 0 && -r.btc > r.feeSats {
-			r.btc += r.feeSats
-		}
+		// Whether "Sent Amount" includes the network fee is not documented;
+		// the matcher accepts an on-chain receipt of either amount.
 		ev, ok, msg := classify(r)
 		if msg != "" {
 			w("%s", msg)

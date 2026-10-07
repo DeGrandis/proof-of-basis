@@ -1,4 +1,9 @@
-Date (UTC),Transaction Type,Description,Amount (BTC),Price per Coin (USD),Amount (USD),Fee (USD),Transaction ID
-2024-04-01T12:00:00Z,Purchase,Buy bitcoin,0.00150000,66666.67,-100.00,1.00,syn-f-1
-2024-04-02T12:00:00Z,Reward,Card cashback,0.00000300,67000.00,0.20,,syn-f-2
-2024-04-03T12:00:00Z,Withdrawal,Send to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq,-0.00100000,67000.00,,,syn-f-3
+"Account ID","00000000-synthetic"
+"Name","Synthetic Person"
+"Account Username","nobody@example.invalid"
+
+Reference ID,Date (UTC),Transaction Type,Description,Asset,Amount (BTC),Price per Coin (USD),Subtotal (USD),Fee (USD),Total (USD),Transaction ID
+syn-f-1,2026-01-06 15:42:26.864543+00:00,Purchase,Auto-Stack,BTC,0.00150000,66666.67,-100.00,-1.00,-101.00,syn-f-1-id
+syn-f-2,2026-01-07 08:00:00.000001+00:00,Reward,Card rewards,BTC,0.00000300,67000.00,,,,
+syn-f-3,2026-01-08 12:00:00+00:00,Withdrawal,Send to wallet,BTC,0.00100000,67000.00,,,,9a8b7c6d5e4f30211203f4e5d6c7b8a99a8b7c6d5e4f30211203f4e5d6c7b8a9
+"Bitcoin services are provided by a synthetic disclaimer for testing."

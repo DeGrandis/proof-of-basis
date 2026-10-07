@@ -5,17 +5,19 @@ import (
 	"strings"
 )
 
-// signedSpec describes an export that can be read as signed BTC and USD
-// columns. Strike and Fold use it; more platforms can be added as data.
+// signedSpec describes an export that reads as a BTC column and a USD
+// column (signed or not) plus fees. Strike and Fold use it; another
+// platform with this shape is a new spec, not new code.
 type signedSpec struct {
 	id, name string
-	// signature columns: all must be present for a confident Detect.
+	// signature columns: the share present is the Detect score.
 	signature [][]string
 	date      []string
-	timeCol   []string // optional separate time-of-day column
 	typ       []string
-	btc       []string // signed BTC amount, or unsigned with direction from typ
+	asset     []string // optional; rows for other assets are skipped
+	btc       []string
 	usd       []string
+	price     []string // BTC price, used for reward value when USD is empty
 	feeUSD    []string
 	feeBTC    []string
 	txid      []string
@@ -23,52 +25,70 @@ type signedSpec struct {
 	ref       []string
 	note      []string
 	status    []string // rows not completed are skipped
-	// pair columns ("Amount 1","Currency 1") used when there is no btc/usd column
-	pairs [][2][]string
-	// fee pairs ("Fee 1" in "Currency 1")
-	feePairs [][2][]string
-	// outflow words force a negative sign when amounts are unsigned
-	outWords  []string
+	// outWords mark BTC outflows when amounts are unsigned.
+	outWords []string
+	// feeInFiat: the USD column already includes the fee.
 	feeInFiat bool
+	// netReversals drops a transaction and its reversal (same reference,
+	// amounts cancelling out).
+	netReversals bool
 }
 
 func (s signedSpec) ID() string   { return s.id }
 func (s signedSpec) Name() string { return s.name }
 
 func (s signedSpec) Detect(t *Table) int {
-	if len(s.signature) == 0 {
-		return 0
-	}
 	return t.Has(s.signature...) * 100 / len(s.signature)
+}
+
+type parsedRow struct {
+	ev        Event
+	ref       string
+	btc, fiat int64
 }
 
 func (s signedSpec) Parse(t *Table) ([]Event, []Warning, error) {
 	ix := func(a []string) int { return t.Col(a...) }
-	iDate, iTime := ix(s.date), ix(s.timeCol)
+	iDate := ix(s.date)
 	if iDate < 0 {
 		return nil, nil, fmt.Errorf("%s: no date column", s.id)
 	}
-	var out []Event
+	// An export that has any negative BTC amount is signed; only unsigned
+	// exports take their direction from the type text.
+	signed := false
+	if i := ix(s.btc); i >= 0 {
+		for _, row := range t.Rows {
+			if strings.HasPrefix(cell(row, i), "-") || strings.HasPrefix(cell(row, i), "(") {
+				signed = true
+				break
+			}
+		}
+	}
+	var rows []parsedRow
 	var warns []Warning
 	for n, row := range t.Rows {
 		line := t.FirstRow + n
 		w := func(f string, a ...any) { warns = append(warns, Warning{line, fmt.Sprintf(f, a...)}) }
-		if st := strings.ToLower(cell(row, ix(s.status)) + " " + cell(row, ix(s.typ))); strings.Contains(st, "fail") || strings.Contains(st, "cancel") || strings.Contains(st, "pending") || strings.Contains(st, "reversed") {
+		if filledCells(row) <= 1 || cell(row, iDate) == "" {
+			continue // footer disclaimers and spacer rows
+		}
+		typ := cell(row, ix(s.typ))
+		if st := strings.ToLower(cell(row, ix(s.status))); strings.Contains(st, "fail") || strings.Contains(st, "cancel") || strings.Contains(st, "pending") || strings.Contains(st, "reversed") {
 			continue
 		}
-		when := cell(row, iDate)
-		if iTime >= 0 {
-			when += " " + cell(row, iTime)
+		if a := cell(row, ix(s.asset)); a != "" && !strings.EqualFold(a, "BTC") {
+			continue
 		}
-		ts, err := ParseTime(when)
+		ts, err := ParseTime(cell(row, iDate))
 		if err != nil {
 			w("%v", err)
 			continue
 		}
-		typ := cell(row, ix(s.typ))
 		r := signedRow{row: line, typ: typ, feeInFiat: s.feeInFiat,
-			txid: strings.ToLower(cell(row, ix(s.txid))), addr: cell(row, ix(s.addr)),
-			ref: cell(row, ix(s.ref)), note: cell(row, ix(s.note))}
+			addr: cell(row, ix(s.addr)), ref: cell(row, ix(s.ref)), note: cell(row, ix(s.note))}
+		if tx := strings.ToLower(cell(row, ix(s.txid))); isTxid(tx) {
+			r.txid = tx
+		}
 		var perr error
 		num := func(col []string, f func(string) (int64, error)) int64 {
 			v, err := f(cell(row, ix(col)))
@@ -77,49 +97,30 @@ func (s signedSpec) Parse(t *Table) ([]Event, []Warning, error) {
 			}
 			return v
 		}
-		if ix(s.btc) >= 0 || ix(s.usd) >= 0 {
-			r.btc, r.fiat = num(s.btc, Sats), num(s.usd, Cents)
-		}
-		for _, p := range s.pairs {
-			amt, ccy := cell(row, ix(p[0])), strings.ToUpper(cell(row, ix(p[1])))
-			switch ccy {
-			case "BTC":
-				r.btc += num(p[0], Sats)
-			case "USD":
-				r.fiat += num(p[0], Cents)
-			case "":
-			default:
-				if amt != "" {
-					w("unsupported currency %q", ccy)
-				}
-			}
-		}
+		r.btc, r.fiat = num(s.btc, Sats), num(s.usd, Cents)
 		r.feeFiat, r.feeSats = abs(num(s.feeUSD, Cents)), abs(num(s.feeBTC, Sats))
-		for _, p := range s.feePairs {
-			switch strings.ToUpper(cell(row, ix(p[1]))) {
-			case "BTC":
-				r.feeSats += abs(num(p[0], Sats))
-			case "USD":
-				r.feeFiat += abs(num(p[0], Cents))
-			}
-		}
+		price := abs(num(s.price, Cents))
 		if perr != nil {
 			w("%v", perr)
 			continue
 		}
-		// Unsigned exports: derive direction from the type text.
-		if r.btc > 0 && r.fiat > 0 {
-			if hasAny(typ, []string{"buy", "purchase"}) {
+		// Unsigned exports: take the direction from the type text.
+		lt := strings.ToLower(typ)
+		if !signed && r.btc > 0 && r.fiat > 0 {
+			if hasAny(lt, []string{"buy", "purchase"}) {
 				r.fiat = -r.fiat
-			} else if hasAny(typ, []string{"sell", "sale"}) {
+			} else if hasAny(lt, []string{"sell", "sale"}) {
 				r.btc = -r.btc
 			}
 		}
-		if r.btc > 0 && r.fiat == 0 && hasAny(typ, s.outWords) {
+		if !signed && r.btc > 0 && r.fiat <= 0 && hasAny(lt, s.outWords) {
 			r.btc = -r.btc
 		}
+		if r.btc == 0 && r.fiat > 0 && hasAny(lt, s.outWords) {
+			r.fiat = -r.fiat // fiat withdrawal
+		}
 		if r.txid == "" {
-			r.txid = findTxid(r.note, typ)
+			r.txid = findTxid(r.note)
 		}
 		if r.addr == "" {
 			r.addr = findAddress(r.note)
@@ -131,54 +132,95 @@ func (s signedSpec) Parse(t *Table) ([]Event, []Warning, error) {
 		if !ok {
 			continue
 		}
+		if (ev.Kind == Reward || ev.Kind == Income) && ev.FiatCents == 0 && price > 0 {
+			ev.FiatCents = mulRound(price, ev.Sats, 100_000_000)
+		}
 		ev.Time, ev.Raw = ts, t.RawRow(row)
-		out = append(out, ev)
+		rows = append(rows, parsedRow{ev, r.ref, r.btc, r.fiat})
+	}
+	if s.netReversals {
+		rows, warns = netReversals(rows, warns)
+	}
+	out := make([]Event, len(rows))
+	for i, r := range rows {
+		out[i] = r.ev
 	}
 	return out, warns, nil
 }
 
-var outflowWords = []string{"withdraw", "send", "sent", "payment", "pay ", "spend", "outgoing"}
+// netReversals removes groups of rows sharing a reference whose BTC and
+// USD amounts sum to zero: a transaction that was reversed.
+func netReversals(rows []parsedRow, warns []Warning) ([]parsedRow, []Warning) {
+	type sum struct{ btc, fiat, n int64 }
+	sums := map[string]*sum{}
+	for _, r := range rows {
+		if r.ref == "" {
+			continue
+		}
+		if sums[r.ref] == nil {
+			sums[r.ref] = &sum{}
+		}
+		s := sums[r.ref]
+		s.btc += r.btc
+		s.fiat += r.fiat
+		s.n++
+	}
+	var out []parsedRow
+	for _, r := range rows {
+		if s := sums[r.ref]; r.ref != "" && s.n > 1 && s.btc == 0 && s.fiat == 0 {
+			warns = append(warns, Warning{r.ev.Row, fmt.Sprintf("reference %s was reversed; both rows ignored", r.ref)})
+			continue
+		}
+		out = append(out, r)
+	}
+	return out, warns
+}
+
+var outflowWords = []string{"withdraw", "send", "sent", "payment", "spend", "outgoing"}
 
 func init() {
-	// Strike transaction history export. Column names follow the
-	// "Amount 1 / Currency 1 / Amount 2 / Currency 2" layout; a flat
-	// "Amount BTC / Amount USD" layout is also accepted. Needs checking
-	// against a real header line.
+	// Strike "Annual Transactions" and "Account statement" exports.
+	// Types: Credit, Deposit, Withdrawal (USD); Purchase, Sell; Send,
+	// Receive, Bitcoin Withdrawal, Bitcoin Deposit (BTC). Strike reuses the
+	// Reference for a transaction and its reversal.
 	Register(signedSpec{
 		id: "strike", name: "Strike",
-		signature: [][]string{{"Transaction ID", "Reference"}, {"Transaction Type"}, {"Amount 1", "Amount BTC"}, {"Currency 1", "Amount USD"}, {"BTC Price"}},
-		date:      []string{"Completed Date (UTC)", "Time (UTC)", "Date & Time (UTC)", "Date (UTC)", "Date"},
-		timeCol:   []string{"Completed Time (UTC)"},
-		typ:       []string{"Transaction Type", "Type"},
-		btc:       []string{"Amount BTC"},
-		usd:       []string{"Amount USD"},
-		feeUSD:    []string{"Fee USD"},
-		feeBTC:    []string{"Fee BTC"},
-		pairs:     [][2][]string{{{"Amount 1"}, {"Currency 1"}}, {{"Amount 2"}, {"Currency 2"}}},
-		feePairs:  [][2][]string{{{"Fee 1"}, {"Currency 1"}}, {{"Fee 2"}, {"Currency 2"}}},
-		txid:      []string{"Transaction Hash", "On-chain Transaction ID", "Txid"},
-		addr:      []string{"Destination", "Address"},
-		ref:       []string{"Transaction ID", "Reference"},
-		note:      []string{"Description", "Note"},
-		status:    []string{"Status", "State"},
-		outWords:  outflowWords,
+		signature: [][]string{{"Reference"}, {"Date & Time (UTC)"}, {"Transaction Type"}, {"Amount USD"},
+			{"Amount BTC"}, {"BTC Price"}, {"Cost Basis (USD)"}},
+		date:         []string{"Date & Time (UTC)"},
+		typ:          []string{"Transaction Type"},
+		btc:          []string{"Amount BTC"},
+		usd:          []string{"Amount USD"},
+		price:        []string{"BTC Price"},
+		feeUSD:       []string{"Fee USD"},
+		feeBTC:       []string{"Fee BTC"},
+		txid:         []string{"Transaction Hash"},
+		addr:         []string{"Destination"},
+		ref:          []string{"Reference"},
+		note:         []string{"Description", "Note"},
+		outWords:     outflowWords,
+		feeInFiat:    true, // Amount USD is the cash that moved, fee included
+		netReversals: true,
 	})
-	// Fold bitcoin transaction history. Exact export columns unknown; these
-	// aliases cover the common shapes and must be checked against a header.
+	// Fold bitcoin transaction history (fold-bitcoin-transaction-history-*.csv).
+	// Metadata rows precede the header and disclaimers follow the data.
+	// Amount (BTC) is unsigned; Total (USD) is signed and includes the fee.
+	// Withdrawal and Deposit move BTC, not USD.
 	Register(signedSpec{
 		id: "fold", name: "Fold",
-		signature: [][]string{{"Transaction Type", "Type"}, {"Amount (BTC)", "BTC Amount", "Quantity (BTC)"}, {"Amount (USD)", "USD Amount", "Subtotal (USD)", "Total (USD)"}, {"Price per Coin (USD)", "BTC Price", "Price (USD)"}},
-		date:      []string{"Date (UTC)", "Date", "Timestamp", "Transaction Date"},
-		typ:       []string{"Transaction Type", "Type", "Description"},
-		btc:       []string{"Amount (BTC)", "BTC Amount", "Quantity (BTC)"},
-		usd:       []string{"Amount (USD)", "USD Amount", "Subtotal (USD)", "Total (USD)"},
-		feeUSD:    []string{"Fee (USD)", "Fees (USD)"},
-		feeBTC:    []string{"Fee (BTC)", "Network Fee (BTC)"},
-		txid:      []string{"Transaction Hash", "Txid", "Blockchain Transaction ID"},
-		addr:      []string{"Destination", "Address", "Destination Address"},
-		ref:       []string{"Transaction ID", "ID", "Reference"},
-		note:      []string{"Description", "Note", "Memo"},
-		status:    []string{"Status", "State"},
+		signature: [][]string{{"Reference ID"}, {"Date (UTC)"}, {"Transaction Type"}, {"Amount (BTC)"},
+			{"Price per Coin (USD)"}, {"Subtotal (USD)"}, {"Total (USD)"}},
+		date:      []string{"Date (UTC)"},
+		typ:       []string{"Transaction Type"},
+		asset:     []string{"Asset"},
+		btc:       []string{"Amount (BTC)"},
+		usd:       []string{"Total (USD)"},
+		price:     []string{"Price per Coin (USD)"},
+		feeUSD:    []string{"Fee (USD)"},
+		txid:      []string{"Transaction ID"},
+		ref:       []string{"Reference ID"},
+		note:      []string{"Description"},
 		outWords:  outflowWords,
+		feeInFiat: true,
 	})
 }

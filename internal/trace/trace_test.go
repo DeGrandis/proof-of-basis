@@ -158,3 +158,22 @@ func TestInternalTransfer(t *testing.T) {
 		t.Errorf("ops %+v unmatched %+v", r.Ops, r.Unmatched)
 	}
 }
+
+func TestWithdrawalFeeIncludedOrNot(t *testing.T) {
+	for _, recv := range []int64{498_000, 500_000} {
+		ex := []ExEvent{
+			{"1", "river", importers.Event{Kind: importers.Buy, Time: at("2025-02-01T00:00:00Z"), Sats: 502_000, FiatCents: 100_00}},
+			{"2", "river", importers.Event{Kind: importers.Withdrawal, Time: at("2025-02-02T00:00:00Z"), Sats: 500_000, FeeSats: 2_000}},
+		}
+		w := []WalletTxs{{"cold", []scan.Tx{{Txid: "aa", Height: 1, Time: at("2025-02-02T01:00:00Z"),
+			Outputs: []scan.Output{{Vout: 0, Sats: recv, Ours: true}}, RecvSats: recv}}}}
+		r := Build(ex, w, nil, Options{})
+		if len(r.Links) != 1 {
+			t.Fatalf("recv %d: links %+v", recv, r.Links)
+		}
+		res, _ := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+		if res.Balances["cold"] != recv || len(res.Warnings) != 0 {
+			t.Errorf("recv %d: balances %+v warnings %+v", recv, res.Balances, res.Warnings)
+		}
+	}
+}

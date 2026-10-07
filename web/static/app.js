@@ -141,7 +141,7 @@ $("#import-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
     const r = await api("/api/imports", { method: "POST", body: new FormData(e.target) });
-    toast(`Imported ${r.events} rows from ${r.handler}` + (r.warnings?.length ? `, ${r.warnings.length} warnings` : ""));
+    toast(`Imported ${r.events} rows from ${r.handler}` + (r.alreadyImported ? `, skipped ${r.alreadyImported} already imported` : "") + (r.warnings?.length ? `, ${r.warnings.length} warnings` : ""));
     e.target.reset();
     refresh();
   } catch (err) { toast(err.message); }

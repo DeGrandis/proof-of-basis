@@ -173,6 +173,7 @@ var timeLayouts = []string{
 	"2006-01-02 15:04:05 MST",
 	"2006-01-02 15:04:05 -0700",
 	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02 15:04:05.999999999Z07:00", // Fold: 2026-01-06 15:42:26.864543+00:00
 	"2006-01-02 15:04:05",
 	"2006-01-02 15:04",
 	"01/02/2006 15:04:05",
@@ -235,3 +236,15 @@ func abs(n int64) int64 {
 	}
 	return n
 }
+
+func filledCells(row []string) int {
+	n := 0
+	for _, c := range row {
+		if strings.TrimSpace(c) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func isTxid(s string) bool { return len(s) == 64 && txidRe.MatchString(s) }

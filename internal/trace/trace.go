@@ -387,6 +387,9 @@ func (b *builder) link(from, to, method string) {
 	b.linked[o.Key], b.linked[i.Key] = true, true
 	b.res.Links = append(b.res.Links, Link{o.Key, i.Key, method})
 	debit := o.Sats + o.FeeSats
+	if o.FeeSats > 0 && i.Sats == o.Sats-o.FeeSats {
+		debit = o.Sats // the platform's amount already included the fee
+	}
 	fee := debit - i.Sats
 	if fee < 0 {
 		b.warn("%s -> %s: more arrived (%d) than left (%d); check both records", o.Key, i.Key, i.Sats, debit)

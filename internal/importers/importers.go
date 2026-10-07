@@ -3,10 +3,12 @@
 package importers
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -36,9 +38,13 @@ type Event struct {
 	Txid      string
 	Address   string
 	Ref       string // the platform's own transaction id
-	Note      string
-	Row       int               // 1-based line in the file
-	Raw       map[string]string // original row, kept for re-parsing and audit
+	// UID identifies the row across overlapping exports so re-importing a
+	// longer history never duplicates it: the platform id when there is one,
+	// otherwise a hash of the row's contents.
+	UID  string
+	Note string
+	Row  int               // 1-based line in the file
+	Raw  map[string]string // original row, kept for re-parsing and audit
 }
 
 type Warning struct {
@@ -96,5 +102,36 @@ func Import(r io.Reader, id string) (Handler, []Event, []Warning, error) {
 		}
 	}
 	ev, warns, err := h.Parse(t)
-	return h, ev, warns, err
+	if err != nil {
+		return h, nil, warns, err
+	}
+	assignUIDs(h.ID(), t, ev)
+	return h, ev, warns, nil
+}
+
+func assignUIDs(platform string, t *Table, evs []Event) {
+	seen := map[string]int{}
+	for i := range evs {
+		e := &evs[i]
+		if e.UID != "" {
+			continue
+		}
+		base := ""
+		if e.Ref != "" {
+			base = platform + ":" + e.Ref
+		} else {
+			h := sha256.New()
+			for _, col := range t.Header {
+				fmt.Fprintf(h, "%s\x1f", e.Raw[strings.TrimSpace(col)])
+			}
+			base = fmt.Sprintf("%s:row-%x", platform, h.Sum(nil)[:12])
+		}
+		// Platforms reuse ids (Strike: a transaction and its reversal), and
+		// identical rows can legitimately repeat; number the repeats.
+		seen[base]++
+		e.UID = base
+		if seen[base] > 1 {
+			e.UID = fmt.Sprintf("%s#%d", base, seen[base])
+		}
+	}
 }

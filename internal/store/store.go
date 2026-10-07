@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY,
   import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
   account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  data TEXT NOT NULL
+  data TEXT NOT NULL,
+  uid TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS wallet_txs (
   account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -66,6 +67,12 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	// Added after the first version; fails harmlessly when present.
+	db.Exec(`ALTER TABLE events ADD COLUMN uid TEXT NOT NULL DEFAULT ''`)
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS events_uid ON events(account_id, uid) WHERE uid != ''`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -182,31 +189,40 @@ type Import struct {
 
 var ErrDuplicate = errors.New("this file was already imported for this account")
 
-func (s *Store) AddImport(accountID int64, handler, filename, sha string, evs []importers.Event, warns []importers.Warning) (int64, error) {
+// AddImport stores a parsed file. Rows already imported for this account
+// (same UID, e.g. from an overlapping export) are skipped and counted.
+func (s *Store) AddImport(accountID int64, handler, filename, sha string, evs []importers.Event, warns []importers.Warning) (id int64, skipped int, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer tx.Rollback()
 	var exists int
 	tx.QueryRow(`SELECT COUNT(*) FROM imports WHERE account_id=? AND sha256=?`, accountID, sha).Scan(&exists)
 	if exists > 0 {
-		return 0, ErrDuplicate
+		return 0, 0, ErrDuplicate
 	}
 	wj, _ := json.Marshal(warns)
 	r, err := tx.Exec(`INSERT INTO imports(account_id,handler,filename,sha256,imported_at,rows,warnings) VALUES(?,?,?,?,?,?,?)`,
 		accountID, handler, filename, sha, time.Now().UTC().Format(time.RFC3339), len(evs), string(wj))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	id, _ := r.LastInsertId()
+	id, _ = r.LastInsertId()
 	for _, e := range evs {
 		b, _ := json.Marshal(e)
-		if _, err := tx.Exec(`INSERT INTO events(import_id,account_id,data) VALUES(?,?,?)`, id, accountID, string(b)); err != nil {
-			return 0, err
+		res, err := tx.Exec(`INSERT OR IGNORE INTO events(import_id,account_id,data,uid) VALUES(?,?,?,?)`, id, accountID, string(b), e.UID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			skipped++
 		}
 	}
-	return id, tx.Commit()
+	if _, err := tx.Exec(`UPDATE imports SET rows=? WHERE id=?`, len(evs)-skipped, id); err != nil {
+		return 0, 0, err
+	}
+	return id, skipped, tx.Commit()
 }
 
 func (s *Store) Imports() ([]Import, error) {

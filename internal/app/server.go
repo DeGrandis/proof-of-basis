@@ -415,7 +415,7 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sum := sha256.Sum256(body)
-	id, err := s.st.AddImport(acctID, h.ID(), hdr.Filename, hex.EncodeToString(sum[:]), evs, warns)
+	id, skipped, err := s.st.AddImport(acctID, h.ID(), hdr.Filename, hex.EncodeToString(sum[:]), evs, warns)
 	if errors.Is(err, store.ErrDuplicate) {
 		fail(w, 409, err)
 		return
@@ -423,7 +423,7 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	writeJSON(w, map[string]any{"id": id, "handler": h.ID(), "account": name, "events": len(evs), "warnings": warns})
+	writeJSON(w, map[string]any{"id": id, "handler": h.ID(), "account": name, "events": len(evs) - skipped, "alreadyImported": skipped, "warnings": warns})
 }
 
 func (s *Server) deleteImport(w http.ResponseWriter, r *http.Request) {
