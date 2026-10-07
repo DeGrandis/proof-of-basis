@@ -53,7 +53,9 @@ func (river) Parse(t *Table) ([]Event, []Warning, error) {
 			w("%v", err)
 			continue
 		}
-		r := signedRow{row: line, typ: cell(row, ix(c.tag)), ref: cell(row, ix(c.id)),
+		// USD amounts already include the USD fee (Rob's earlier parser
+		// prices buys as (sent - fee) / received).
+		r := signedRow{row: line, typ: cell(row, ix(c.tag)), ref: cell(row, ix(c.id)), feeInFiat: true,
 			txid: strings.ToLower(cell(row, ix(c.txid))), addr: cell(row, ix(c.addr))}
 		add := func(amt, ccy string, sign int64) error {
 			if amt == "" {

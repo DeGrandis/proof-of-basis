@@ -66,7 +66,7 @@ func TestRiver(t *testing.T) {
 	want := []struct {
 		k          Kind
 		sats, fiat int64
-	}{{Buy, 590_000, 100_00}, {Withdrawal, 500_000, 0}, {Income, 500, 0}, {Sell, 90_000, 55_00}}
+	}{{Buy, 590_000, 100_00}, {Withdrawal, 500_000, 0}, {Income, 500, 0}, {Sell, 90_000, 55_50}}
 	for i, w := range want {
 		if ev[i].Kind != w.k || ev[i].Sats != w.sats || ev[i].FiatCents != w.fiat {
 			t.Errorf("row %d: %+v", i, ev[i])
