@@ -62,7 +62,29 @@ th { font-size: 12px; color: var(--muted); font-weight: 600; }
 .pill { background: var(--warn); color: #fff; border-radius: 999px; padding: 0 7px; font-size: 11px; }
 .warn { color: var(--warn); }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; z-index: 5; max-width: calc(100% - 32px); }
-#graph-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+body.flow main { max-width: none; padding-bottom: 8px; }
+#graph.on { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 52px - 16px); }
+.graph-bar { flex: none; } .spacer { flex: 1; }
+.graph-bar button { padding: 2px 10px; }
+.graph-area { position: relative; flex: 1; min-height: 300px; display: flex; }
+#graph-wrap { flex: 1; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+#flow { display: block; cursor: grab; touch-action: none; user-select: none; }
+#flow.panning { cursor: grabbing; }
+.graph-area { gap: 8px; }
+#graph-detail { flex: none; width: 360px; overflow: auto; margin: 0; }
+@media (max-width: 900px) {
+  #graph-detail { position: absolute; top: 8px; right: 8px; bottom: 8px; width: min(360px, 85%); box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+}
+#flow .gutter { fill: var(--panel); }
+#flow .lane-name { fill: var(--text); font-size: 12px; }
+#flow .lane.minor { stroke-opacity: .5; }
+#flow text.major { fill: var(--text); }
+#flow .hub { fill: var(--panel); stroke: var(--move); stroke-width: 2; }
+#flow .consol { fill: none; stroke: var(--income); stroke-width: 2; cursor: pointer; }
+#flow .tr { cursor: pointer; }
+#flow .tr.hl .link, #flow .tr.sel .link { stroke: var(--accent); stroke-opacity: 1; }
+#flow .tr.hl .link-end, #flow .tr.sel .link-end, #flow .tr.hl .hub, #flow .tr.sel .hub { stroke: var(--accent); }
+#legend .hub { fill: none; stroke: var(--move); stroke-width: 1.5; } #legend .consol { fill: none; stroke: var(--income); stroke-width: 1.5; }
 #flow text { fill: var(--muted); font-size: 11px; }
 #flow .lane { stroke: var(--line); }
 .dot { cursor: pointer; stroke: var(--panel); stroke-width: 1.5; }
@@ -76,6 +98,7 @@ th { font-size: 12px; color: var(--muted); font-weight: 600; }
 #flow .link-end { fill: var(--panel); stroke: var(--move); stroke-width: 1.5; cursor: pointer; }
 #flow .link.hl, #flow .link-end.hl { stroke: var(--accent); stroke-opacity: 1; }
 #flow .sel { stroke: var(--text) !important; stroke-width: 3; }
+#flow .tr.sel { stroke-width: 1; }
 #flow .hl { stroke: var(--accent) !important; stroke-opacity: 1 !important; stroke-width: 3; }
 #flow .dim { opacity: .2; }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }

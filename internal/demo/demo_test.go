@@ -1,0 +1,27 @@
+package demo
+
+import (
+	"testing"
+
+	"btctax/internal/importers"
+	"btctax/internal/prices"
+	"btctax/internal/scan"
+)
+
+func TestStoryHasEveryKind(t *testing.T) {
+	w := &world{rnd: newRand(1), price: prices.Bundled(), utxos: map[string][]utxo{}, views: map[string][]scan.Tx{},
+		events: map[string][]importers.Event{}, bal: map[string]int64{}, height: 1}
+	w.play()
+	kinds := map[importers.Kind]int{}
+	for _, evs := range w.events {
+		for _, e := range evs {
+			kinds[e.Kind]++
+		}
+	}
+	t.Logf("%v, vault holds %d", kinds, w.total(vault))
+	for _, k := range []importers.Kind{importers.Buy, importers.Sell, importers.Withdrawal, importers.Deposit, importers.Income} {
+		if kinds[k] == 0 {
+			t.Errorf("no %s rows", k)
+		}
+	}
+}

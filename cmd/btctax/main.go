@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"btctax/internal/app"
+	"btctax/internal/demo"
 	"btctax/internal/prices"
 	"btctax/internal/store"
 	"btctax/web"
@@ -28,6 +29,10 @@ func env(k, d string) string {
 func main() {
 	if len(os.Args) > 2 && os.Args[1] == "prices" && os.Args[2] == "fetch" {
 		fetchPrices(os.Args[3:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "demo" {
+		seedDemo(os.Args[2:])
 		return
 	}
 	addr := flag.String("addr", env("BTCTAX_ADDR", "127.0.0.1:8080"), "listen address")
@@ -95,6 +100,27 @@ func fetchPrices(args []string) {
 	}
 	f.Close()
 	fmt.Printf("%s: %d days fetched, %d in %s\n", s.Name(), len(got), len(merged), *out)
+}
+
+// seedDemo fills an empty data directory with invented history for trying
+// the app. It refuses a database that already has accounts.
+func seedDemo(args []string) {
+	fs := flag.NewFlagSet("demo", flag.ExitOnError)
+	data := fs.String("data", env("BTCTAX_DATA", "./data"), "data directory (must be empty of accounts)")
+	seed := fs.Int64("seed", 1, "random seed")
+	fs.Parse(args)
+	if err := os.MkdirAll(*data, 0o700); err != nil {
+		log.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(*data, "btctax.db"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer st.Close()
+	if err := demo.Seed(st, *seed); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("demo data written to", *data)
 }
 
 func sourceIDs() string {

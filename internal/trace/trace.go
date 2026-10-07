@@ -71,7 +71,14 @@ const (
 	// either direction
 	Untracked Category = "untracked" // to/from a wallet of mine that is not tracked
 	SelfLink  Category = "self"      // the other side is item Counterpart
+	// SelfTransfer moves coins to or from a wallet of mine that is not added
+	// here. Lots keep their basis and acquisition dates: out, they go to the
+	// "untracked" account; in, they come back from it.
+	SelfTransfer Category = "self-transfer"
 )
+
+// UntrackedAccount holds lots sent to wallets of mine that are not added.
+const UntrackedAccount = "untracked"
 
 type Label struct {
 	Key         string
@@ -93,7 +100,14 @@ type IncomeRow struct {
 	Kind  string
 }
 
+// TxInfo is the shape of an on-chain transaction, for display.
+type TxInfo struct {
+	Inputs, Outputs int
+	OutSats         int64
+}
+
 type Result struct {
+	Txs       map[string]TxInfo
 	Items     map[string]Item
 	Links     []Link
 	Unmatched []Item
@@ -115,7 +129,7 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 	if opt.Price == nil {
 		opt.Price = func(time.Time) (int64, bool) { return 0, false }
 	}
-	b := &builder{res: &Result{Items: map[string]Item{}}, opt: opt, linked: map[string]bool{}}
+	b := &builder{res: &Result{Items: map[string]Item{}, Txs: map[string]TxInfo{}}, opt: opt, linked: map[string]bool{}}
 	b.chainLegs(wallets)
 	var withdrawals, deposits []string
 	for _, e := range ex {
@@ -172,7 +186,16 @@ type builder struct {
 	linked map[string]bool
 }
 
-func (b *builder) op(o lots.Op) { b.res.Ops = append(b.res.Ops, o) }
+func (b *builder) op(o lots.Op) {
+	// A network fee on a transfer is valued at the day's price, in case the
+	// user treats fees as small disposals instead of adding them to basis.
+	if o.Kind == lots.Transfer && o.FeeSats > 0 && o.FeeCents == 0 {
+		if p, ok := b.opt.Price(o.Time); ok {
+			o.FeeCents = mulDiv(p, o.FeeSats, 100_000_000)
+		}
+	}
+	b.res.Ops = append(b.res.Ops, o)
+}
 
 func (b *builder) warn(f string, a ...any) {
 	b.res.Warnings = append(b.res.Warnings, fmt.Sprintf(f, a...))
@@ -204,6 +227,7 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 		owner  map[uint32]string
 		fee    int64
 		feeSet bool
+		ourIns int // inputs claimed by any tracked wallet
 	}
 	txs := map[string]*agg{}
 	var order []string
@@ -234,6 +258,7 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 				}
 				spentBy[k] = w.Account
 				a.sent[w.Account] += in.Sats
+				a.ourIns++
 			}
 			if t.SentSats > 0 && !hasOurInput(t) { // summaries without input detail
 				a.sent[w.Account] += t.SentSats
@@ -265,6 +290,22 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 		a := txs[id]
 		t := a.tx
 		key := func(v uint32) string { return fmt.Sprintf("tx:%s:%d", id, v) }
+		var outSats int64
+		for _, o := range t.Outputs {
+			outSats += o.Sats
+		}
+		b.res.Txs[id] = TxInfo{Inputs: len(t.Inputs), Outputs: len(t.Outputs), OutSats: outSats}
+		// Inputs from several tracked wallets together cover the whole fee
+		// even though no single wallet's view does.
+		if !a.feeSet && a.ourIns > 0 && a.ourIns == len(t.Inputs) {
+			var in int64
+			for _, v := range a.sent {
+				in += v
+			}
+			if in >= outSats {
+				a.fee, a.feeSet = in-outSats, true
+			}
+		}
 		if len(a.sent) == 0 {
 			for _, o := range t.Outputs {
 				if acct, ok := a.owner[o.Vout]; ok {
@@ -280,8 +321,18 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 				sender = acct
 			}
 		}
-		if len(a.sent) > 1 {
-			b.warn("tx %s spends from more than one tracked wallet; treated as sent from %s", id, sender)
+		// Many to one: coins from the other tracked wallets that funded this
+		// transaction move to the main sender first, so each wallet's lots
+		// and balance stay right; then everything leaves from the sender.
+		others := make([]string, 0, len(a.sent))
+		for acct := range a.sent {
+			if acct != sender {
+				others = append(others, acct)
+			}
+		}
+		sort.Strings(others)
+		for _, acct := range others {
+			b.op(lots.Op{ID: key(0) + ":from:" + acct, Kind: lots.Transfer, Time: t.Time, Account: acct, To: sender, Sats: a.sent[acct]})
 		}
 		if !a.feeSet {
 			b.warn("tx %s has inputs from outside the tracked wallets (coinjoin or payjoin?); review it", id)
@@ -450,8 +501,8 @@ func (b *builder) applyLabel(it Item, l Label) {
 			op.Kind, op.Cents = lots.Dispose, l.FiatCents
 		case Gift, Donation, Lost:
 			op.Kind = lots.Remove
-		case Untracked:
-			op.Kind, op.To, op.Sats, op.FeeSats = lots.Transfer, "untracked", it.Sats, it.FeeSats
+		case Untracked, SelfTransfer:
+			op.Kind, op.To, op.Sats, op.FeeSats = lots.Transfer, UntrackedAccount, it.Sats, it.FeeSats
 		default:
 			b.warn("%s: label %q does not apply to an outflow", it.Key, l.Category)
 			b.res.Unmatched = append(b.res.Unmatched, it)
@@ -472,6 +523,11 @@ func (b *builder) applyLabel(it Item, l Label) {
 			}
 		case PurchaseIn, RefundIn:
 			op.Kind, op.Cents = lots.Acquire, l.FiatCents
+		case SelfTransfer:
+			// Back from my untracked wallet: the lots that went there return
+			// with their basis and dates. Anything never sent there has no
+			// known basis, which the engine reports.
+			op.Kind, op.Account, op.To = lots.Transfer, UntrackedAccount, it.Account
 		case Untracked:
 			// Coins from a wallet we do not track: basis unknown unless given.
 			op.Kind, op.Cents = lots.Acquire, l.FiatCents

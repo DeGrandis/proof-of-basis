@@ -222,3 +222,102 @@ func TestChangeToOwnWallets(t *testing.T) {
 		t.Errorf("ops %+v", r.Ops)
 	}
 }
+
+// Many to one: hot and cold together fund one payment. Each wallet gives
+// up exactly what it put in, and the fee is known even though neither
+// wallet alone paid for every input.
+func TestSpendFromTwoWallets(t *testing.T) {
+	when := at("2025-03-01T00:00:00Z")
+	outs := []scan.Output{{Vout: 0, Address: "shop", Sats: 140_000}, {Vout: 1, Address: "cold-9", Sats: 59_000}}
+	hot := scan.Tx{Txid: "ee", Height: 9, Time: when, Inputs: []scan.Input{{PrevTxid: "h", Sats: 50_000, Ours: true}, {PrevTxid: "c"}}, Outputs: outs, SentSats: 50_000}
+	coldOuts := append([]scan.Output(nil), outs...)
+	coldOuts[1].Ours = true
+	cold := scan.Tx{Txid: "ee", Height: 9, Time: when, Inputs: []scan.Input{{PrevTxid: "h"}, {PrevTxid: "c", Sats: 150_000, Ours: true}}, Outputs: coldOuts, SentSats: 150_000, RecvSats: 59_000}
+	ex := []ExEvent{
+		{"1", "x", importers.Event{Kind: importers.Buy, Time: at("2025-01-01T00:00:00Z"), Sats: 200_000, FiatCents: 100_00}},
+		{"2", "x", importers.Event{Kind: importers.Withdrawal, Time: at("2025-01-02T00:00:00Z"), Sats: 50_000, Txid: "h"}},
+		{"3", "x", importers.Event{Kind: importers.Withdrawal, Time: at("2025-01-02T00:00:00Z"), Sats: 150_000, Txid: "c"}},
+	}
+	recv := func(txid, addr string, sats int64) scan.Tx {
+		return scan.Tx{Txid: txid, Height: 5, Time: at("2025-01-02T01:00:00Z"), Outputs: []scan.Output{{Address: addr, Sats: sats, Ours: true}}, RecvSats: sats}
+	}
+	w := []WalletTxs{{"hot", []scan.Tx{recv("h", "hot-0", 50_000), hot}}, {"cold", []scan.Tx{recv("c", "cold-0", 150_000), cold}}}
+	r := Build(ex, w, map[string]Label{"tx:ee:0": {Key: "tx:ee:0", Category: Spend, FiatCents: 70_00}}, Options{})
+	if len(r.Unmatched) != 0 {
+		t.Fatalf("unmatched %+v", r.Unmatched)
+	}
+	res, err := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Balances["hot"] != 0 || res.Balances["cold"] != 59_000 {
+		t.Errorf("balances %v", res.Balances)
+	}
+	var spent int64
+	for _, d := range res.Disposals {
+		spent += d.Sats
+		if d.Missing {
+			t.Errorf("missing basis: %+v", d)
+		}
+	}
+	if spent != 141_000 { // 140k to the shop plus the 1k fee it carries
+		t.Errorf("disposed %d sats: %+v", spent, res.Disposals)
+	}
+	for _, w := range r.Warnings {
+		if strings.Contains(w, "coinjoin") || strings.Contains(w, "more than one") {
+			t.Errorf("unexpected warning %q", w)
+		}
+	}
+}
+
+// Out to a wallet of mine that isn't added, and later back: the coins keep
+// their original basis and purchase date, so selling them is long term.
+func TestSelfTransferKeepsBasis(t *testing.T) {
+	ex := []ExEvent{
+		{"1", "x", importers.Event{Kind: importers.Buy, Time: at("2025-01-01T00:00:00Z"), Sats: 100_000, FiatCents: 100_00}},
+		{"2", "x", importers.Event{Kind: importers.Withdrawal, Time: at("2025-02-01T00:00:00Z"), Sats: 100_000, Address: "a1"}},
+		{"3", "x", importers.Event{Kind: importers.Deposit, Time: at("2026-06-01T00:00:00Z"), Sats: 100_000, Address: "a2"}},
+		{"4", "x", importers.Event{Kind: importers.Sell, Time: at("2026-06-02T00:00:00Z"), Sats: 100_000, FiatCents: 300_00}},
+	}
+	labels := map[string]Label{
+		"ex:2": {Key: "ex:2", Category: SelfTransfer},
+		"ex:3": {Key: "ex:3", Category: SelfTransfer},
+	}
+	r := Build(ex, nil, labels, Options{})
+	res, err := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Unmatched) != 0 || len(res.Disposals) != 1 {
+		t.Fatalf("unmatched %+v disposals %+v", r.Unmatched, res.Disposals)
+	}
+	d := res.Disposals[0]
+	if d.Basis != 100_00 || !d.LongTerm || d.Missing || !d.Acquired.Equal(at("2025-01-01T00:00:00Z")) {
+		t.Errorf("%+v", d)
+	}
+}
+
+// With fees treated as small sales, the fee is valued at the day's price.
+func TestTransferFeeValued(t *testing.T) {
+	_, w := fixture()
+	ex := []ExEvent{{"1", "coinbase", importers.Event{Kind: importers.Buy, Time: at("2025-01-01T10:00:00Z"), Sats: 1_000_000, FiatCents: 500_00}}}
+	hot := WalletTxs{"hot", []scan.Tx{{Txid: "cc", Height: 300, Time: at("2025-06-01T12:00:00Z"),
+		Outputs: []scan.Output{{Vout: 0, Address: "river-dep", Sats: 700_000, Ours: true}}, RecvSats: 700_000}}}
+	shift(nil, w, 3) // cold's history moves to 2025
+	r := Build(ex, append(w, hot), map[string]Label{
+		"tx:aa:0": {Key: "tx:aa:0", Category: Untracked, FiatCents: 500_00},
+		"tx:bb:0": {Key: "tx:bb:0", Category: Gift},
+	}, Options{Price: func(time.Time) (int64, bool) { return 100_000_00, true }})
+	found := false
+	for _, op := range r.Ops {
+		if op.Kind == lots.Transfer && op.To == "hot" {
+			found = true
+			if op.FeeSats != 1_000 || op.FeeCents != 1_00 {
+				t.Errorf("fee %d sats valued %d cents", op.FeeSats, op.FeeCents)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no transfer to hot: %+v", r.Ops)
+	}
+}

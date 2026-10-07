@@ -50,6 +50,8 @@ type GraphEvent struct {
 	Address  string `json:"address,omitempty"`
 	Note     string `json:"note,omitempty"`
 	Method   string `json:"method,omitempty"` // how a transfer was matched
+	Inputs   int    `json:"inputs,omitempty"` // on-chain shape, when known
+	Outputs  int    `json:"outputs,omitempty"`
 }
 
 type Report struct {
@@ -270,6 +272,13 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) 
 			FeeSats: max(fee, 0), Txid: txid, Address: addr, Note: f.Note, Method: l.Method})
 	}
 	for _, op := range tr.Ops {
+		if op.Kind == lots.Transfer && op.Account == op.To && strings.HasSuffix(op.ID, ":fee") {
+			// Coins merged inside one wallet: only the fee left.
+			txid := strings.Split(op.ID, ":")[1]
+			g = append(g, GraphEvent{Key: op.ID, Account: op.Account, Time: op.Time.Unix(), Kind: "consolidation",
+				Sats: tr.Txs[txid].OutSats, FeeSats: op.FeeSats, Txid: txid})
+			continue
+		}
 		if op.Kind == lots.Transfer && op.Account != op.To && tr.Items[op.ID].Key == "" && op.To != "" && !containsGT(op.ID) {
 			ev := GraphEvent{Key: op.ID, Account: op.Account, Time: op.Time.Unix(), Kind: "transfer", Sats: op.Sats, To: op.To,
 				FeeSats: op.FeeSats, Method: "same transaction"}
@@ -304,6 +313,11 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) 
 			}
 		}
 		g = append(g, ev)
+	}
+	for i := range g {
+		if info, ok := tr.Txs[g[i].Txid]; ok {
+			g[i].Inputs, g[i].Outputs = info.Inputs, info.Outputs
+		}
 	}
 	sort.Slice(g, func(i, j int) bool { return g[i].Time < g[j].Time })
 	return g

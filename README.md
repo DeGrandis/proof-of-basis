@@ -61,6 +61,16 @@ go test ./...                       # unit tests, synthetic data only
 go run ./cmd/btctax -addr 127.0.0.1:8080
 ```
 
+A large invented history (seven years, three exchanges, four wallets,
+consolidations, batch payments, multi-wallet spends) for trying the UI. It
+only writes to a database with no accounts:
+
+```sh
+docker volume create btctax-demo
+docker run --rm -v btctax-demo:/data btctax:latest demo -data /data
+docker run --rm -p 127.0.0.1:8081:8080 -v btctax-demo:/data btctax:latest
+```
+
 End-to-end on a throwaway regtest chain (bitcoind + Fulcrum in Docker):
 
 ```sh

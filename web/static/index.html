@@ -105,10 +105,18 @@
   </section>
 
   <section id="graph" class="tab">
-    <div class="row"><h2>Flow of funds</h2><span class="small muted">Dot size is the amount. Click any dot to open that transaction and trace it.</span></div>
-    <div class="row small"><div id="legend" class="row"></div><label class="inline check"><input type="checkbox" id="show-transfers" checked> Show transfers</label></div>
-    <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg></div>
-    <div id="graph-detail" class="card" hidden></div>
+    <div class="row small graph-bar">
+      <div id="legend" class="row"></div>
+      <label class="inline check"><input type="checkbox" id="show-transfers" checked> Show transfers</label>
+      <span class="spacer"></span>
+      <span id="zoom-level" class="muted"></span>
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button><button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button><button id="zoom-fit">Fit all</button>
+    </div>
+    <div class="graph-area">
+      <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg></div>
+      <aside id="graph-detail" class="card" hidden></aside>
+    </div>
+    <div class="small muted">Scroll to zoom, drag to pan, click a dot to open it and zoom to everything it traces to. Dot size is the amount.</div>
   </section>
 
   <section id="taxes" class="tab">

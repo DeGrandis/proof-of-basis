@@ -1,6 +1,7 @@
 package app
 
 import (
+	"btctax/internal/demo"
 	"bytes"
 	"encoding/json"
 	"mime/multipart"
@@ -130,5 +131,50 @@ func TestFulcrumStatusNotSetUp(t *testing.T) {
 	json.Unmarshal(call(h, "GET", "/api/fulcrum/status", "").Body.Bytes(), &st)
 	if st.OK || !strings.Contains(st.Error, "address first") {
 		t.Errorf("%+v", st)
+	}
+}
+
+// The demo history is large and exercises every path: it must load, trace
+// with no coins of unknown origin, and give the flow view plenty to draw.
+func TestDemoReport(t *testing.T) {
+	st, h := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := demo.Seed(st, 1); err == nil {
+		t.Fatal("seeded a database that already had data")
+	}
+	var rep Report
+	w := call(h, "GET", "/api/report", "")
+	if err := json.Unmarshal(w.Body.Bytes(), &rep); err != nil {
+		t.Fatal(w.Code, err)
+	}
+	kinds := map[string]int{}
+	for _, g := range rep.Graph {
+		kinds[g.Kind]++
+	}
+	t.Logf("graph %d events %v, %d disposals, %d unmatched, %d warnings", len(rep.Graph), kinds, len(rep.Disposals), len(rep.Unmatched), len(rep.Warnings))
+	if len(rep.Graph) < 500 || kinds["transfer"] < 50 || kinds["consolidation"] == 0 || len(rep.Unmatched) == 0 {
+		t.Errorf("too small: %d events %v, %d unmatched", len(rep.Graph), kinds, len(rep.Unmatched))
+	}
+	for _, msg := range rep.Warnings {
+		if strings.Contains(msg, "no known basis") || strings.Contains(msg, "coinjoin") {
+			t.Errorf("warning: %s", msg)
+		}
+	}
+	// Every wallet's traced balance matches the chain once the unlabeled
+	// items still waiting in Review are accounted for.
+	pending := map[string]int64{}
+	for _, it := range rep.Unmatched {
+		if it.Dir == "out" {
+			pending[it.Account] += it.Sats + it.FeeSats
+		} else {
+			pending[it.Account] -= it.Sats
+		}
+	}
+	for _, a := range rep.Accounts {
+		if a.ChainSats != nil && *a.ChainSats+pending[a.Name] != a.Sats {
+			t.Errorf("%s: traced %d, on chain %d, pending review %d", a.Name, a.Sats, *a.ChainSats, pending[a.Name])
+		}
 	}
 }

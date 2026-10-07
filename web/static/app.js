@@ -31,6 +31,7 @@ function show(tab) {
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
+  document.body.classList.toggle("flow", tab === "graph");
   if (tab === "graph") drawGraph();
 }
 // Sidebar: open by default (collapsed to icons on narrow screens); the
@@ -262,8 +263,12 @@ $("#price-form").addEventListener("submit", async (e) => {
 });
 
 // Review: the labeling queue
-const OUT_CATS = [["spend", "Paid for something"], ["sold", "Sold to a person"], ["gift", "Gift sent"], ["donation", "Donation"], ["lost", "Lost or stolen"], ["untracked", "My wallet (not tracked)"], ["self", "Matches another row…"]];
-const IN_CATS = [["income", "Income / payment received"], ["gift-in", "Gift received"], ["purchase", "Bought from a person"], ["refund", "Refund"], ["untracked", "From my untracked wallet"], ["self", "Matches another row…"]];
+// A self transfer needs no basis: the coins keep their original basis and
+// purchase dates. Out, they park in "untracked"; in, they come back from it.
+const OUT_CATS = [["self-transfer", "Self transfer to my own wallet (not added here)"], ["self", "Self transfer, matches another row…"], ["spend", "Paid for something"],
+  ["sold", "Sold to a person"], ["gift", "Gift sent"], ["donation", "Donation"], ["lost", "Lost or stolen"]];
+const IN_CATS = [["self-transfer", "Self transfer from my own wallet"], ["self", "Self transfer, matches another row…"], ["income", "Income / payment received"],
+  ["gift-in", "Gift received"], ["purchase", "Bought from a person"], ["refund", "Refund"], ["untracked", "From an old wallet of mine, enter its basis"]];
 const needsAmount = { spend: "Value (USD)", sold: "Proceeds (USD)", income: "Value (USD)", "gift-in": "Donor's basis (USD)", purchase: "Cost (USD)", refund: "Basis (USD)", untracked: "Basis (USD)" };
 
 function renderReview() {
@@ -289,6 +294,8 @@ $("#review-table").addEventListener("change", (e) => {
   if (cat === "self") {
     const opp = (report.unmatched || []).filter((i) => i.Dir !== tr.dataset.dir);
     extra.innerHTML = `<select class="cp">${opp.map((i) => `<option value="${esc(i.Key)}">${day(i.Time)} ${esc(i.Account)} ${btc(i.Sats)}</option>`).join("")}</select>`;
+  } else if (cat === "self-transfer") {
+    extra.innerHTML = `<span class="small muted">${tr.dataset.dir === "out" ? "Keeps its basis and purchase dates while it's away." : "Brings back coins you sent out as a self transfer, with their original basis and dates."}</span>`;
   } else if (needsAmount[cat]) {
     extra.innerHTML = `<input class="amt" inputmode="decimal" placeholder="${needsAmount[cat]}" size="12">` +
       (cat === "gift-in" ? ` <input class="acq" type="date" title="Donor's acquisition date">` : "");
@@ -330,14 +337,21 @@ function renderTaxes() {
 }
 
 // Flow graph: exchanges and wallets in separate bands, one lane per
-// account, time left to right. Dot size is the amount.
+// account, time left to right, dot size by amount. It fills the page;
+// the wheel zooms the timeline around the pointer, dragging pans, and
+// clicking a dot opens it and zooms to it and everything it traces to.
 const KINDS = [["buy", "Buy"], ["sell", "Sale / spend"], ["income", "Income / acquired"], ["unmatched", "Needs a label"], ["gift", "Gift / other"]];
-const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Transfer", unmatched: "Needs a label", spend: "Spent", sold: "Sold to a person",
-  gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", untracked: "Untracked wallet", "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
+const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Transfer", consolidation: "Consolidation", unmatched: "Needs a label", spend: "Spent",
+  sold: "Sold to a person", gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", untracked: "Untracked wallet", "self-transfer": "Self transfer",
+  "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
 $("#legend").innerHTML = KINDS.map(([k, l]) => `<span><svg width="10" height="10"><circle cx="5" cy="5" r="5" class="dot ${k}"></circle></svg> ${l}</span>`).join("")
-  + `<span><svg width="18" height="10"><line x1="1" y1="5" x2="17" y2="5" class="link" stroke-width="2"/></svg> Transfer</span>`;
+  + `<span><svg width="18" height="10"><line x1="1" y1="5" x2="17" y2="5" class="link" stroke-width="2"/></svg> Transfer</span>`
+  + `<span><svg width="12" height="12"><rect x="2" y="2" width="8" height="8" class="hub" transform="rotate(45 6 6)"/></svg> One tx, several accounts</span>`
+  + `<span><svg width="12" height="12"><rect x="1.5" y="1.5" width="9" height="9" class="consol"/></svg> Consolidation</span>`;
 $("#show-transfers").addEventListener("change", () => drawGraph());
 let selected = null;
+const view = { d0: 0, d1: 1, full: 1, key: "" }; // visible slice of the compressed timeline
+let axis = null; // {times, pos}: event times and their positions on the timeline
 
 function lanesByBand() {
   const kindOf = Object.fromEntries((report.accounts || []).map((a) => [a.name, a.kind]));
@@ -349,68 +363,215 @@ function lanesByBand() {
   return bands.filter((b) => b.lanes.length);
 }
 
+// Every distinct moment gets room and quiet stretches are compressed (log
+// of the gap), so events minutes apart don't pile up and empty years don't
+// waste the width.
+function buildAxis(ev) {
+  const times = [...new Set(ev.map((e) => e.t))].sort((a, b) => a - b);
+  const pos = [0];
+  for (let i = 1; i < times.length; i++) pos.push(pos[i - 1] + 1 + 0.9 * Math.log2(1 + (times[i] - times[i - 1]) / 86400));
+  return { times, pos };
+}
+function posOf(t) {
+  const { times, pos } = axis;
+  if (t <= times[0]) return pos[0] - (times[0] - t) / 86400 / 30;
+  if (t >= times.at(-1)) return pos.at(-1) + (t - times.at(-1)) / 86400 / 30;
+  let lo = 0, hi = times.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (times[m] <= t) lo = m; else hi = m; }
+  return pos[lo] + ((t - times[lo]) / (times[hi] - times[lo] || 1)) * (pos[hi] - pos[lo]);
+}
+function timeOf(p) {
+  const { times, pos } = axis;
+  if (p <= pos[0]) return times[0];
+  if (p >= pos.at(-1)) return times.at(-1);
+  let lo = 0, hi = pos.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pos[m] <= p) lo = m; else hi = m; }
+  return times[lo] + ((p - pos[lo]) / (pos[hi] - pos[lo] || 1)) * (times[hi] - times[lo]);
+}
+
+const LEFT = 150;
+function geometry() {
+  const wrap = $("#graph-wrap");
+  return { W: Math.max(400, wrap.clientWidth), H: Math.max(260, wrap.clientHeight) };
+}
+const xOf = (p, W) => LEFT + 20 + ((p - view.d0) / (view.d1 - view.d0)) * (W - LEFT - 40);
+const pOfX = (x, W) => view.d0 + ((x - LEFT - 20) / (W - LEFT - 40)) * (view.d1 - view.d0);
+
+function ticks(t0, t1) {
+  const span = t1 - t0, out = [];
+  const d = new Date(t0 * 1000);
+  if (span > 3 * 365 * 86400) {
+    for (let y = d.getUTCFullYear() + 1; Date.UTC(y, 0, 1) / 1000 <= t1; y++) out.push([Date.UTC(y, 0, 1) / 1000, String(y), true]);
+  } else if (span > 60 * 86400) {
+    for (let m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)); m / 1000 <= t1; m.setUTCMonth(m.getUTCMonth() + 1)) {
+      const jan = m.getUTCMonth() === 0;
+      out.push([m / 1000, jan ? String(m.getUTCFullYear()) : m.toLocaleString("en-US", { month: "short", timeZone: "UTC" }), jan]);
+    }
+  } else {
+    const step = span > 14 * 86400 ? 7 : 1;
+    for (let x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)); x / 1000 <= t1; x.setUTCDate(x.getUTCDate() + step)) {
+      out.push([x / 1000, x.toISOString().slice(5, 10), x.getUTCDate() === 1]);
+    }
+  }
+  return out;
+}
+
 function drawGraph() {
   const svg = $("#flow");
-  if (!report) return;
+  if (!report || !$("#graph").classList.contains("on")) return;
   const ev = report.graph || [];
   if (!ev.length) { svg.setAttribute("width", 600); svg.setAttribute("height", 60); svg.innerHTML = `<text x="16" y="34">Nothing to draw yet.</text>`; return; }
+  const sig = ev.length + ":" + ev[0].t + ":" + ev.at(-1).t;
+  if (view.key !== sig) { // new data: rebuild the timeline and show everything
+    axis = buildAxis(ev);
+    view.full = axis.pos.at(-1) || 1;
+    view.d0 = -view.full * 0.01; view.d1 = view.full * 1.01; view.key = sig;
+  }
+  const { W, H } = geometry();
   const bands = lanesByBand();
-  const left = 150, laneH = 44, bandGap = 30;
-  let W = Math.max(720, $("#graph-wrap").clientWidth - 2); // widened below when the timeline needs room
+  const nLanes = bands.reduce((n, b) => n + b.lanes.length, 0);
+  const laneH = Math.max(26, Math.min(70, (H - 40 - bands.length * 34) / nLanes));
   const laneY = {};
-  let yy = 10, out = "";
+  let yy = 6, out = "", labels = "";
   for (const b of bands) {
     const top = yy;
     yy += 22;
     for (const l of b.lanes) { laneY[l] = yy + laneH / 2; yy += laneH; }
-    out += `<rect class="band" x="0" y="${top}" width="100%" height="${yy - top}" rx="8"/><text class="band-label" x="10" y="${top + 15}">${esc(b.label)}</text>`;
-    yy += bandGap - 18;
+    out += `<rect class="band" x="0" y="${top}" width="${W}" height="${yy - top}" rx="8"/>`;
+    labels += `<text class="band-label" x="10" y="${top + 15}">${esc(b.label)}</text>`;
+    yy += 12;
   }
-  const H = yy + 24;
-  // Time axis: every distinct moment gets room, and quiet stretches are
-  // compressed (log of the gap), so a withdrawal and its receipt minutes
-  // apart don't pile up while years of nothing don't waste the width.
-  const times = [...new Set(ev.map((e) => e.t))].sort((a, b) => a - b);
-  const pos = [0];
-  for (let i = 1; i < times.length; i++) pos.push(pos[i - 1] + 26 + 22 * Math.log2(1 + (times[i] - times[i - 1]) / 86400));
-  const avail = W - left - 40, scale = pos.at(-1) > avail ? 1 : avail / Math.max(pos.at(-1), 1);
-  if (scale === 1) W = left + pos.at(-1) + 40;
-  const t0 = times[0], t1 = times.at(-1);
-  const x = (t) => {
-    let i = times.findIndex((v) => v >= t);
-    if (i <= 0) return left + 16 + (i === 0 ? 0 : pos.at(-1) * scale);
-    const f = (t - times[i - 1]) / (times[i] - times[i - 1]);
-    return left + 16 + (pos[i - 1] + f * (pos[i] - pos[i - 1])) * scale;
-  };
+  const bottom = yy;
+  const visible = (p) => p >= view.d0 - (view.d1 - view.d0) * 0.02 && p <= view.d1 + (view.d1 - view.d0) * 0.02;
+  // ticks
+  const tt0 = timeOf(Math.max(view.d0, 0)), tt1 = timeOf(Math.min(view.d1, view.full));
+  let lastLabel = -1e9;
+  for (const [t, label, major] of ticks(tt0, tt1)) {
+    const xx = xOf(posOf(t), W);
+    if (xx < LEFT + 10 || xx > W - 10) continue;
+    out += `<line class="lane${major ? "" : " minor"}" x1="${xx}" x2="${xx}" y1="6" y2="${bottom}" stroke-dasharray="2 4"/>`;
+    if (xx - lastLabel > (major ? 34 : 44)) { out += `<text x="${xx + 3}" y="${bottom + 14}"${major ? ' class="major"' : ""}>${label}</text>`; lastLabel = xx; }
+  }
+  for (const l of Object.keys(laneY)) out += `<line class="lane" x1="${LEFT}" x2="${W - 10}" y1="${laneY[l]}" y2="${laneY[l]}"/>`;
   const maxSats = Math.max(...ev.map((e) => e.sats), 1);
-  const r = (s) => 4 + 9 * Math.sqrt(s / maxSats);
-  for (const l of Object.keys(laneY)) {
-    out += `<line class="lane" x1="${left}" x2="${W - 10}" y1="${laneY[l]}" y2="${laneY[l]}"/><text x="18" y="${laneY[l] + 4}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`;
-  }
-  for (let y = new Date(t0 * 1000).getUTCFullYear() + 1; Date.UTC(y, 0, 1) / 1000 <= t1; y++) {
-    const xx = x(Date.UTC(y, 0, 1) / 1000);
-    out += `<line class="lane" x1="${xx}" x2="${xx}" y1="10" y2="${H - 24}" stroke-dasharray="2 4"/><text x="${xx + 3}" y="${H - 8}">${y}</text>`;
-  }
-  // Transfers: a straight vertical connector at the moment the coins left,
-  // from the sending lane to the receiving lane, with a hollow end on each.
+  const r = (s) => 3 + 9 * Math.sqrt(s / maxSats);
+
+  // Transfers, grouped by transaction. One account to one account is a
+  // straight connector; one to many or many to one meets at a diamond hub.
+  const hubbed = new Set();
   if ($("#show-transfers").checked) {
-    for (const e of ev.filter((e) => e.kind === "transfer" && e.to && laneY[e.to] != null)) {
-      const xx = x(e.t), y1 = laneY[e.account], y2 = laneY[e.to], w = 1 + 4 * Math.sqrt(e.sats / maxSats), rr = Math.max(3, r(e.sats) * 0.6);
-      const tip = `${btc(e.sats)} BTC ${esc(e.account)} → ${esc(e.to)} on ${day(e.t)}`;
-      out += `<line class="link" data-key="${esc(e.key)}" x1="${xx}" y1="${y1}" x2="${xx}" y2="${y2}" stroke-width="${w}"><title>${tip}</title></line>`
-        + `<circle class="link-end" data-key="${esc(e.key)}" cx="${xx}" cy="${y1}" r="${rr}"><title>${tip}</title></circle>`
-        + `<circle class="link-end" data-key="${esc(e.key)}" cx="${xx}" cy="${y2}" r="${rr}"><title>${tip}</title></circle>`;
+    const groups = new Map();
+    for (const e of ev) {
+      if (e.kind !== "transfer" || !e.to || laneY[e.to] == null || laneY[e.account] == null) continue;
+      const g = e.txid || e.key;
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(e);
+    }
+    for (const legs of groups.values()) {
+      const p = posOf(legs[0].t);
+      if (!visible(p)) continue;
+      const xx = xOf(p, W), keys = legs.map((l) => l.key).join(" ");
+      const srcs = [...new Set(legs.map((l) => l.account))], dsts = [...new Set(legs.map((l) => l.to))];
+      const tip = legs.map((l) => `${btc(l.sats)} BTC ${l.account} → ${l.to}`).join("\n") + `\n${day(legs[0].t)}`;
+      const width = (s) => 1 + 4 * Math.sqrt(s / maxSats);
+      if (legs.length === 1) {
+        const e = legs[0], y1 = laneY[e.account], y2 = laneY[e.to], rr = Math.max(3, r(e.sats) * 0.6);
+        out += `<g data-key="${esc(e.key)}" data-keys="${esc(keys)}" class="tr"><title>${esc(tip)}</title><line class="link" x1="${xx}" y1="${y1}" x2="${xx}" y2="${y2}" stroke-width="${width(e.sats)}"/>`
+          + `<circle class="link-end" cx="${xx}" cy="${y1}" r="${rr}"/><circle class="link-end" cx="${xx}" cy="${y2}" r="${rr}"/></g>`;
+        continue;
+      }
+      if (legs[0].txid) hubbed.add(legs[0].txid);
+      const fanOut = srcs.length === 1;
+      const hy = fanOut ? laneY[srcs[0]] : dsts.length === 1 ? laneY[dsts[0]] : (Math.min(...legs.map((l) => laneY[l.account])) + Math.max(...legs.map((l) => laneY[l.to]))) / 2;
+      let paths = "";
+      legs.forEach((l, i) => {
+        const off = (i - (legs.length - 1) / 2) * 12;
+        const [ax, ay, bx, by] = fanOut ? [xx, hy, xx + off, laneY[l.to]] : [xx + off, laneY[l.account], xx, hy];
+        const my = (ay + by) / 2;
+        paths += `<path class="link" d="M${ax},${ay} C${ax},${my} ${bx},${my} ${bx},${by}" stroke-width="${width(l.sats)}"/>`
+          + `<circle class="link-end" cx="${fanOut ? bx : ax}" cy="${fanOut ? by : ay}" r="${Math.max(3, r(l.sats) * 0.55)}"/>`;
+      });
+      out += `<g data-key="${esc(legs[0].key)}" data-keys="${esc(keys)}" class="tr"><title>${esc(tip)}</title>${paths}<rect class="hub" x="${xx - 5}" y="${hy - 5}" width="10" height="10" transform="rotate(45 ${xx} ${hy})"/></g>`;
     }
   }
-  for (const e of ev.filter((e) => e.kind !== "transfer" && laneY[e.account] != null)) {
-    out += `<circle class="dot ${esc(e.kind)}" data-key="${esc(e.key)}" cx="${x(e.t)}" cy="${laneY[e.account]}" r="${r(e.sats)}"><title>${esc(KIND_NAMES[e.kind] || e.kind)} ${btc(e.sats)} BTC, ${esc(e.account)}, ${day(e.t)}</title></circle>`;
+  for (const e of ev) {
+    if (e.kind === "transfer" || laneY[e.account] == null) continue;
+    const p = posOf(e.t);
+    if (!visible(p)) continue;
+    const xx = xOf(p, W) + (e.txid && hubbed.has(e.txid) ? 12 : 0), yy2 = laneY[e.account];
+    const tip = `${KIND_NAMES[e.kind] || e.kind} ${btc(e.sats)} BTC, ${e.account}, ${day(e.t)}` + (e.inputs ? `\n${e.inputs} inputs → ${e.outputs} outputs` : "");
+    if (e.kind === "consolidation") {
+      const s = r(e.sats) * 1.6;
+      out += `<rect class="consol" data-key="${esc(e.key)}" x="${xx - s / 2}" y="${yy2 - s / 2}" width="${s}" height="${s}"><title>${esc(tip)}</title></rect>`;
+    } else {
+      out += `<circle class="dot ${esc(e.kind)}" data-key="${esc(e.key)}" cx="${xx}" cy="${yy2}" r="${r(e.sats)}"><title>${esc(tip)}</title></circle>`;
+    }
   }
+  // Lane names stay put while the timeline pans underneath them.
+  labels += Object.keys(laneY).map((l) => `<text class="lane-name" x="16" y="${laneY[l] + 4}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`).join("");
+  out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = out;
-  if (selected && ev.some((e) => e.key === selected)) selectEvent(selected); else { selected = null; $("#graph-detail").hidden = true; }
+  const span = timeOf(Math.min(view.d1, view.full)) - timeOf(Math.max(view.d0, 0));
+  $("#zoom-level").textContent = span > 2 * 365 * 86400 ? `${(span / 365 / 86400).toFixed(1)} years shown` : span > 60 * 86400 ? `${Math.round(span / 30 / 86400)} months shown` : `${Math.max(1, Math.round(span / 86400))} days shown`;
+  if (selected && ev.some((e) => e.key === selected)) highlight(selected);
 }
+
+// Zoom keeps the point under the pointer still.
+function zoomAt(px, factor) {
+  const { W } = geometry();
+  const p = pOfX(px, W);
+  let span = (view.d1 - view.d0) * factor;
+  span = Math.max(0.5, Math.min(view.full * 1.05, span));
+  const f = (p - view.d0) / (view.d1 - view.d0);
+  view.d0 = p - f * span; view.d1 = view.d0 + span;
+  clampView();
+  drawGraph();
+}
+function clampView() {
+  const span = view.d1 - view.d0, pad = view.full * 0.02;
+  if (view.d0 < -pad) { view.d0 = -pad; view.d1 = view.d0 + span; }
+  if (view.d1 > view.full + pad) { view.d1 = view.full + pad; view.d0 = view.d1 - span; }
+}
+let anim = 0;
+function animateTo(d0, d1) {
+  const s0 = view.d0, s1 = view.d1, start = performance.now();
+  cancelAnimationFrame(anim);
+  const step = (now) => {
+    const k = Math.min(1, (now - start) / 350), e = 1 - Math.pow(1 - k, 3);
+    view.d0 = s0 + (d0 - s0) * e; view.d1 = s1 + (d1 - s1) * e;
+    drawGraph();
+    if (k < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+const svgEl = $("#flow");
+svgEl.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = svgEl.getBoundingClientRect();
+  if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { // horizontal scroll pans
+    const { W } = geometry(), d = ((e.deltaX || e.deltaY) / (W - LEFT)) * (view.d1 - view.d0);
+    view.d0 += d; view.d1 += d; clampView(); drawGraph();
+    return;
+  }
+  zoomAt(e.clientX - rect.left, Math.exp(e.deltaY * 0.0015));
+}, { passive: false });
+let drag = null;
+svgEl.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, d0: view.d0, d1: view.d1, moved: false }; });
+window.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 3) { drag.moved = true; svgEl.classList.add("panning"); }
+  if (!drag.moved) return;
+  const { W } = geometry(), d = (-dx / (W - LEFT - 40)) * (drag.d1 - drag.d0);
+  view.d0 = drag.d0 + d; view.d1 = drag.d1 + d; clampView(); drawGraph();
+});
+window.addEventListener("pointerup", () => { setTimeout(() => (drag = null), 0); svgEl.classList.remove("panning"); });
+$("#zoom-in").addEventListener("click", () => zoomAt(geometry().W / 2 + LEFT / 2, 0.5));
+$("#zoom-out").addEventListener("click", () => zoomAt(geometry().W / 2 + LEFT / 2, 2));
+$("#zoom-fit").addEventListener("click", () => animateTo(-view.full * 0.01, view.full * 1.01));
 
 // The likely route coins took between two accounts: a chain of transfers,
 // each later than the last, from where they were acquired to where they
@@ -431,17 +592,16 @@ function route(from, t0, to, t1) {
 }
 const tsec = (iso) => Math.floor(new Date(iso).getTime() / 1000);
 const routeText = (from, hops) => hops.length ? `<div class="small muted">Route: ${[from, ...hops.map((h) => h.to)].map(esc).join(" → ")}</div>` : "";
-
 const when = (t) => new Date(t * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const pickKey = (k) => `<button class="link" data-pick="${esc(k)}">`;
+let relatedKeys = new Set();
 
 // The transaction view: what happened, plus where the coins came from
 // (sales, spends, gifts) or where they went (buys, income, gifts received).
-function selectEvent(key) {
+function selectEvent(key, zoom) {
   const e = (report.graph || []).find((g) => g.key === key);
   const box = $("#graph-detail");
-  $$("#flow .hl, #flow .dim, #flow .sel").forEach((n) => n.classList.remove("hl", "dim", "sel"));
-  if (!e) { box.hidden = true; selected = null; return; }
+  if (!e) { const was = !box.hidden; box.hidden = true; selected = null; relatedKeys = new Set(); if (was) drawGraph(); else highlight(null); return; }
   selected = key;
   const disposals = report.disposals || [], removals = report.removals || [], open = report.openLots || [];
   const related = new Set([key]);
@@ -451,16 +611,22 @@ function selectEvent(key) {
   if (e.cents) rows.push([e.kind === "sell" || e.kind === "sold" ? "Proceeds" : e.kind === "buy" ? "Cost" : "Value", usd(e.cents) + (e.sats ? ` <span class="muted small">(${usd(Math.round(e.cents * 1e8 / e.sats))}/BTC)</span>` : "")]);
   if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
   if (e.feeSats) rows.push(["Network fee", `${btc(e.feeSats)} BTC`]);
+  if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);
   if (e.method) rows.push(["Matched by", esc(e.method)]);
   if (e.txid) rows.push(["Transaction", `<span class="mono small">${esc(e.txid)}</span>`]);
   if (e.address) rows.push(["Address", `<span class="mono small">${esc(e.address)}</span>`]);
   if (e.note) rows.push(["Note", esc(e.note)]);
 
   let trace = "";
+  const sameTx = e.txid ? (report.graph || []).filter((g) => g.txid === e.txid && g.key !== key) : [];
+  if (sameTx.length) {
+    trace += `<b>Same transaction</b>` + sameTx.map((g) => { related.add(g.key);
+      return `<div>${pickKey(g.key)}${esc(KIND_NAMES[g.kind] || g.kind)}</button> ${btc(g.sats)} BTC ${esc(g.account)}${g.to ? ` → ${esc(g.to)}` : ""}</div>`; }).join("");
+  }
   const fromLots = disposals.filter((d) => d.OpID === key);
   const fromGifts = removals.filter((d) => d.OpID === key);
   if (fromLots.length || fromGifts.length) {
-    trace = `<b>Came from</b>` + [...fromLots, ...fromGifts].map((d) => {
+    trace += `<b>Came from</b>` + [...fromLots, ...fromGifts].map((d) => {
       related.add(d.OriginID);
       if (d.Missing) return `<div class="warn">${btc(d.Sats)} BTC with no known purchase</div>`;
       const gain = d.Proceeds != null ? `, gain ${signed(d.Proceeds - d.Basis)} (${d.LongTerm ? "long" : "short"} term)` : "";
@@ -478,31 +644,48 @@ function selectEvent(key) {
       + held.map((l) => { const hops = l.Account ? via(route(e.account, e.t, l.Account, Infinity)) : [];
         return `<div>${btc(l.Sats)} BTC still held in ${l.Account ? esc(l.Account) : "the pre-2025 pool"}, basis ${usd(l.Basis)}${routeText(e.account, hops)}</div>`; }).join("");
   }
-  if (e.kind === "transfer") trace += `<b>Moved between your accounts</b><div>${esc(e.account)} → ${esc(e.to)}. Not taxable; cost basis moves with the coins${e.feeSats ? ", and the network fee is handled per your Settings" : ""}.</div>`;
+  if (e.kind === "transfer") trace += `<b>Moved between your accounts</b><div>${esc(e.account)} → ${esc(e.to)}. Not taxable; cost basis and purchase dates move with the coins${e.feeSats ? ". The network fee is added to basis or treated as a small sale, per Settings" : ""}.</div>`;
+  if (e.kind === "consolidation") trace += `<b>Coins merged inside ${esc(e.account)}</b><div>Not taxable. Only the network fee left the wallet, handled per Settings.</div>`;
   if (e.kind === "unmatched") trace += `<b>Not traced yet</b><div>This left or entered a tracked account and couldn't be matched. <a href="#review">Label it in Review</a>.</div>`;
   if (!trace) trace = `<span class="muted">Nothing further to trace.</span>`;
 
-  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <button class="link small" id="detail-close">close</button></h3>
+  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
     <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div>`;
   box.hidden = false;
+  relatedKeys = related;
+  drawGraph(); // the panel may have narrowed the chart
+  if (zoom) {
+    const ps = [...related].map((k) => byKey[k]).filter(Boolean).map((g) => posOf(g.t));
+    let lo = Math.min(...ps), hi = Math.max(...ps);
+    const minSpan = Math.max(8, view.full * 0.01);
+    if (hi - lo < minSpan) { const m = (lo + hi) / 2; lo = m - minSpan / 2; hi = m + minSpan / 2; }
+    const pad = (hi - lo) * 0.12;
+    animateTo(lo - pad, hi + pad);
+  }
+}
+function highlight(key) {
   const nodes = $$("#flow [data-key]");
-  nodes.forEach((n) => n.classList.toggle("dim", !related.has(n.dataset.key)));
-  nodes.filter((n) => related.has(n.dataset.key)).forEach((n) => n.classList.add(n.dataset.key === key ? "sel" : "hl"));
+  nodes.forEach((n) => n.classList.remove("hl", "dim", "sel"));
+  if (!key) return;
+  const has = (n) => (n.dataset.keys ? n.dataset.keys.split(" ") : [n.dataset.key]).some((k) => relatedKeys.has(k));
+  nodes.forEach((n) => n.classList.toggle("dim", !has(n)));
+  nodes.filter(has).forEach((n) => n.classList.add((n.dataset.keys || n.dataset.key).split(" ").includes(key) ? "sel" : "hl"));
 }
 $("#flow").addEventListener("click", (e) => {
-  const key = e.target.dataset?.key;
-  if (key) selectEvent(key); else { selected = null; selectEvent(null); }
+  if (drag?.moved) return;
+  const key = e.target.closest("[data-key]")?.dataset.key;
+  if (key) selectEvent(key, true); else selectEvent(null);
 });
 $("#graph-detail").addEventListener("click", (e) => {
-  if (e.target.id === "detail-close") { selected = null; selectEvent(null); return; }
+  if (e.target.id === "detail-close") { selectEvent(null); return; }
   const k = e.target.closest("[data-pick]")?.dataset.pick;
   if (k) {
     if (!(report.graph || []).some((g) => g.key === k)) { toast("That record isn't on the chart."); return; }
-    selectEvent(k);
-    $(`#flow [data-key="${CSS.escape(k)}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
+    selectEvent(k, true);
   }
 });
-window.addEventListener("resize", () => { if ($("#graph").classList.contains("on")) drawGraph(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) selectEvent(null); });
+window.addEventListener("resize", () => drawGraph());
 
 // Settings
 async function loadSettings() {
