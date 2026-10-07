@@ -187,3 +187,34 @@ func TestRemove(t *testing.T) {
 		t.Errorf("%+v", r)
 	}
 }
+
+// A protected purchase is sold only after everything else in the account,
+// with a warning when that happens.
+func TestProtectedLotsUsedLast(t *testing.T) {
+	ops := []Op{
+		{ID: "old", Kind: Acquire, Time: d("2024-01-01"), Account: "a", Sats: btc, Cents: 10_000_00},
+		{ID: "new", Kind: Acquire, Time: d("2024-06-01"), Account: "a", Sats: btc, Cents: 60_000_00},
+		{ID: "s1", Kind: Dispose, Time: d("2025-02-01"), Account: "a", Sats: btc, Cents: 90_000_00},
+		{ID: "s2", Kind: Dispose, Time: d("2025-03-01"), Account: "a", Sats: btc / 2, Cents: 45_000_00},
+	}
+	cfg := Config{Rules: perAcct{}, Method: func(int) tax.Method { return tax.FIFO }, Protected: func(id string) bool { return id == "old" }}
+	r, err := Run(ops, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Disposals[0].OriginID != "new" || r.Disposals[1].OriginID != "old" {
+		t.Errorf("FIFO with old protected: %+v", r.Disposals)
+	}
+	warned := 0
+	for _, w := range r.Warnings {
+		if w.OpID == "s2" {
+			warned++
+		}
+		if w.OpID == "s1" {
+			t.Errorf("warned when protected coins weren't needed: %v", w)
+		}
+	}
+	if warned != 1 {
+		t.Errorf("warnings %+v", r.Warnings)
+	}
+}

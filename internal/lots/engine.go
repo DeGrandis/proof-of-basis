@@ -60,6 +60,10 @@ type Config struct {
 	// Method picks the lot-selection method for a tax year.
 	Method  func(year int) tax.Method
 	FeeMode FeeMode
+	// Protected reports acquisitions (by origin op id) whose coins should be
+	// used only when nothing else in the account is left. Specific picks
+	// still take them when asked.
+	Protected func(originID string) bool
 }
 
 type Lot struct {
@@ -250,7 +254,11 @@ func (e *engine) take(op Op, account string, sats int64, picks []Pick) []piece {
 			cand = append(cand, l)
 		}
 	}
+	prot := func(l *Lot) bool { return e.cfg.Protected != nil && e.cfg.Protected(l.OriginID) }
 	sort.SliceStable(cand, func(i, j int) bool {
+		if pi, pj := prot(cand[i]), prot(cand[j]); pi != pj {
+			return pj // unprotected first
+		}
 		if method == tax.LIFO {
 			return cand[i].Acquired.After(cand[j].Acquired)
 		}
@@ -259,6 +267,9 @@ func (e *engine) take(op Op, account string, sats int64, picks []Pick) []piece {
 	for _, l := range cand {
 		if remaining == 0 {
 			break
+		}
+		if prot(l) && l.Sats > 0 {
+			e.warn(op.ID, "used protected coins from %s because nothing else was left in %s", l.OriginID, account)
 		}
 		consume(l, remaining)
 	}

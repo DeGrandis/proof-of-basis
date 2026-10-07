@@ -96,13 +96,17 @@ function renderOverview() {
   $("#year-select").innerHTML = years.map((y) => `<option value="${y}"${y === yr ? " selected" : ""}>${y}${y === thisYear ? " (this year)" : ""}</option>`).join("");
   const ys = (r.years || []).find((y) => y.year === yr);
   const tiles = [
-    ["Holdings", btc(r.holdingsSats) + " BTC"],
+    ["BTC price", r.price ? usd(r.price) : "no price yet", r.priceDay ? `as of ${r.priceDay}` : "Update prices in Settings"],
+    ["Holdings", btc(r.holdingsSats) + " BTC", r.price ? `worth ${usd(Math.round(r.holdingsSats * r.price / 1e8))}` : ""],
     ["Unrealized gain", r.price ? usd(r.unrealized) : "needs a price"],
     [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
     [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
     ["Needs a label", String(r.unmatched?.length || 0)],
   ];
-  $("#tiles").innerHTML = tiles.map(([k, v]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
+  $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
+  const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
+  const cur = $("#whatif-account").value;
+  $("#whatif-account").innerHTML = held.map((a) => `<option value="${esc(a.name)}"${a.name === cur ? " selected" : ""}>${esc(a.name)} (${btc(a.sats)} BTC)</option>`).join("") || `<option value="">No BTC held</option>`;
   $("#accounts-table tbody").innerHTML = (r.accounts || []).map((a) => `<tr>
     <td>${esc(a.name)}</td><td>${esc(a.kind)}</td><td class="num">${btc(a.sats)}</td>
     <td class="num">${a.chainSats == null ? "" : btc(a.chainSats)}${a.chainSats != null && a.chainSats !== a.sats ? ' <span class="warn" title="Traced and on-chain balances differ: something is unlabeled or a scan is stale">!</span>' : ""}</td>
@@ -115,6 +119,28 @@ function renderOverview() {
   $("#setup-hint").hidden = !!r.settings.fulcrumHost;
   drawHistory();
 }
+
+// What would I owe: a sale today from one account, at the latest price,
+// with the chosen method and protected purchases honoured. Nothing is saved.
+$("#whatif-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target), n = Number(String(f.get("amount")).replace(/[$,\s]/g, ""));
+  const out = $("#whatif-out");
+  try {
+    const r = await post("/api/whatif", { account: f.get("account"), [f.get("unit")]: n });
+    const g = (s) => s.proceeds - s.basis;
+    const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+    out.innerHTML = `<div class="whatif-grid">
+      ${tile("Selling", `${btc(r.sats)} BTC`, `for ${usd(r.proceeds)} at ${usd(r.price)}`)}
+      ${tile("Short-term gain", signed(g(r.short)), r.short.sats ? `${btc(r.short.sats)} BTC held a year or less` : "none")}
+      ${tile("Long-term gain", signed(g(r.long)), r.long.sats ? `${btc(r.long.sats)} BTC held over a year` : "none")}
+      ${tile("Extra tax this year", usd(Math.max(r.extraTax, 0)), r.extraTax < 0 ? `lowers this year's estimate by ${usd(-r.extraTax)}` : `at your rates, after this year's other results`)}
+    </div>
+    <p class="small muted">Lots picked by ${esc(r.method.toUpperCase())}, skipping protected purchases unless nothing else is left. Price from ${esc(r.priceDay)}. An estimate, not tax advice.</p>`
+      + (r.missingSats ? `<p class="warn small">${btc(r.missingSats)} BTC of this has no known purchase; its basis is counted as zero.</p>` : "")
+      + (r.warnings || []).map((w) => `<p class="warn small">${esc(w)}</p>`).join("");
+  } catch (err) { out.innerHTML = `<p class="warn">${esc(err.message)}</p>`; }
+});
 
 // BTC held over time, with the BTC price in a second panel on the same
 // time axis (two scales never share one axis). Hover reads both.
@@ -191,14 +217,46 @@ $("#wallets-table").addEventListener("click", async (e) => {
     refresh();
   }
 });
+// Wallet form: single key, multisig built from cosigner keys, or a pasted
+// output descriptor. The server turns a multisig form into a descriptor.
+function cosignerRow(v = "") {
+  const d = document.createElement("div");
+  d.className = "cosigner";
+  d.innerHTML = `<input placeholder="Cosigner key: xpub…, Zpub… or [fingerprint/48h/0h/0h/2h]xpub…" autocomplete="off" spellcheck="false" value="${esc(v)}"><button type="button" class="link" title="Remove">✕</button>`;
+  $("button", d).addEventListener("click", () => { d.remove(); numberCosigners(); });
+  $("#cosigners").append(d);
+  numberCosigners();
+}
+function numberCosigners() {
+  const rows = $$("#cosigners .cosigner");
+  rows.forEach((r, i) => ($("input", r).ariaLabel = `Cosigner ${i + 1}`));
+  $("#wallet-form").elements.threshold.max = Math.max(rows.length, 1);
+}
+for (let i = 0; i < 3; i++) cosignerRow();
+$("#add-cosigner").addEventListener("click", () => cosignerRow());
+function walletKind() { return $("#wallet-form").elements.kind.value; }
+function showWalletKind() {
+  const k = walletKind();
+  $$("#wallet-form [class*='kind-']").forEach((el) => { el.hidden = !el.classList.contains("kind-" + k); });
+  $("#wallet-form").elements.key.placeholder = k === "descriptor" ? "wsh(sortedmulti(2,[…]xpub…/<0;1>/*,…))#checksum" : "zpub…";
+  $("#preview").textContent = "";
+}
+$$("#wallet-form input[name=kind]").forEach((r) => r.addEventListener("change", showWalletKind));
+showWalletKind();
 const walletData = () => {
   const f = new FormData($("#wallet-form"));
-  return { name: f.get("name"), key: f.get("key"), script: f.get("script"), gap: Number(f.get("gap")) };
+  const base = { name: f.get("name"), gap: Number(f.get("gap")) };
+  if (walletKind() === "multisig") {
+    return { ...base, multisig: { threshold: Number(f.get("threshold")), script: f.get("msScript"), sorted: f.get("sorted") === "on",
+      keys: $$("#cosigners input").map((i) => i.value.trim()).filter(Boolean) } };
+  }
+  return { ...base, key: f.get("key"), script: walletKind() === "single" ? f.get("script") : "" };
 };
 $("#preview-btn").addEventListener("click", async () => {
   try {
     const r = await post("/api/wallets/preview", walletData());
-    $("#preview").innerHTML = `Detected ${esc(r.prefix)} (${esc(r.script)}). First receive addresses, check they match your wallet:<br>` + r.addresses.map(esc).join("<br>");
+    $("#preview").innerHTML = `Detected ${esc(r.prefix)} (${esc(r.script)}). First receive addresses, check they match your wallet:<br><span class="mono">${r.addresses.map(esc).join("<br>")}</span>`
+      + (walletKind() === "multisig" ? `<div class="muted" style="margin-top:6px">Descriptor: <span class="mono">${esc(r.descriptor)}</span></div>` : "");
   } catch (e) { $("#preview").textContent = e.message; }
 });
 $("#wallet-form").addEventListener("submit", async (e) => {
@@ -206,6 +264,8 @@ $("#wallet-form").addEventListener("submit", async (e) => {
   try {
     const { id } = await post("/api/wallets", walletData());
     e.target.reset();
+    $("#cosigners").innerHTML = ""; for (let i = 0; i < 3; i++) cosignerRow();
+    showWalletKind();
     $("#preview").textContent = "";
     toast("Wallet added. Scanning…");
     await refresh(); // show it now; the scan can take a while
@@ -416,7 +476,18 @@ $("#links-table").addEventListener("click", async (e) => {
 });
 
 // Taxes
+function renderProtected() {
+  const prot = (report.graph || []).filter((g) => g.protected);
+  $("#protected-table tbody").innerHTML = prot.map((g) => `<tr><td>${day(g.t)}</td><td>${esc(g.account)}</td><td class="num">${btc(g.sats)}</td>
+    <td><button class="link" data-unprotect="${esc(g.key)}">Stop protecting</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">None.</td></tr>`;
+}
+$("#protected-table").addEventListener("click", async (e) => {
+  const k = e.target.dataset.unprotect;
+  if (k) { await post("/api/protect", { key: k, on: false }); refresh(); }
+});
+
 function renderTaxes() {
+  renderProtected();
   const sales = {};
   for (const d of report.disposals || []) { const yr = new Date(d.Disposed).getUTCFullYear(); sales[yr] = (sales[yr] || 0) + 1; }
   $("#years-table tbody").innerHTML = (report.years || []).map((y) => `<tr><td>${y.year}</td>
@@ -438,9 +509,9 @@ const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Tran
   sold: "Sold to a person", gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", untracked: "Untracked wallet", "self-transfer": "Self transfer",
   "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
 $("#legend").innerHTML = KINDS.map(([k, l]) => `<span><svg width="10" height="10"><circle cx="5" cy="5" r="5" class="dot ${k}"></circle></svg> ${l}</span>`).join("")
-  + `<span><svg width="18" height="10"><line x1="1" y1="5" x2="17" y2="5" class="link" stroke-width="2"/></svg> Transfer</span>`
-  + `<span><svg width="12" height="12"><rect x="2" y="2" width="8" height="8" class="hub" transform="rotate(45 6 6)"/></svg> One tx, several accounts</span>`
-  + `<span><svg width="12" height="12"><rect x="1.5" y="1.5" width="9" height="9" class="consol"/></svg> Consolidation</span>`;
+  + `<span><svg width="18" height="10"><line x1="1" y1="5" x2="12" y2="5" class="link" stroke-width="2"/><path d="M12,1 L12,9 L17,5 Z" class="arrowhead"/></svg> Transfer, arrow points where the coins went</span>`
+  + `<span><svg width="30" height="14"><rect x="1" y="1" width="28" height="12" rx="6" class="hub"/><text x="15" y="10" text-anchor="middle" class="hub-text">1 → 3</text></svg> One transaction to several of your accounts (or from several)</span>`
+  + `<span><svg width="30" height="14"><rect x="1" y="1" width="28" height="12" rx="2" class="consol"/><text x="15" y="10" text-anchor="middle" class="consol-text">6 → 1</text></svg> Coins merged in one wallet</span>`;
 $("#show-transfers").addEventListener("change", () => drawGraph());
 let selected = null;
 const view = { d0: 0, d1: 1, full: 1, key: "" }; // visible slice of the compressed timeline
@@ -567,35 +638,45 @@ function drawGraph() {
       const srcs = [...new Set(legs.map((l) => l.account))], dsts = [...new Set(legs.map((l) => l.to))];
       const tip = legs.map((l) => `${btc(l.sats)} BTC ${l.account} → ${l.to}`).join("\n") + `\n${day(legs[0].t)}`;
       const width = (s) => 1 + 4 * Math.sqrt(s / maxSats);
+      // Every leg is a straight vertical arrow pointing to where the coins
+      // went. A transaction touching several accounts gets a small label on
+      // the sending lane saying how many accounts it paid (or drew from).
+      const arrow = (x1, y1, x2, y2, sats) => {
+        const dir = Math.sign(y2 - y1) || 1, end = y2 - dir * 6;
+        return `<line class="link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${end}" stroke-width="${width(sats)}"/>`
+          + `<path class="arrowhead" d="M${x2 - 4},${end - dir * 1} L${x2 + 4},${end - dir * 1} L${x2},${y2} Z"/>`;
+      };
       if (legs.length === 1) {
-        const e = legs[0], y1 = laneY[e.account], y2 = laneY[e.to], rr = Math.max(3, r(e.sats) * 0.6);
-        out += `<g data-key="${esc(e.key)}" data-keys="${esc(keys)}" class="tr"><title>${esc(tip)}</title><line class="link" x1="${xx}" y1="${y1}" x2="${xx}" y2="${y2}" stroke-width="${width(e.sats)}"/>`
-          + `<circle class="link-end" cx="${xx}" cy="${y1}" r="${rr}"/><circle class="link-end" cx="${xx}" cy="${y2}" r="${rr}"/></g>`;
+        const e = legs[0], y1 = laneY[e.account], y2 = laneY[e.to];
+        out += `<g data-key="${esc(e.key)}" data-keys="${esc(keys)}" class="tr"><title>${esc(tip)}</title>${arrow(xx, y1, xx, y2, e.sats)}<circle class="link-end" cx="${xx}" cy="${y1}" r="3.5"/></g>`;
         continue;
       }
       if (legs[0].txid) hubbed.add(legs[0].txid);
       const fanOut = srcs.length === 1;
-      const hy = fanOut ? laneY[srcs[0]] : dsts.length === 1 ? laneY[dsts[0]] : (Math.min(...legs.map((l) => laneY[l.account])) + Math.max(...legs.map((l) => laneY[l.to]))) / 2;
       let paths = "";
       legs.forEach((l, i) => {
-        const off = (i - (legs.length - 1) / 2) * 12;
-        const [ax, ay, bx, by] = fanOut ? [xx, hy, xx + off, laneY[l.to]] : [xx + off, laneY[l.account], xx, hy];
-        const my = (ay + by) / 2;
-        paths += `<path class="link" d="M${ax},${ay} C${ax},${my} ${bx},${my} ${bx},${by}" stroke-width="${width(l.sats)}"/>`
-          + `<circle class="link-end" cx="${fanOut ? bx : ax}" cy="${fanOut ? by : ay}" r="${Math.max(3, r(l.sats) * 0.55)}"/>`;
+        const off = (i - (legs.length - 1) / 2) * 5;
+        paths += arrow(xx + off, laneY[l.account], xx + off, laneY[l.to], l.sats) + `<circle class="link-end" cx="${xx + off}" cy="${laneY[l.account]}" r="3"/>`;
       });
-      out += `<g data-key="${esc(legs[0].key)}" data-keys="${esc(keys)}" class="tr"><title>${esc(tip)}</title>${paths}<rect class="hub" x="${xx - 5}" y="${hy - 5}" width="10" height="10" transform="rotate(45 ${xx} ${hy})"/></g>`;
+      const hy = fanOut ? laneY[srcs[0]] : laneY[dsts[0]];
+      const tag = fanOut ? `1 → ${dsts.length}` : `${srcs.length} → 1`;
+      out += `<g data-key="${esc(legs[0].key)}" data-keys="${esc(keys)}" class="tr"><title>${esc((fanOut ? `One transaction from ${srcs[0]} paid ${dsts.length} of your accounts:
+` : `One transaction drew on ${srcs.length} of your accounts:
+`) + tip)}</title>${paths}`
+        + `<rect class="hub" x="${xx - 17}" y="${hy - 8}" width="34" height="16" rx="8"/><text class="hub-text" x="${xx}" y="${hy + 3.5}" text-anchor="middle">${tag}</text></g>`;
     }
   }
   for (const e of ev) {
     if (e.kind === "transfer" || laneY[e.account] == null) continue;
     const p = posOf(e.t);
     if (!visible(p)) continue;
-    const xx = xOf(p, W) + (e.txid && hubbed.has(e.txid) ? 12 : 0), yy2 = laneY[e.account];
+    const xx = xOf(p, W) + (e.txid && hubbed.has(e.txid) ? 26 : 0), yy2 = laneY[e.account];
     const tip = `${KIND_NAMES[e.kind] || e.kind} ${btc(e.sats)} BTC, ${e.account}, ${day(e.t)}` + (e.inputs ? `\n${e.inputs} inputs → ${e.outputs} outputs` : "");
     if (e.kind === "consolidation") {
-      const s = r(e.sats) * 1.6;
-      out += `<rect class="consol" data-key="${esc(e.key)}" x="${xx - s / 2}" y="${yy2 - s / 2}" width="${s}" height="${s}"><title>${esc(tip)}</title></rect>`;
+      const label = e.inputs ? `${e.inputs} → 1` : "merge";
+      out += `<g class="consol-g" data-key="${esc(e.key)}"><title>${esc(`Coins merged inside ${e.account}: ${e.inputs || "several"} coins into one. Not a sale; only the fee left.
+${btc(e.sats)} BTC, ${day(e.t)}`)}</title>`
+        + `<rect class="consol" x="${xx - 18}" y="${yy2 - 8}" width="36" height="16" rx="3"/><text class="consol-text" x="${xx}" y="${yy2 + 3.5}" text-anchor="middle">${label}</text></g>`;
     } else {
       out += `<circle class="dot ${esc(e.kind)}" data-key="${esc(e.key)}" cx="${xx}" cy="${yy2}" r="${r(e.sats)}"><title>${esc(tip)}</title></circle>`;
     }
@@ -745,6 +826,7 @@ function selectEvent(key, zoom) {
   box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
     <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
     <div id="txflow-wrap"><svg id="txflow" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
+  box.insertAdjacentHTML("beforeend", actionsFor(e));
   box.hidden = false;
   document.body.classList.add("picked");
   lastFlow = txSides(e, { fromLots, fromGifts, sold, gone, held, byKey });
@@ -854,6 +936,57 @@ $("#graph-detail").addEventListener("click", (e) => {
   if (k && (report.graph || []).some((g) => g.key === k)) selectEvent(k, true);
 });
 window.addEventListener("resize", () => { if (selected && lastFlow) { const e = (report.graph || []).find((g) => g.key === selected); if (e) drawTxFlow(e, lastFlow); } });
+
+// What can be done to the selected record from here: label it (or change
+// or clear its label), and protect a purchase so it is sold last.
+const ACQUIRE_KINDS = ["buy", "income", "purchase", "gift-in", "refund", "untracked"];
+function actionsFor(e) {
+  const parts = [];
+  const labelable = e.dir && (e.kind === "unmatched" || e.label);
+  if (labelable) {
+    const cats = e.dir === "out" ? OUT_CATS : IN_CATS;
+    parts.push(`<span>${e.label ? `Labeled <b>${esc(KIND_NAMES[e.label] || e.label)}</b>.` : "What was it?"}</span>
+      <select id="flow-cat"><option value="">${e.label ? "Change to…" : "Choose…"}</option>${cats.filter(([v]) => v !== "self").map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
+      <input id="flow-amt" inputmode="decimal" size="11" hidden placeholder="${e.value ? usd(e.value) : "USD"}">
+      <button id="flow-save" class="primary" hidden>Save</button>${e.label ? `<button id="flow-unlabel" class="link">Remove label</button>` : ""}`);
+  }
+  if (ACQUIRE_KINDS.includes(e.kind) || (e.label && ACQUIRE_KINDS.includes(e.label))) {
+    parts.push(e.protected
+      ? `<span class="badge prot">Protected: sold last</span><button id="flow-protect" class="link" data-on="0">Stop protecting</button>`
+      : `<button id="flow-protect" data-on="1" title="Your method will use other coins first and only sell these when nothing else is left">Protect these coins (sell last)</button>`);
+  }
+  return parts.length ? `<div class="label-box">${parts.join('<span class="spacer"></span>')}</div>` : "";
+}
+$("#graph-detail").addEventListener("change", (e) => {
+  if (e.target.id !== "flow-cat") return;
+  const cat = e.target.value, amt = $("#flow-amt");
+  amt.hidden = !(MARKET_VALUE[cat] || needsAmount[cat]);
+  amt.title = MARKET_VALUE[cat] || needsAmount[cat] || "";
+  if (needsAmount[cat]) amt.placeholder = needsAmount[cat];
+  $("#flow-save").hidden = !cat;
+});
+$("#graph-detail").addEventListener("click", async (e) => {
+  const id = e.target.id;
+  if (id !== "flow-save" && id !== "flow-unlabel" && id !== "flow-protect") return;
+  const key = selected;
+  try {
+    if (id === "flow-save") {
+      const label = { Key: key, Category: $("#flow-cat").value };
+      const amt = $("#flow-amt").value.replace(/[$,\s]/g, "");
+      if (amt) label.FiatCents = Math.round(Number(amt) * 100);
+      await post("/api/labels", label);
+      toast("Label saved");
+    } else if (id === "flow-unlabel") {
+      await api(`/api/labels/${encodeURIComponent(key)}`, { method: "DELETE" });
+      toast("Label removed");
+    } else {
+      await post("/api/protect", { key, on: e.target.dataset.on === "1" });
+      toast(e.target.dataset.on === "1" ? "Protected: these coins will be sold last" : "No longer protected");
+    }
+    await refresh();
+    if ((report.graph || []).some((g) => g.key === key)) selectEvent(key, false);
+  } catch (err) { toast(err.message); }
+});
 
 function highlight(key) {
   const nodes = $$("#flow [data-key]");

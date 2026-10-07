@@ -8,6 +8,8 @@
     --accent: #fb923c; --buy: #4ade80; --sell: #f87171; --income: #60a5fa; --warn: #fbbf24; --move: #a8a29e; }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+#preview .mono { overflow-wrap: anywhere; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; min-height: 52px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
 h1 { font-size: 18px; margin: 0; color: var(--accent); }
@@ -90,12 +92,16 @@ body.picked .graph-area { height: max(320px, 58vh); }
 #flow .lane-name { fill: var(--text); font-size: 12px; }
 #flow .lane.minor { stroke-opacity: .5; }
 #flow text.major { fill: var(--text); }
-#flow .hub { fill: var(--panel); stroke: var(--move); stroke-width: 2; }
-#flow .consol { fill: none; stroke: var(--income); stroke-width: 2; cursor: pointer; }
+#flow .hub, #legend .hub { fill: var(--panel); stroke: var(--move); stroke-width: 1.5; }
+#flow .hub-text, #legend .hub-text, #flow .consol-text, #legend .consol-text { font-size: 9px; font-weight: 600; fill: var(--text); pointer-events: none; }
+#flow .arrowhead, #legend .arrowhead { fill: var(--move); }
+#flow .tr.hl .arrowhead, #flow .tr.sel .arrowhead { fill: var(--accent); }
+#flow .consol-g { cursor: pointer; }
+#flow .consol, #legend .consol { fill: var(--panel); stroke: var(--income); stroke-width: 1.5; }
 #flow .tr { cursor: pointer; }
 #flow .tr.hl .link, #flow .tr.sel .link { stroke: var(--accent); stroke-opacity: 1; }
 #flow .tr.hl .link-end, #flow .tr.sel .link-end, #flow .tr.hl .hub, #flow .tr.sel .hub { stroke: var(--accent); }
-#legend .hub { fill: none; stroke: var(--move); stroke-width: 1.5; } #legend .consol { fill: none; stroke: var(--income); stroke-width: 1.5; }
+
 #flow text { fill: var(--muted); font-size: 11px; }
 #flow .lane { stroke: var(--line); }
 .dot { cursor: pointer; stroke: var(--panel); stroke-width: 1.5; }
@@ -115,6 +121,20 @@ body.picked .graph-area { height: max(320px, 58vh); }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 td input, td select { padding: 3px 6px; }
 a { color: var(--accent); }
+.seg { display: flex; flex-wrap: wrap; gap: 0; }
+.seg label { flex-direction: row; align-items: center; gap: 6px; border: 1px solid var(--line); padding: 6px 12px; color: var(--text); cursor: pointer; }
+.seg label:first-child { border-radius: 6px 0 0 6px; } .seg label:last-child { border-radius: 0 6px 6px 0; }
+.seg label + label { border-left: 0; }
+.seg label:has(input:checked) { background: var(--bg); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.seg input { margin: 0; accent-color: var(--accent); }
+.cosigner { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.cosigner input { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.tile .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.whatif-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 4px; }
+.whatif-grid .tile .v { font-size: 17px; }
+.label-box { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+.badge.prot { border-color: var(--income); color: var(--income); }
 button.sort { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 button.sort::after { content: ""; margin-left: 4px; }
 button.sort.asc::after { content: "▲"; font-size: 9px; } button.sort.desc::after { content: "▼"; font-size: 9px; }

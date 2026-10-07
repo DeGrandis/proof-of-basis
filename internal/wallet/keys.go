@@ -67,14 +67,27 @@ type Account struct {
 	Prefix string
 }
 
-// ErrMultisig is returned for Ypub/Zpub style keys, which need a descriptor.
-var ErrMultisig = errors.New("multisig extended keys need an output descriptor")
+// ErrMultisig is returned for Ypub/Zpub style keys on their own: they are one
+// cosigner of a multisig wallet, which needs every cosigner's key.
+var ErrMultisig = errors.New("this is one cosigner's key from a multisig wallet: choose Multisig and paste every cosigner's key, or paste the wallet's output descriptor")
+
+// SLIP-0132 version bytes for multisig cosigner keys (Ypub, Zpub, Upub, Vpub).
+var multisigVersions = map[[4]byte]bool{
+	{0x02, 0x95, 0xb4, 0x3f}: true, {0x02, 0xaa, 0x7e, 0xd3}: true, // Ypub, Zpub
+	{0x02, 0x42, 0x89, 0xef}: true, {0x02, 0x57, 0x54, 0x83}: true, // Upub, Vpub
+}
 
 // ParseExtendedKey parses an xpub/ypub/zpub (or tpub/upub/vpub). The script
 // type is inferred from the prefix; override replaces it when non-empty,
 // because many wallets export a plain xpub for segwit accounts. regtest
 // selects regtest address encoding for testnet-prefixed keys.
 func ParseExtendedKey(s string, override ScriptType, regtest bool) (*Account, error) {
+	return parseExtendedKey(s, override, regtest, false)
+}
+
+// parseExtendedKey also accepts multisig cosigner keys when allowMulti is
+// set, for use inside multisig descriptors.
+func parseExtendedKey(s string, override ScriptType, regtest, allowMulti bool) (*Account, error) {
 	s = strings.TrimSpace(s)
 	raw := base58.Decode(s)
 	if len(raw) != 82 {
@@ -87,12 +100,14 @@ func ParseExtendedKey(s string, override ScriptType, regtest bool) (*Account, er
 	var ver [4]byte
 	copy(ver[:], payload[:4])
 	info, ok := versions[ver]
-	if !ok {
-		switch ver {
-		case [4]byte{0x02, 0x95, 0xb4, 0x3f}, [4]byte{0x02, 0xaa, 0x7e, 0xd3},
-			[4]byte{0x02, 0x42, 0x89, 0xef}, [4]byte{0x02, 0x57, 0x54, 0x83}:
+	if !ok && multisigVersions[ver] {
+		if !allowMulti {
 			return nil, ErrMultisig
 		}
+		mainnet := ver == [4]byte{0x02, 0x95, 0xb4, 0x3f} || ver == [4]byte{0x02, 0xaa, 0x7e, 0xd3}
+		info, ok = versionInfo{"multisig", P2PKH, mainnet}, true
+	}
+	if !ok {
 		return nil, fmt.Errorf("unsupported extended key version %x (private keys are never accepted)", ver)
 	}
 

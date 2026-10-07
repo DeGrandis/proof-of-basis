@@ -2,6 +2,7 @@ package app
 
 import (
 	"btctax/internal/demo"
+	"btctax/internal/importers"
 	"bytes"
 	"encoding/json"
 	"mime/multipart"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"btctax/internal/store"
 )
@@ -200,5 +202,51 @@ func TestHistoryAndFreshness(t *testing.T) {
 	json.Unmarshal(call(h, "GET", "/api/imports/freshness", "").Body.Bytes(), &fresh)
 	if len(fresh) != 3 {
 		t.Errorf("%+v", fresh)
+	}
+}
+
+func TestWhatIfAndProtect(t *testing.T) {
+	st, h := newTest(t)
+	acct, _ := st.ExchangeAccount("River", "river")
+	buy := func(uid, when string, sats, cents int64) importers.Event {
+		tm, _ := time.Parse("2006-01-02", when)
+		return importers.Event{Kind: importers.Buy, Time: tm, Sats: sats, FiatCents: cents, UID: uid}
+	}
+	st.AddImport(acct, "river", "a.csv", "a", []importers.Event{
+		buy("r:1", "2020-01-01", 100_000_000, 7_000_00),  // long term, cheap
+		buy("r:2", "2026-01-01", 100_000_000, 90_000_00), // short term, dear
+	}, nil)
+	st.PutPrices(map[string]int64{time.Now().UTC().Format("2006-01-02"): 100_000_00}, "import")
+	ask := func() map[string]any {
+		var out map[string]any
+		w := call(h, "POST", "/api/whatif", `{"account":"River","btc":0.5}`)
+		json.Unmarshal(w.Body.Bytes(), &out)
+		if w.Code != 200 {
+			t.Fatalf("%d %v", w.Code, out)
+		}
+		return out
+	}
+	r := ask() // FIFO: the 2020 coins, long term
+	if r["long"].(map[string]any)["sats"].(float64) != 50_000_000 || r["proceeds"].(float64) != 50_000_00 {
+		t.Errorf("FIFO %v", r)
+	}
+	call(h, "POST", "/api/protect", `{"key":"ex:1","on":true}`)
+	r = ask() // the 2020 lot is protected, so the 2026 coins go first
+	if r["short"].(map[string]any)["sats"].(float64) != 50_000_000 {
+		t.Errorf("protected %v", r)
+	}
+	if w := call(h, "POST", "/api/whatif", `{"account":"River","btc":5}`); w.Code != 400 {
+		t.Errorf("more than held: %d", w.Code)
+	}
+}
+
+func TestAddMultisigWallet(t *testing.T) {
+	_, h := newTest(t)
+	body := `{"name":"Vault","multisig":{"threshold":2,"sorted":true,"keys":["` + zpub + `","` + xpub44 + `"]}}`
+	if w := call(h, "POST", "/api/wallets/preview", body); w.Code != 200 || !strings.Contains(w.Body.String(), "wsh(sortedmulti(2,") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if w := call(h, "POST", "/api/wallets", body); w.Code != 200 {
+		t.Fatal(w.Body.String())
 	}
 }

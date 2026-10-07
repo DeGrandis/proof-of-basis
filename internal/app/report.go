@@ -52,6 +52,11 @@ type GraphEvent struct {
 	Method   string `json:"method,omitempty"` // how a transfer was matched
 	Inputs   int    `json:"inputs,omitempty"` // on-chain shape, when known
 	Outputs  int    `json:"outputs,omitempty"`
+	// For records the user can label: direction, market value, current label.
+	Dir       string `json:"dir,omitempty"`
+	Value     int64  `json:"value,omitempty"`
+	Label     string `json:"label,omitempty"`
+	Protected bool   `json:"protected,omitempty"`
 }
 
 type Report struct {
@@ -122,7 +127,19 @@ func history(ops []lots.Op, price func(time.Time) (int64, bool)) []HistoryPoint 
 	return out
 }
 
-func (s *Server) buildReport() (*Report, error) {
+// pipeline is everything the report and the what-if share: traced records,
+// engine settings and prices.
+type pipeline struct {
+	ex     []trace.ExEvent
+	labels map[string]trace.Label
+	prices *priceTable
+	tr     *trace.Result
+	set    map[string]string
+	cfg    lots.Config
+	prot   map[string]bool
+}
+
+func (s *Server) pipeline() (*pipeline, error) {
 	ex, err := s.st.ExchangeEvents()
 	if err != nil {
 		return nil, err
@@ -142,6 +159,7 @@ func (s *Server) buildReport() (*Report, error) {
 	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup})
 	set := s.settings()
 	rules, _ := tax.ByID(set["jurisdiction"])
+	prot := s.protected()
 	cfg := lots.Config{
 		Rules:   rules,
 		FeeMode: lots.FeeMode(set["feeMode"]),
@@ -151,7 +169,49 @@ func (s *Server) buildReport() (*Report, error) {
 			}
 			return tax.Method(set["method"])
 		},
+		Protected: func(id string) bool { return prot[id] },
 	}
+	return &pipeline{ex, labels, prices, tr, set, cfg, prot}, nil
+}
+
+// protected is the set of acquisitions the user asked to sell last.
+func (s *Server) protected() map[string]bool {
+	out := map[string]bool{}
+	for _, id := range strings.Split(s.st.Setting("protected", ""), "\n") {
+		if id = strings.TrimSpace(id); id != "" {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+// yearTax nets short and long results the way the report does and applies
+// the user's rates (basis points).
+func yearTax(st, lt, shortBP, longBP int64) int64 {
+	if st+lt <= 0 {
+		return 0
+	}
+	if lt < 0 {
+		st += lt
+		lt = 0
+	} else if st < 0 {
+		lt += st
+		st = 0
+	}
+	return lots.MulDiv(max(st, 0), shortBP, 10000) + lots.MulDiv(max(lt, 0), longBP, 10000)
+}
+
+func rateBP(set map[string]string, k string) int64 {
+	v, _ := strconv.ParseFloat(set[k], 64)
+	return int64(v * 100)
+}
+
+func (s *Server) buildReport() (*Report, error) {
+	p, err := s.pipeline()
+	if err != nil {
+		return nil, err
+	}
+	ex, labels, prices, tr, set, cfg := p.ex, p.labels, p.prices, p.tr, p.set, p.cfg
 	res, err := lots.Run(tr.Ops, cfg)
 	if err != nil {
 		return nil, err
@@ -186,22 +246,10 @@ func (s *Server) buildReport() (*Report, error) {
 	for _, in := range tr.Income {
 		y(in.Time).Income += in.Cents
 	}
-	rate := func(k string) int64 { v, _ := strconv.ParseFloat(set[k], 64); return int64(v * 100) } // basis points
 	for _, ys := range years {
-		st := ys.ShortProceeds - ys.ShortBasis + ys.Income
-		lt := ys.LongProceeds - ys.LongBasis
 		// Net losses offset gains; the US $3,000 ordinary offset and
 		// carryforwards are not modelled yet.
-		if st+lt > 0 {
-			if lt < 0 {
-				st += lt
-				lt = 0
-			} else if st < 0 {
-				lt += st
-				st = 0
-			}
-			ys.EstimatedTax = lots.MulDiv(max(st, 0), rate("rateShort"), 10000) + lots.MulDiv(max(lt, 0), rate("rateLong"), 10000)
-		}
+		ys.EstimatedTax = yearTax(ys.ShortProceeds-ys.ShortBasis+ys.Income, ys.LongProceeds-ys.LongBasis, rateBP(set, "rateShort"), rateBP(set, "rateLong"))
 		r.Years = append(r.Years, *ys)
 	}
 	sort.Slice(r.Years, func(i, j int) bool { return r.Years[i].Year < r.Years[j].Year })
@@ -248,6 +296,9 @@ func (s *Server) buildReport() (*Report, error) {
 		r.Unrealized = lots.MulDiv(p, r.Holdings, 100_000_000) - totalBasis
 	}
 	r.Graph = graph(ex, tr, labels)
+	for i := range r.Graph {
+		r.Graph[i].Protected = p.prot[r.Graph[i].Key]
+	}
 	r.History = history(tr.Ops, prices.lookup)
 	r.fillNil()
 	return r, nil
@@ -344,7 +395,7 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) 
 	}
 	item := func(it trace.Item, kind string) GraphEvent {
 		return GraphEvent{Key: it.Key, Account: it.Account, Time: it.Time.Unix(), Kind: kind, Sats: it.Sats,
-			FeeSats: it.FeeSats, Txid: it.Txid, Address: it.Address, Note: it.Note}
+			FeeSats: it.FeeSats, Txid: it.Txid, Address: it.Address, Note: it.Note, Dir: string(it.Dir), Value: it.Value}
 	}
 	unmatched := map[string]bool{}
 	for _, it := range tr.Unmatched {
@@ -357,7 +408,7 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) 
 			continue
 		}
 		ev := item(it, string(l.Category))
-		ev.Cents = l.FiatCents
+		ev.Cents, ev.Label = l.FiatCents, string(l.Category)
 		if l.Note != "" {
 			ev.Note = l.Note
 		}

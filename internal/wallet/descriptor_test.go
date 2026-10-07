@@ -1,6 +1,10 @@
 package wallet
 
 import (
+	"fmt"
+
+	"github.com/btcsuite/btcd/btcutil/base58"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"os"
 	"strings"
 	"testing"
@@ -59,5 +63,67 @@ func TestDescriptorErrors(t *testing.T) {
 		if _, err := ParseDescriptor(d, true); err == nil {
 			t.Errorf("accepted %s", trunc(d))
 		}
+	}
+}
+
+// reversion re-encodes an extended key with other SLIP-132 version bytes.
+func reversion(t *testing.T, key string, ver [4]byte) string {
+	t.Helper()
+	raw := base58.Decode(key)
+	payload := append([]byte(nil), raw[:78]...)
+	copy(payload, ver[:])
+	return base58.Encode(append(payload, chainhash.DoubleHashB(payload)[:4]...))
+}
+
+// A multisig wallet built from cosigner keys derives the same addresses as
+// the equivalent descriptor in Bitcoin Core's vectors, whether the keys are
+// written as tpubs or as Vpubs (the testnet form of Zpub).
+func TestMultisigFromCosignerKeys(t *testing.T) {
+	b, _ := os.ReadFile("testdata/core_descriptors.txt")
+	var desc, want string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		if strings.HasPrefix(line, "wsh(sortedmulti(") {
+			desc, want, _ = strings.Cut(line, "|")
+			break
+		}
+	}
+	if desc == "" {
+		t.Skip("no wsh(sortedmulti) vector")
+	}
+	inner := desc[len("wsh(sortedmulti("):strings.Index(desc, "))")]
+	parts := strings.Split(inner, ",")
+	k := parts[0]
+	var keys, vkeys []string
+	for _, p := range parts[1:] {
+		keys = append(keys, p)
+		origin, rest := "", p
+		if i := strings.IndexByte(p, ']'); i >= 0 {
+			origin, rest = p[:i+1], p[i+1:]
+		}
+		key, path, _ := strings.Cut(rest, "/")
+		vkeys = append(vkeys, origin+reversion(t, key, [4]byte{0x02, 0x57, 0x54, 0x83})+"/"+path)
+	}
+	th := 0
+	fmt.Sscan(k, &th)
+	for _, set := range [][]string{keys, vkeys} {
+		ms, err := MultisigDescriptor(th, set, "p2wsh", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := Parse(ms, "", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a0, _ := d.Derive(0, 0)
+		if !strings.HasPrefix(want, a0.Address) {
+			t.Errorf("got %s, want first of %s", a0.Address, want)
+		}
+	}
+	lone, _, _ := strings.Cut(vkeys[0][strings.IndexByte(vkeys[0], ']')+1:], "/")
+	if _, err := Parse(lone, "", true); err != ErrMultisig {
+		t.Errorf("a lone cosigner key should explain multisig, got %v", err)
+	}
+	if _, err := MultisigDescriptor(3, keys[:2], "", true); err == nil {
+		t.Error("3-of-2 accepted")
 	}
 }

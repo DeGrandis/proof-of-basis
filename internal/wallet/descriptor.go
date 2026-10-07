@@ -132,6 +132,65 @@ func ParseDescriptor(s string, regtest bool) (*Descriptor, error) {
 	return d, nil
 }
 
+// MultisigDescriptor builds a ranged multisig descriptor from cosigner keys
+// (xpub, Zpub, Ypub..., optionally with [fingerprint/path] origin and their
+// own /<0;1>/* suffix). script is p2wsh, p2sh-p2wsh or p2sh; empty picks
+// from the first key's prefix (Ypub/Upub nested, otherwise native segwit).
+func MultisigDescriptor(threshold int, keys []string, script string, sorted bool) (string, error) {
+	var ks []string
+	for _, k := range keys {
+		k = strings.Join(strings.Fields(k), "")
+		if k == "" {
+			continue
+		}
+		bare := k
+		if i := strings.IndexByte(bare, ']'); i >= 0 {
+			bare = bare[i+1:]
+		}
+		if !strings.Contains(bare, "/") {
+			k += "/<0;1>/*"
+		}
+		ks = append(ks, k)
+	}
+	if len(ks) < 2 {
+		return "", errors.New("a multisig wallet needs at least two cosigner keys")
+	}
+	if threshold < 1 || threshold > len(ks) {
+		return "", fmt.Errorf("signatures required must be between 1 and %d", len(ks))
+	}
+	if script == "" {
+		script = "p2wsh"
+		first := ks[0]
+		if i := strings.IndexByte(first, ']'); i >= 0 {
+			first = first[i+1:]
+		}
+		if strings.HasPrefix(first, "Ypub") || strings.HasPrefix(first, "Upub") {
+			script = "p2sh-p2wsh"
+		}
+	}
+	fn := "multi"
+	if sorted {
+		fn = "sortedmulti"
+	}
+	inner := fmt.Sprintf("%s(%d,%s)", fn, threshold, strings.Join(ks, ","))
+	var body string
+	switch script {
+	case "p2wsh":
+		body = "wsh(" + inner + ")"
+	case "p2sh-p2wsh":
+		body = "sh(wsh(" + inner + "))"
+	case "p2sh":
+		body = "sh(" + inner + ")"
+	default:
+		return "", fmt.Errorf("unknown multisig script type %q", script)
+	}
+	sum, err := DescriptorChecksum(body)
+	if err != nil {
+		return "", err
+	}
+	return body + "#" + sum, nil
+}
+
 func (d *Descriptor) unwrap(s string) (string, error) {
 	strip := func(s, fn string) (string, bool) {
 		if strings.HasPrefix(s, fn+"(") && strings.HasSuffix(s, ")") {
@@ -201,7 +260,7 @@ func parseDescKey(s string, regtest bool) (parsedKey, error) {
 		s = s[i+1:] // origin info is informational only
 	}
 	parts := strings.Split(s, "/")
-	acct, err := ParseExtendedKey(parts[0], P2PKH, regtest)
+	acct, err := parseExtendedKey(parts[0], P2PKH, regtest, true)
 	if err != nil {
 		if strings.HasPrefix(parts[0], "xprv") || strings.HasPrefix(parts[0], "tprv") {
 			return parsedKey{}, errors.New("descriptor contains a private key; export the public (watch-only) descriptor instead")

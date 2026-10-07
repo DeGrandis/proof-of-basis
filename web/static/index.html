@@ -46,28 +46,61 @@
     <h2>Accounts</h2>
     <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th></tr></thead><tbody></tbody></table></div>
     <div id="warnings"></div>
+    <h2>What would I owe?</h2>
+    <form id="whatif-form" class="card grid">
+      <label>Sell or spend <span class="row"><input name="amount" inputmode="decimal" placeholder="0.1" size="12" required>
+        <select name="unit"><option value="btc">BTC</option><option value="usd">USD</option></select></span></label>
+      <label>From <select name="account" id="whatif-account"></select></label>
+      <div class="row"><button type="submit" class="primary">Estimate</button></div>
+      <div id="whatif-out" class="wide"></div>
+    </form>
   </section>
 
   <section id="wallets" class="tab">
     <h2>Add a wallet</h2>
     <form id="wallet-form" class="card grid">
+      <div class="wide seg" role="radiogroup" aria-label="Wallet kind">
+        <label><input type="radio" name="kind" value="single" checked> Single key</label>
+        <label><input type="radio" name="kind" value="multisig"> Multisig</label>
+        <label><input type="radio" name="kind" value="descriptor"> Output descriptor</label>
+      </div>
       <label>Name <input name="name" required placeholder="Cold storage"></label>
-      <label class="wide">Extended public key or output descriptor <input name="key" required placeholder="zpub…  or  wsh(sortedmulti(2,[…]xpub…/&lt;0;1&gt;/*,…))#checksum" autocomplete="off" spellcheck="false"></label>
-      <label>Script type
+      <div class="wide kind-single kind-descriptor">
+        <label><span class="kind-single">Extended public key (xpub, ypub, zpub)</span><span class="kind-descriptor">Output descriptor, from Sparrow, Specter, Nunchuk, Bitcoin Core or Electrum</span>
+          <input name="key" placeholder="zpub…" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <label class="kind-single">Script type
         <select name="script">
-          <option value="">From key prefix or descriptor</option>
+          <option value="">From key prefix</option>
           <option value="p2wpkh">Native segwit (bc1q…)</option>
           <option value="p2sh-p2wpkh">Nested segwit (3…)</option>
           <option value="p2pkh">Legacy (1…)</option>
           <option value="p2tr">Taproot (bc1p…)</option>
         </select>
       </label>
+      <div class="wide kind-multisig" hidden>
+        <div class="grid">
+          <label>Signatures required <input name="threshold" type="number" min="1" max="15" value="2"></label>
+          <label>Address type
+            <select name="msScript">
+              <option value="">From key prefix (Zpub native, Ypub nested)</option>
+              <option value="p2wsh">Native segwit P2WSH (bc1q…, long)</option>
+              <option value="p2sh-p2wsh">Nested segwit P2SH-P2WSH (3…)</option>
+              <option value="p2sh">Legacy P2SH (3…)</option>
+            </select>
+          </label>
+          <label class="check inline"><input type="checkbox" name="sorted" checked> Sorted keys (sortedmulti)</label>
+        </div>
+        <div id="cosigners"></div>
+        <button type="button" id="add-cosigner" class="link">+ Add a cosigner</button>
+        <p class="small muted">Paste each cosigner's public key (xpub, Zpub, Ypub…), optionally with its [fingerprint/derivation] prefix. Sparrow, Specter, Nunchuk, Electrum and Caravan use sorted keys, so leave that on unless your wallet says otherwise. Or switch to Output descriptor and paste the whole wallet at once.</p>
+      </div>
       <label>Gap limit <input name="gap" type="number" min="1" max="1000" value="20"></label>
       <div class="wide row">
         <button type="button" id="preview-btn">Check addresses</button>
         <button type="submit" class="primary">Add wallet</button>
       </div>
-      <div id="preview" class="wide mono small"></div>
+      <div id="preview" class="wide small"></div>
     </form>
     <h2>Your wallets</h2>
     <div class="scroll"><table id="wallets-table"><thead><tr><th>Name</th><th>Script</th><th class="num">Balance</th><th>Last scan</th><th></th></tr></thead><tbody></tbody></table></div>
@@ -126,6 +159,9 @@
     <h2>By tax year</h2>
     <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num">Estimated tax</th><th></th></tr></thead><tbody></tbody></table></div>
     <p class="small muted">An estimate using the rates in Settings, not tax advice. Loss carryforwards and the $3,000 ordinary-income offset are not applied yet.</p>
+    <h2>Protected purchases</h2>
+    <p class="small muted">Coins from these are sold last: your method skips them until nothing else is left in that account. Protect a purchase from its details in Flow.</p>
+    <div class="scroll"><table id="protected-table"><thead><tr><th>Acquired</th><th>Account</th><th class="num">BTC</th><th></th></tr></thead><tbody></tbody></table></div>
     <h2>Disposals</h2>
     <div class="scroll"><table id="disposals-table"><thead><tr><th>Sold</th><th>Acquired</th><th>Account</th><th class="num">BTC</th><th class="num">Proceeds</th><th class="num">Basis</th><th class="num">Gain</th><th>Term</th></tr></thead><tbody></tbody></table></div>
   </section>
