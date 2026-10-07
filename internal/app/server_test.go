@@ -1,9 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,5 +85,38 @@ func TestWipe(t *testing.T) {
 	}
 	if a, _ := st.Accounts(); len(a) != 0 || st.Setting("fulcrumHost", "") != "" {
 		t.Errorf("left behind: %v %q", a, st.Setting("fulcrumHost", ""))
+	}
+}
+
+func upload(h http.Handler, name, content, handler string) *httptest.ResponseRecorder {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("file", name)
+	fw.Write([]byte(content))
+	mw.WriteField("handler", handler)
+	mw.Close()
+	r := httptest.NewRequest("POST", "/api/imports", &buf)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+// The drop zone relies on these codes: 422 means "ask for the platform",
+// 409 means "already imported".
+func TestImportStatusCodes(t *testing.T) {
+	_, h := newTest(t)
+	river, err := os.ReadFile("../importers/testdata/river.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := upload(h, "river.csv", string(river), ""); w.Code != 200 {
+		t.Fatalf("detect: %d %s", w.Code, w.Body.String())
+	}
+	if w := upload(h, "river.csv", string(river), ""); w.Code != 409 {
+		t.Errorf("same file again: %d", w.Code)
+	}
+	if w := upload(h, "mystery.csv", "when,what,how much\n2024-01-01,thing,1\n", ""); w.Code != 422 {
+		t.Errorf("unknown format: %d %s", w.Code, w.Body.String())
 	}
 }

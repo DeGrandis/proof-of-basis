@@ -146,6 +146,74 @@ $("#import-form").addEventListener("submit", async (e) => {
     refresh();
   } catch (err) { toast(err.message); }
 });
+// Drag and drop: import many files, detecting each platform; ask about
+// the ones that can't be recognised.
+let handlers = [];
+const queue = []; // {file, state: wait|ok|skip|ask|dropped, msg}
+const importOne = async (q, handler = "") => {
+  const fd = new FormData();
+  fd.append("file", q.file);
+  fd.append("handler", handler);
+  const r = await fetch("/api/imports", { method: "POST", body: fd });
+  const body = await r.json().catch(() => ({}));
+  if (r.ok) {
+    q.state = "ok";
+    q.msg = `${body.events} rows into ${body.account}` + (body.alreadyImported ? `, ${body.alreadyImported} already imported` : "") + (body.warnings?.length ? `, ${body.warnings.length} warnings` : "");
+  } else if (r.status === 409) {
+    q.state = "skip"; q.msg = "Already imported";
+  } else if (r.status === 422) {
+    q.state = "ask"; q.msg = "Couldn't tell which platform this is from.";
+  } else {
+    q.state = "ask"; q.msg = body.error || r.statusText;
+  }
+};
+function renderQueue() {
+  $("#drop-queue").hidden = !queue.length;
+  const opts = handlers.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("");
+  $("#drop-queue tbody").innerHTML = queue.map((q, i) => `<tr><td>${esc(q.file.name)}</td><td class="small">${
+    q.state === "wait" ? '<span class="muted">Importing…</span>'
+    : q.state === "ok" ? `<span class="ok">Imported</span> ${esc(q.msg)}`
+    : q.state === "skip" ? `<span class="muted">${esc(q.msg)}</span>`
+    : q.state === "dropped" ? '<span class="muted">Skipped</span>'
+    : `<span class="warn">${esc(q.msg)}</span> <span class="row"><select data-q="${i}"><option value="">Which platform?</option>${opts}</select><button data-q-go="${i}">Import</button><button class="link" data-q-skip="${i}">Skip</button></span>`
+  }</td></tr>`).join("");
+}
+async function importFiles(files) {
+  const added = [...files].map((file) => ({ file, state: "wait", msg: "" }));
+  // Keep earlier files still waiting for an answer; drop finished ones.
+  queue.splice(0, queue.length, ...queue.filter((q) => q.state === "ask"), ...added);
+  renderQueue();
+  for (const q of added) { // one at a time, so each account is created once
+    try { await importOne(q); } catch (e) { q.state = "ask"; q.msg = e.message; }
+    renderQueue();
+  }
+  const n = added.filter((q) => q.state === "ok").length, ask = queue.filter((q) => q.state === "ask").length;
+  toast(`Imported ${n} of ${added.length} files` + (ask ? `. ${ask} need${ask === 1 ? "s" : ""} a platform.` : "."));
+  refresh();
+}
+const drop = $("#drop");
+drop.addEventListener("click", () => $("#drop-input").click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#drop-input").click(); } });
+$("#drop-input").addEventListener("change", (e) => { if (e.target.files.length) importFiles(e.target.files); e.target.value = ""; });
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files); });
+// A file dropped anywhere else should not make the browser open it.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+$("#drop-queue").addEventListener("click", async (e) => {
+  const go = e.target.dataset.qGo, skip = e.target.dataset.qSkip;
+  if (skip) { queue[skip].state = "dropped"; renderQueue(); return; }
+  if (!go) return;
+  const h = $(`select[data-q="${go}"]`).value;
+  if (!h) { toast("Pick a platform first."); return; }
+  const q = queue[go];
+  q.state = "wait"; renderQueue();
+  try { await importOne(q, h); } catch (err) { q.state = "ask"; q.msg = err.message; }
+  renderQueue();
+  refresh();
+});
+
 $("#price-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
@@ -288,7 +356,7 @@ async function loadSettings() {
   const f = $("#settings-form");
   for (const [k, v] of Object.entries(s)) if (f.elements[k]) f.elements[k].value = v;
   $("#cert-line").textContent = s.fulcrumCert ? `Pinned server certificate SHA-256: ${s.fulcrumCert}` : "";
-  const hs = await api("/api/handlers");
+  const hs = handlers = await api("/api/handlers");
   $("#handler-select").innerHTML = `<option value="">Detect automatically</option>` + hs.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("");
 }
 $("#settings-form").addEventListener("submit", async (e) => {

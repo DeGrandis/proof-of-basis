@@ -472,7 +472,11 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h, evs, warns, err := importers.Import(strings.NewReader(string(body)), r.FormValue("handler"))
-	if err != nil {
+	if errors.Is(err, importers.ErrUnknownFormat) {
+		// 422 tells the UI to ask which platform the file is from.
+		fail(w, http.StatusUnprocessableEntity, err)
+		return
+	} else if err != nil {
 		fail(w, 400, err)
 		return
 	}

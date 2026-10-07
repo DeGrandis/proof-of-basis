@@ -60,14 +60,21 @@
   </section>
 
   <section id="imports" class="tab">
-    <h2>Import exchange CSV</h2>
+    <h2>Import exchange CSVs</h2>
+    <div id="drop" class="card drop" tabindex="0" role="button" aria-label="Drop CSV files here or click to choose">
+      <b>Drop CSV exports here</b> <span class="muted">or click to choose. Several at once is fine: each file's platform is detected, and you'll be asked about any it can't recognise.</span>
+      <input id="drop-input" type="file" accept=".csv,text/csv" multiple hidden>
+    </div>
+    <div id="drop-queue" class="scroll" hidden><table><thead><tr><th>File</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+    <details class="small"><summary>Import one file with a specific platform or account name</summary>
     <form id="import-form" class="card grid">
       <label class="wide">File <input name="file" type="file" accept=".csv,text/csv" required></label>
       <label>Platform <select name="handler" id="handler-select"><option value="">Detect automatically</option></select></label>
       <label>Account name <input name="account" placeholder="Defaults to the platform name"></label>
       <div class="wide row"><button type="submit" class="primary">Import</button></div>
     </form>
-    <p class="small muted">Files are parsed on this server and never leave it. Re-importing the same file is refused.</p>
+    </details>
+    <p class="small muted">Files are parsed on this server and never leave it. Re-importing the same file is refused, and rows already imported from an overlapping export are skipped.</p>
     <div class="scroll"><table id="imports-table"><thead><tr><th>File</th><th>Account</th><th>Platform</th><th class="num">Rows</th><th>Warnings</th><th></th></tr></thead><tbody></tbody></table></div>
     <h2>Prices</h2>
     <form id="price-form" class="card row">
