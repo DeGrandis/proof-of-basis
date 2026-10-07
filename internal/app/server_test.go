@@ -250,3 +250,59 @@ func TestAddMultisigWallet(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 }
+
+// Lookups answer from local records without Fulcrum; recheck with no
+// wallets finishes at once; paths with txids or addresses aren't logged.
+func TestLookupsAndRecheck(t *testing.T) {
+	st, h := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	var txid, addr string
+	for _, g := range rep.Graph {
+		if g.Kind == "transfer" && strings.Contains(g.Key, ":from:") {
+			txid = g.Txid
+		}
+		if g.Kind == "unmatched" && g.Address != "" && addr == "" {
+			addr = g.Address
+		}
+	}
+	var tv txView
+	w := call(h, "GET", "/api/tx/"+txid, "")
+	json.Unmarshal(w.Body.Bytes(), &tv)
+	if w.Code != 200 || tv.Source != "wallets" || len(tv.Inputs) < 2 || tv.FeeSats <= 0 {
+		t.Errorf("%d %+v", w.Code, tv)
+	}
+	wallets := map[string]bool{}
+	for _, in := range tv.Inputs {
+		wallets[in.Wallet] = true
+	}
+	if len(wallets) < 2 {
+		t.Errorf("inputs from %v", wallets)
+	}
+	if w := call(h, "GET", "/api/tx/nothex", ""); w.Code != 400 {
+		t.Errorf("bad txid: %d", w.Code)
+	}
+	var av struct {
+		Txs []addrTx
+	}
+	json.Unmarshal(call(h, "GET", "/api/address/"+addr, "").Body.Bytes(), &av)
+	if len(av.Txs) != 1 || !av.Txs[0].Local {
+		t.Errorf("address %s: %+v", addr, av)
+	}
+
+	st2, h2 := newTest(t)
+	_ = st2
+	call(h2, "POST", "/api/recheck", "")
+	for i := 0; i < 50; i++ {
+		var rs recheckState
+		json.Unmarshal(call(h2, "GET", "/api/recheck", "").Body.Bytes(), &rs)
+		if !rs.Running && rs.Finished != "" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("recheck never finished")
+}

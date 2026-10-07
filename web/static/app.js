@@ -27,7 +27,10 @@ function toast(msg) {
   toast.timer = setTimeout(() => (t.hidden = true), 4000);
 }
 
-function show(tab) {
+function show(route) {
+  const [tab, ...rest] = route.split("/");
+  const arg = decodeURIComponent(rest.join("/"));
+  if (tab === "tx" || tab === "addr") { showLookup(tab, arg); return; }
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
@@ -35,6 +38,27 @@ function show(tab) {
   if (tab === "overview" && report) drawHistory();
   if (tab === "graph") drawGraph();
 }
+function showLookup(kind, arg) {
+  $$(".tab").forEach((s) => s.classList.toggle("on", s.id === "lookup"));
+  $$("#tabs button").forEach((b) => b.classList.remove("on"));
+  $("#tab-title").textContent = kind === "tx" ? "Transaction" : "Address";
+  document.body.classList.remove("flow");
+  lookupRoute = [kind, arg];
+  renderLookup();
+}
+let lookupRoute = null;
+
+// Search: a txid or an address. Answers come from your own records, then
+// from your own Fulcrum server; nothing else is contacted.
+$("#search").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = e.target.q.value.trim();
+  if (!q) return;
+  if (/^[0-9a-fA-F]{64}$/.test(q)) location.hash = "tx/" + q.toLowerCase();
+  else if (/^(bc1|tb1|bcrt1|[13mn2])[0-9A-Za-z]{20,90}$/.test(q)) location.hash = "addr/" + encodeURIComponent(q);
+  else toast("Enter a 64-character transaction id or a bitcoin address.");
+});
+
 // Sidebar: open by default (collapsed to icons on narrow screens); the
 // hamburger shrinks it to an icon rail and back. The choice is remembered.
 function setMenu(open, remember) {
@@ -78,6 +102,7 @@ async function refresh() {
     try { await f(); } catch (e) { console.error(e); toast(`Could not draw the page: ${e.message}`); }
   }
   if ($("#graph").classList.contains("on")) drawGraph();
+  if ($("#lookup").classList.contains("on")) renderLookup();
 }
 
 let pickedYear = (() => { try { return Number(localStorage.getItem("year")) || 0; } catch { return 0; } })();
@@ -96,12 +121,11 @@ function renderOverview() {
   $("#year-select").innerHTML = years.map((y) => `<option value="${y}"${y === yr ? " selected" : ""}>${y}${y === thisYear ? " (this year)" : ""}</option>`).join("");
   const ys = (r.years || []).find((y) => y.year === yr);
   const tiles = [
-    ["BTC price", r.price ? usd(r.price) : "no price yet", r.priceDay ? `as of ${r.priceDay}` : "Update prices in Settings"],
     ["Holdings", btc(r.holdingsSats) + " BTC", r.price ? `worth ${usd(Math.round(r.holdingsSats * r.price / 1e8))}` : ""],
+    ["BTC price", r.price ? usd(r.price) : "no price yet", r.priceDay ? `as of ${r.priceDay}` : "Update prices in Settings"],
     ["Unrealized gain", r.price ? usd(r.unrealized) : "needs a price"],
     [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
     [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
-    ["Needs a label", String(r.unmatched?.length || 0)],
   ];
   $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
   const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
@@ -111,8 +135,9 @@ function renderOverview() {
     <td>${esc(a.name)}</td><td>${esc(a.kind)}</td><td class="num">${btc(a.sats)}</td>
     <td class="num">${a.chainSats == null ? "" : btc(a.chainSats)}${a.chainSats != null && a.chainSats !== a.sats ? ' <span class="warn" title="Traced and on-chain balances differ: something is unlabeled or a scan is stale">!</span>' : ""}</td>
     <td class="num">${usd(a.basis)}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No accounts yet.</td></tr>`;
-  $("#warnings").innerHTML = (r.warnings || []).length
-    ? `<h2>Warnings</h2><div class="card small">${r.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
+  const nLabel = r.unmatched?.length || 0;
+  $("#warnings").innerHTML = (r.warnings || []).length || nLabel
+    ? `<h2>Warnings</h2><div class="card small">${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
   const n = r.unmatched?.length || 0;
   $("#review-count").hidden = !n;
   $("#review-count").textContent = n;
@@ -772,23 +797,24 @@ let relatedKeys = new Set();
 
 // The transaction view: what happened, plus where the coins came from
 // (sales, spends, gifts) or where they went (buys, income, gifts received).
-function selectEvent(key, zoom) {
+// buildDetail gathers what is known about one record: its facts, what it
+// traces to, and the two sides of its diagram.
+function buildDetail(key) {
   const e = (report.graph || []).find((g) => g.key === key);
-  const box = $("#graph-detail");
-  if (!e) { const was = !box.hidden; box.hidden = true; document.body.classList.remove("picked"); selected = null; relatedKeys = new Set(); if (was) setTimeout(drawGraph, 220); else highlight(null); return; }
-  selected = key;
+  if (!e) return null;
   const disposals = report.disposals || [], removals = report.removals || [], open = report.openLots || [];
   const related = new Set([key]);
   const byKey = Object.fromEntries((report.graph || []).map((g) => [g.key, g]));
   const via = (hops) => { hops.forEach((h) => related.add(h.key)); return hops; };
   const rows = [["When", when(e.t)], ["Account", esc(e.account) + (e.to ? ` → ${esc(e.to)}` : "")], ["Amount", `${btc(e.sats)} BTC`]];
   if (e.cents) rows.push([e.kind === "sell" || e.kind === "sold" ? "Proceeds" : e.kind === "buy" ? "Cost" : "Value", usd(e.cents) + (e.sats ? ` <span class="muted small">(${usd(Math.round(e.cents * 1e8 / e.sats))}/BTC)</span>` : "")]);
+  else if (e.value) rows.push(["Market value", usd(e.value) + ` <span class="muted small">at that day's price</span>`]);
   if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
   if (e.feeSats) rows.push(["Network fee", `${btc(e.feeSats)} BTC`]);
   if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);
   if (e.method) rows.push(["Matched by", esc(e.method)]);
-  if (e.txid) rows.push(["Transaction", `<span class="mono small">${esc(e.txid)}</span>`]);
-  if (e.address) rows.push(["Address", `<span class="mono small">${esc(e.address)}</span>`]);
+  if (e.txid) rows.push(["Transaction", `<a class="mono small" href="#tx/${esc(e.txid)}">${esc(e.txid)}</a>`]);
+  if (e.address) rows.push(["Address", `<a class="mono small" href="#addr/${encodeURIComponent(e.address)}">${esc(e.address)}</a>`]);
   if (e.note) rows.push(["Note", esc(e.note)]);
 
   let trace = "";
@@ -820,16 +846,26 @@ function selectEvent(key, zoom) {
   }
   if (e.kind === "transfer") trace += `<b>Moved between your accounts</b><div>${esc(e.account)} → ${esc(e.to)}. Not taxable; cost basis and purchase dates move with the coins${e.feeSats ? ". The network fee is added to basis or treated as a small sale, per Settings" : ""}.</div>`;
   if (e.kind === "consolidation") trace += `<b>Coins merged inside ${esc(e.account)}</b><div>Not taxable. Only the network fee left the wallet, handled per Settings.</div>`;
-  if (e.kind === "unmatched") trace += `<b>Not traced yet</b><div>This left or entered a tracked account and couldn't be matched. <a href="#review">Label it in Review</a>.</div>`;
+  if (e.kind === "unmatched") trace += `<b>Not traced yet</b><div>This left or entered a tracked account and couldn't be matched. Label it below or in <a href="#review">Review</a>.</div>`;
   if (!trace) trace = `<span class="muted">Nothing further to trace.</span>`;
+  const sides = txSides(e, { fromLots, fromGifts, sold, gone, held, byKey });
+  return { e, rows, trace, related, sides, byKey };
+}
+const pageLink = (e) => e.txid ? `#tx/${esc(e.txid)}` : `#tx/rec:${encodeURIComponent(e.key)}`;
 
-  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
+function selectEvent(key, zoom) {
+  const box = $("#graph-detail");
+  const d = key ? buildDetail(key) : null;
+  if (!d) { const was = !box.hidden; box.hidden = true; document.body.classList.remove("picked"); selected = null; relatedKeys = new Set(); if (was) setTimeout(drawGraph, 220); else highlight(null); return; }
+  const { e, rows, trace, related, sides, byKey } = d;
+  selected = key;
+  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
     <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
-    <div id="txflow-wrap"><svg id="txflow" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
+    <div id="txflow-wrap"><svg id="txflow" class="txf" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
   box.insertAdjacentHTML("beforeend", actionsFor(e));
   box.hidden = false;
   document.body.classList.add("picked");
-  lastFlow = txSides(e, { fromLots, fromGifts, sold, gone, held, byKey });
+  lastFlow = sides;
   requestAnimationFrame(() => drawTxFlow(e, lastFlow));
   relatedKeys = related;
   setTimeout(drawGraph, 220); // the chart gets shorter to make room below
@@ -896,8 +932,7 @@ function txSides(e, c) {
   return { L: cap(L), R: cap(R) };
 }
 
-function drawTxFlow(e, { L, R }) {
-  const svg = $("#txflow");
+function drawTxFlow(e, { L, R }, svg = $("#txflow")) {
   if (!svg) return;
   const W = Math.max(360, svg.parentElement.clientWidth), labelW = Math.min(190, W * 0.28);
   const n = Math.max(L.length, R.length, 1), gap = 6;
@@ -946,46 +981,120 @@ function actionsFor(e) {
   if (labelable) {
     const cats = e.dir === "out" ? OUT_CATS : IN_CATS;
     parts.push(`<span>${e.label ? `Labeled <b>${esc(KIND_NAMES[e.label] || e.label)}</b>.` : "What was it?"}</span>
-      <select id="flow-cat"><option value="">${e.label ? "Change to…" : "Choose…"}</option>${cats.filter(([v]) => v !== "self").map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
-      <input id="flow-amt" inputmode="decimal" size="11" hidden placeholder="${e.value ? usd(e.value) : "USD"}">
-      <button id="flow-save" class="primary" hidden>Save</button>${e.label ? `<button id="flow-unlabel" class="link">Remove label</button>` : ""}`);
+      <select class="lb-cat"><option value="">${e.label ? "Change to…" : "Choose…"}</option>${cats.filter(([v]) => v !== "self").map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
+      <input class="lb-amt" inputmode="decimal" size="11" hidden placeholder="${e.value ? usd(e.value) : "USD"}">
+      <button class="lb-save primary" hidden>Save</button>${e.label ? `<button class="lb-unlabel link">Remove label</button>` : ""}`);
   }
   if (ACQUIRE_KINDS.includes(e.kind) || (e.label && ACQUIRE_KINDS.includes(e.label))) {
     parts.push(e.protected
-      ? `<span class="badge prot">Protected: sold last</span><button id="flow-protect" class="link" data-on="0">Stop protecting</button>`
-      : `<button id="flow-protect" data-on="1" title="Your method will use other coins first and only sell these when nothing else is left">Protect these coins (sell last)</button>`);
+      ? `<span class="badge prot">Protected: sold last</span><button class="lb-protect link" data-on="0">Stop protecting</button>`
+      : `<button class="lb-protect" data-on="1" title="Your method will use other coins first and only sell these when nothing else is left">Protect these coins (sell last)</button>`);
   }
-  return parts.length ? `<div class="label-box">${parts.join('<span class="spacer"></span>')}</div>` : "";
+  return parts.length ? `<div class="label-box" data-key="${esc(e.key)}">${parts.join('<span class="spacer"></span>')}</div>` : "";
 }
-$("#graph-detail").addEventListener("change", (e) => {
-  if (e.target.id !== "flow-cat") return;
-  const cat = e.target.value, amt = $("#flow-amt");
+document.addEventListener("change", (e) => {
+  if (!e.target.classList.contains("lb-cat")) return;
+  const box = e.target.closest(".label-box"), cat = e.target.value, amt = $(".lb-amt", box);
   amt.hidden = !(MARKET_VALUE[cat] || needsAmount[cat]);
   amt.title = MARKET_VALUE[cat] || needsAmount[cat] || "";
   if (needsAmount[cat]) amt.placeholder = needsAmount[cat];
-  $("#flow-save").hidden = !cat;
+  $(".lb-save", box).hidden = !cat;
 });
-$("#graph-detail").addEventListener("click", async (e) => {
-  const id = e.target.id;
-  if (id !== "flow-save" && id !== "flow-unlabel" && id !== "flow-protect") return;
-  const key = selected;
+document.addEventListener("click", async (e) => {
+  const t = e.target, box = t.closest(".label-box");
+  if (!box || !(t.classList.contains("lb-save") || t.classList.contains("lb-unlabel") || t.classList.contains("lb-protect"))) return;
+  const key = box.dataset.key;
   try {
-    if (id === "flow-save") {
-      const label = { Key: key, Category: $("#flow-cat").value };
-      const amt = $("#flow-amt").value.replace(/[$,\s]/g, "");
+    if (t.classList.contains("lb-save")) {
+      const label = { Key: key, Category: $(".lb-cat", box).value };
+      const amt = $(".lb-amt", box).value.replace(/[$,\s]/g, "");
       if (amt) label.FiatCents = Math.round(Number(amt) * 100);
       await post("/api/labels", label);
       toast("Label saved");
-    } else if (id === "flow-unlabel") {
+    } else if (t.classList.contains("lb-unlabel")) {
       await api(`/api/labels/${encodeURIComponent(key)}`, { method: "DELETE" });
       toast("Label removed");
     } else {
-      await post("/api/protect", { key, on: e.target.dataset.on === "1" });
-      toast(e.target.dataset.on === "1" ? "Protected: these coins will be sold last" : "No longer protected");
+      await post("/api/protect", { key, on: t.dataset.on === "1" });
+      toast(t.dataset.on === "1" ? "Protected: these coins will be sold last" : "No longer protected");
     }
     await refresh();
-    if ((report.graph || []).some((g) => g.key === key)) selectEvent(key, false);
+    if ($("#lookup").classList.contains("on")) renderLookup();
+    else if ((report.graph || []).some((g) => g.key === key)) selectEvent(key, false);
   } catch (err) { toast(err.message); }
+});
+
+// The transaction page: the on-chain transaction (from your wallets' scans
+// or your Fulcrum), each of your records for it with its trace, labels and
+// protection, and the coins diagram.
+async function renderLookup() {
+  if (!lookupRoute || !report) return;
+  const [kind, arg] = lookupRoute, page = $("#lookup");
+  page.innerHTML = `<p class="muted">Looking that up…</p>`;
+  try {
+    if (kind === "addr") { page.innerHTML = await addressPage(arg); return; }
+    page.innerHTML = await txPage(arg);
+    $$("#lookup svg.txflow").forEach((svg) => { const d = buildDetail(svg.dataset.key); if (d) drawTxFlow(d.e, d.sides, svg); });
+  } catch (err) { page.innerHTML = `<h2>Not found</h2><p class="warn">${esc(err.message)}</p>`; }
+}
+const shortTx = (t) => `${t.slice(0, 10)}…${t.slice(-6)}`;
+async function txPage(arg) {
+  let recs, tx = null, txid = "";
+  if (arg.startsWith("rec:")) {
+    recs = (report.graph || []).filter((g) => g.key === arg.slice(4));
+    if (!recs.length) throw new Error("That record isn't in your data any more.");
+  } else {
+    txid = arg;
+    recs = (report.graph || []).filter((g) => g.txid === txid);
+    tx = await api(`/api/tx/${txid}`);
+  }
+  const owner = (who) => who ? `<span class="mine">${esc(who)}</span>` : `<span class="muted">outside</span>`;
+  let h = `<h2>${txid ? `Transaction <span class="mono">${esc(txid)}</span>` : "Record"}</h2>`;
+  if (tx) {
+    const facts = [["When", tx.t ? when(tx.t) : "unconfirmed or unknown"], ["Block", tx.height > 0 ? tx.height.toLocaleString("en-US") : "not confirmed"],
+      ["Network fee", tx.feeSats ? `${btc(tx.feeSats)} BTC` : "unknown (some inputs aren't yours)"],
+      ["Shape", `${tx.inputs.length} input${tx.inputs.length === 1 ? "" : "s"} → ${tx.outputs.length} output${tx.outputs.length === 1 ? "" : "s"}`],
+      ["Source", tx.source === "wallets" ? "your wallets' scans" : tx.source === "fulcrum" ? "your Fulcrum server (not in your wallets)" : "your imported records only"]];
+    h += `<div class="card"><dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>${tx.note ? `<p class="small warn">${esc(tx.note)}</p>` : ""}
+      ${recs.length ? `<a href="#graph" data-flowpick="${esc(recs[0].key)}">Show in Flow</a>` : ""}</div>`;
+    if (tx.inputs.length || tx.outputs.length) {
+      h += `<div class="io"><div><h3>Inputs</h3><div class="scroll"><table><thead><tr><th>From</th><th>Address</th><th class="num">BTC</th></tr></thead><tbody>${tx.inputs.map((i) => `<tr>
+          <td><a class="mono small" href="#tx/${esc(i.prevTxid)}">${esc(shortTx(i.prevTxid))}:${i.prevVout}</a></td><td class="addr">${i.address ? `<a href="#addr/${encodeURIComponent(i.address)}">${esc(i.address)}</a>` : ""}</td>
+          <td class="num">${i.sats ? btc(i.sats) : "?"}<div class="small">${owner(i.wallet)}</div></td></tr>`).join("")}</tbody></table></div></div>
+        <div><h3>Outputs</h3><div class="scroll"><table><thead><tr><th>#</th><th>Address</th><th class="num">BTC</th></tr></thead><tbody>${tx.outputs.map((o) => `<tr>
+          <td>${o.vout}</td><td class="addr">${o.address ? `<a href="#addr/${encodeURIComponent(o.address)}">${esc(o.address)}</a>` : "(non-standard)"}</td>
+          <td class="num">${btc(o.sats)}<div class="small">${owner(o.wallet)}</div></td></tr>`).join("")}</tbody></table></div></div></div>`;
+    }
+    if (tx.exchange.length) h += `<p class="small muted">Exchange records with this txid: ${tx.exchange.map((x) => `${esc(x.account)} ${esc(x.kind)} ${btc(x.sats)} BTC on ${day(x.t)}`).join("; ")}.</p>`;
+  }
+  h += `<h2>Your records${txid ? " for it" : ""}</h2>`;
+  h += recs.length ? recs.map((r) => {
+    const d = buildDetail(r.key);
+    return `<div class="card rec"><h3><span class="kind ${esc(r.kind)}">${esc(KIND_NAMES[r.kind] || r.kind)}</span> ${btc(r.sats)} BTC · ${esc(r.account)}${r.to ? ` → ${esc(r.to)}` : ""}</h3>
+      <div class="detail-cols"><dl>${d.rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${d.trace}</div></div>
+      <svg class="txflow txf" data-key="${esc(r.key)}" role="img" aria-label="Where these coins came from and went"></svg>${actionsFor(r)}</div>`;
+  }).join("") : `<p class="muted">None of your records refer to this transaction.</p>`;
+  return h;
+}
+async function addressPage(addr) {
+  const a = await api(`/api/address/${encodeURIComponent(addr)}`);
+  const recs = (report.graph || []).filter((g) => g.address === addr);
+  return `<h2>Address <span class="mono">${esc(addr)}</span></h2>
+    <div class="card">${a.wallet ? `<p>This is an address in your wallet <span class="mine">${esc(a.wallet)}</span>.</p>` : `<p class="muted">Not one of your wallets' addresses.</p>`}
+      ${a.note ? `<p class="small warn">${esc(a.note)}</p>` : a.fulcrum ? `<p class="small muted">Checked your records and your Fulcrum server.</p>` : ""}</div>
+    <h3>Transactions</h3><div class="scroll"><table><thead><tr><th>Transaction</th><th>Block</th><th></th></tr></thead><tbody>
+      ${(a.txs || []).map((t) => `<tr><td><a class="mono small" href="#tx/${esc(t.txid)}">${esc(t.txid)}</a></td><td>${t.height > 0 ? t.height.toLocaleString("en-US") : "unconfirmed"}</td><td class="small muted">${t.local ? "in your wallets" : "from Fulcrum"}</td></tr>`).join("")
+        || `<tr><td colspan="3" class="muted">None found.</td></tr>`}</tbody></table></div>
+    ${recs.length ? `<h3>Your records with this address</h3>${recs.map((r) => `<div><a href="${pageLink(r)}">${esc(KIND_NAMES[r.kind] || r.kind)} ${btc(r.sats)} BTC, ${esc(r.account)}, ${day(r.t)}</a></div>`).join("")}` : ""}
+    ${(a.exchange || []).length ? `<h3>Exchange records with this address</h3>${a.exchange.map((x) => `<div>${esc(x.account)} ${esc(x.kind)} ${btc(x.sats)} BTC on ${day(x.t)}</div>`).join("")}` : ""}`;
+}
+document.addEventListener("click", (e) => {
+  const k = e.target.closest("[data-flowpick]")?.dataset.flowpick;
+  if (k) { e.preventDefault(); location.hash = "graph"; setTimeout(() => selectEvent(k, true), 50); }
+});
+$("#lookup").addEventListener("click", (e) => {
+  const k = e.target.closest("[data-pick]")?.dataset.pick || e.target.closest("[data-flowkey]")?.dataset.flowkey;
+  if (k) location.hash = pageLink((report.graph || []).find((g) => g.key === k) || { key: k });
 });
 
 function highlight(key) {
@@ -1048,6 +1157,27 @@ $("#fetch-prices-btn").addEventListener("click", async () => {
     refresh();
   } catch (e) { toast("Price update failed: " + e.message); }
 });
+// Recheck everything: rescan every wallet in the background, then redraw.
+async function pollRecheck() {
+  let st;
+  try { st = await api("/api/recheck"); } catch { return; }
+  const box = $("#recheck-status");
+  box.hidden = !st.running && !st.finished;
+  $("#recheck-bar").max = Math.max(st.total, 1);
+  $("#recheck-bar").value = st.done;
+  $("#recheck-btn").disabled = st.running;
+  $("#recheck-text").textContent = st.running
+    ? `Rescanning ${st.current || "…"} (${st.done} of ${st.total} wallets done)`
+    : st.finished ? `Done: ${st.total - st.errors.length} of ${st.total} wallet${st.total === 1 ? "" : "s"} rescanned; matching and taxes redone.${st.errors.length ? " Couldn't rescan: " + st.errors.join("; ") : ""}` : "";
+  if (st.running) setTimeout(pollRecheck, 1000);
+  else if (pollRecheck.was) { pollRecheck.was = false; refresh(); toast(st.errors.length ? "Recheck finished with problems" : "Recheck finished"); }
+  if (st.running) pollRecheck.was = true;
+}
+$("#recheck-btn").addEventListener("click", async () => {
+  try { await post("/api/recheck", {}); pollRecheck.was = true; pollRecheck(); } catch (e) { toast(e.message); }
+});
+pollRecheck();
+
 $("#test-btn").addEventListener("click", async () => {
   try {
     await post("/api/settings", Object.fromEntries(new FormData($("#settings-form"))));

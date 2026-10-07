@@ -77,15 +77,15 @@ body.picked .graph-area { height: max(320px, 58vh); }
 .detail-cols { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.3fr); gap: 8px 28px; }
 @media (max-width: 900px) { .detail-cols { grid-template-columns: 1fr; } }
 #txflow-wrap { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
-#txflow { display: block; width: 100%; }
-#txflow .band { fill-opacity: .28; }
-#txflow .node { cursor: default; }
-#txflow .node.link-node { cursor: pointer; }
-#txflow .node.link-node:hover rect { stroke: var(--text); stroke-width: 1.5; }
-#txflow text { fill: var(--text); font-size: 12px; }
-#txflow text.sub { fill: var(--muted); font-size: 11px; }
-#txflow .center { fill: var(--text); }
-#txflow .col { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.txf { display: block; width: 100%; }
+.txf .band { fill-opacity: .28; }
+.txf .node { cursor: default; }
+.txf .node.link-node { cursor: pointer; }
+.txf .node.link-node:hover rect { stroke: var(--text); stroke-width: 1.5; }
+.txf text { fill: var(--text); font-size: 12px; }
+.txf text.sub { fill: var(--muted); font-size: 11px; }
+.txf .center { fill: var(--text); }
+.txf .col { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .f-buy { fill: var(--buy); } .f-sell, .f-spend, .f-sold { fill: var(--sell); } .f-income, .f-purchase, .f-gift-in { fill: var(--income); }
 .f-unmatched { fill: var(--warn); } .f-acct, .f-transfer, .f-consolidation, .f-other { fill: var(--move); } .f-fee { fill: var(--muted); }
 #flow .gutter { fill: var(--panel); }
@@ -121,6 +121,15 @@ body.picked .graph-area { height: max(320px, 58vh); }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 td input, td select { padding: 3px 6px; }
 a { color: var(--accent); }
+#search input { width: min(380px, 40vw); font-size: 13px; }
+#lookup h2 .mono { font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+.io { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 900px) { .io { grid-template-columns: 1fr; } }
+.io td.addr { white-space: normal; overflow-wrap: anywhere; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.mine { color: var(--accent); font-weight: 600; }
+.rec { margin: 8px 0; }
+.rec h3 { margin: 0 0 6px; display: flex; gap: 8px; align-items: center; font-size: 14px; }
+#recheck-status { margin-top: 10px; } #recheck-bar { width: 240px; vertical-align: middle; }
 .seg { display: flex; flex-wrap: wrap; gap: 0; }
 .seg label { flex-direction: row; align-items: center; gap: 6px; border: 1px solid var(--line); padding: 6px 12px; color: var(--text); cursor: pointer; }
 .seg label:first-child { border-radius: 6px 0 0 6px; } .seg label:last-child { border-radius: 0 6px 6px 0; }
@@ -162,10 +171,10 @@ button.sort.asc::after { content: "▲"; font-size: 9px; } button.sort.desc::aft
 .drop:hover, .drop:focus, .drop.over { border-color: var(--accent); outline: none; }
 .ok { color: var(--buy); }
 #graph-detail h3 { font-size: 15px; margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
-#graph-detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; font-size: 13px; }
-#graph-detail dt { color: var(--muted); } #graph-detail dd { margin: 0; overflow-wrap: anywhere; }
-#graph-detail .trace { border-left: 2px solid var(--line); padding-left: 12px; font-size: 13px; }
-#graph-detail .trace div { margin: 4px 0; }
+#graph-detail dl, #lookup dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 12px; font-size: 13px; }
+#graph-detail dt, #lookup dt { color: var(--muted); } #graph-detail dd, #lookup dd { margin: 0; overflow-wrap: anywhere; }
+#graph-detail .trace, #lookup .trace { border-left: 2px solid var(--line); padding-left: 12px; font-size: 13px; }
+#graph-detail .trace div, #lookup .trace div { margin: 4px 0; }
 .kind { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: #fff; background: var(--move); }
 .kind.buy { background: var(--buy); } .kind.sell, .kind.spend, .kind.sold { background: var(--sell); }
 .kind.income, .kind.purchase, .kind.gift-in { background: var(--income); } .kind.unmatched { background: var(--warn); }

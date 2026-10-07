@@ -24,7 +24,6 @@ import (
 	"btctax/internal/importers"
 	"btctax/internal/lots"
 	"btctax/internal/prices"
-	"btctax/internal/scan"
 	"btctax/internal/store"
 	"btctax/internal/tax"
 	"btctax/internal/trace"
@@ -40,6 +39,8 @@ type Server struct {
 
 	statusMu sync.Mutex
 	status   fulcrumStatus
+
+	recheck rechecker
 }
 
 type fulcrumStatus struct {
@@ -101,6 +102,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/wipe", s.wipe)
 	mux.HandleFunc("POST /api/whatif", s.whatIf)
 	mux.HandleFunc("POST /api/protect", s.protect)
+	mux.HandleFunc("GET /api/tx/{txid}", s.getTx)
+	mux.HandleFunc("GET /api/address/{addr}", s.getAddress)
+	mux.HandleFunc("POST /api/recheck", s.startRecheck)
+	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
 	mux.Handle("GET /", http.FileServerFS(s.static))
 	return s.secure(mux)
 }
@@ -601,33 +606,15 @@ func (c cachedSource) Header(h int64) (string, error) {
 
 func (s *Server) scanWallet(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	a, err := s.st.Account(id)
-	if err != nil || a.Kind != "wallet" {
+	if a, err := s.st.Account(id); err != nil || a.Kind != "wallet" {
 		fail(w, 404, errors.New("no such wallet"))
-		return
-	}
-	s.scanMu.Lock()
-	defer s.scanMu.Unlock()
-	acct, err := s.parseWallet(walletIn{Key: a.XPub, Script: a.Script})
-	if err != nil {
-		fail(w, 400, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
-	c, err := s.dial(ctx)
+	res, err := s.rescan(ctx, id)
 	if err != nil {
 		fail(w, 502, err)
-		return
-	}
-	defer c.Close()
-	res, err := scan.Wallet(cachedSource{c, s.st}, acct, a.Gap)
-	if err != nil {
-		fail(w, 502, err)
-		return
-	}
-	if err := s.st.SaveScan(id, res); err != nil {
-		fail(w, 500, err)
 		return
 	}
 	writeJSON(w, map[string]any{"balance": res.Balance, "txs": len(res.Txs), "usedAddresses": len(res.Used)})
@@ -859,8 +846,10 @@ func LogRequests(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 		// Paths only: never log bodies, keys, addresses or amounts.
 		p := r.URL.Path
-		if strings.HasPrefix(p, "/api/labels/") {
-			p = "/api/labels/…"
+		for _, pre := range []string{"/api/labels/", "/api/tx/", "/api/address/"} {
+			if strings.HasPrefix(p, pre) {
+				p = pre + "…"
+			}
 		}
 		log.Printf("%s %s %s", r.Method, p, time.Since(start).Round(time.Millisecond))
 	})

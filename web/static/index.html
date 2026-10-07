@@ -31,7 +31,9 @@
   </button>
 </aside>
 <div id="page">
-<header><span id="tab-title"></span></header>
+<header><span id="tab-title"></span><span class="spacer"></span>
+  <form id="search" role="search"><input name="q" placeholder="Search a txid or address" aria-label="Search a transaction id or bitcoin address" autocomplete="off" spellcheck="false"></form>
+</header>
 <main>
   <div id="toast" role="status" hidden></div>
 
@@ -155,6 +157,8 @@
     <section id="graph-detail" class="card" hidden></section>
   </section>
 
+  <section id="lookup" class="tab"></section>
+
   <section id="taxes" class="tab">
     <h2>By tax year</h2>
     <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num">Estimated tax</th><th></th></tr></thead><tbody></tbody></table></div>
@@ -186,6 +190,12 @@
       <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn">Test connection</button><button type="button" id="fetch-prices-btn">Update prices</button></div>
       <div class="wide small muted">Updating prices is the only time this app contacts anything besides your node, and only when you press the button. The image already includes daily history up to when it was built.</div>
     </form>
+    <h2>Recheck everything</h2>
+    <div class="card">
+      <div class="row"><button type="button" id="recheck-btn">Recheck everything</button>
+        <span class="small muted">Rescans every wallet with your Fulcrum server, then redoes all matching and tax figures. Nothing is deleted: imports, labels and protected purchases stay as they are.</span></div>
+      <div id="recheck-status" class="small" hidden><progress id="recheck-bar" max="1" value="0"></progress> <span id="recheck-text"></span></div>
+    </div>
     <h2>Delete all data</h2>
     <div class="card row">
       <button type="button" id="wipe-btn" class="danger">Wipe everything</button>
