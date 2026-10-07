@@ -30,12 +30,38 @@ function toast(msg) {
 function show(tab) {
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
   if (tab === "graph") drawGraph();
 }
+// Sidebar: open by default (collapsed to icons on narrow screens); the
+// hamburger shrinks it to an icon rail and back. The choice is remembered.
+function setMenu(open, remember) {
+  document.body.classList.toggle("collapsed", !open);
+  $("#menu-btn").setAttribute("aria-expanded", String(open));
+  $("#menu-btn").setAttribute("aria-label", open ? "Collapse menu" : "Expand menu");
+  if (remember) try { localStorage.setItem("menu", open ? "open" : "closed"); } catch {}
+  if ($("#graph").classList.contains("on")) setTimeout(drawGraph, 200);
+}
+setMenu((() => { try { const v = localStorage.getItem("menu"); if (v) return v === "open"; } catch {} return innerWidth >= 760; })());
+$("#menu-btn").addEventListener("click", () => setMenu(document.body.classList.contains("collapsed"), true));
 $("#tabs").addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  if (b) { location.hash = b.dataset.tab; }
+  if (b) location.hash = b.dataset.tab;
 });
+
+// Fulcrum status dot: green when the server answers, red when it does not.
+async function checkFulcrum(fresh) {
+  let st;
+  try { st = await api("/api/fulcrum/status" + (fresh ? "?fresh=1" : "")); } catch (e) { st = { ok: false, error: e.message }; }
+  const notSet = !st.ok && /address first/.test(st.error || "");
+  $("#fulcrum-dot").classList.toggle("up", !!st.ok);
+  $("#fulcrum-dot").classList.toggle("down", !st.ok && !notSet);
+  const line = st.ok ? `Connected, block ${st.height.toLocaleString("en-US")}` : notSet ? "Not set up yet" : `Not reachable: ${st.error}`;
+  $("#fulcrum-line").textContent = line;
+  $("#fulcrum-status").title = "Fulcrum: " + line + ". Click to check again.";
+}
+$("#fulcrum-status").addEventListener("click", () => { $("#fulcrum-line").textContent = "checking…"; checkFulcrum(true); });
+setInterval(() => { if (!document.hidden) checkFulcrum(); }, 60000);
 window.addEventListener("hashchange", () => show(location.hash.slice(1) || "overview"));
 
 async function refresh() {
@@ -52,14 +78,26 @@ async function refresh() {
   if ($("#graph").classList.contains("on")) drawGraph();
 }
 
+let pickedYear = (() => { try { return Number(localStorage.getItem("year")) || 0; } catch { return 0; } })();
+$("#year-select").addEventListener("change", (e) => {
+  pickedYear = Number(e.target.value);
+  try { localStorage.setItem("year", pickedYear); } catch {}
+  renderOverview();
+});
+
 function renderOverview() {
   const r = report;
-  const latest = (r.years || []).at(-1);
+  const thisYear = new Date().getFullYear();
+  const active = (r.graph || []).map((e) => new Date(e.t * 1000).getUTCFullYear()); // any year with activity
+  const years = [...new Set([thisYear, ...(r.years || []).map((y) => y.year), ...active])].sort((a, b) => b - a);
+  const yr = years.includes(pickedYear) ? pickedYear : thisYear;
+  $("#year-select").innerHTML = years.map((y) => `<option value="${y}"${y === yr ? " selected" : ""}>${y}${y === thisYear ? " (this year)" : ""}</option>`).join("");
+  const ys = (r.years || []).find((y) => y.year === yr);
   const tiles = [
     ["Holdings", btc(r.holdingsSats) + " BTC"],
     ["Unrealized gain", r.price ? usd(r.unrealized) : "needs a price"],
-    [latest ? `${latest.year} realized` : "Realized", latest ? usd(latest.shortProceeds - latest.shortBasis + latest.longProceeds - latest.longBasis) : "$0.00"],
-    [latest ? `${latest.year} est. tax` : "Est. tax", latest ? usd(latest.estimatedTax) : "$0.00"],
+    [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
+    [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
     ["Needs a label", String(r.unmatched?.length || 0)],
   ];
   $("#tiles").innerHTML = tiles.map(([k, v]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("");
@@ -237,9 +275,9 @@ function renderReview() {
     return `<tr data-key="${esc(it.Key)}" data-dir="${esc(it.Dir)}">
       <td>${day(it.Time)}</td><td>${esc(it.Account)}</td><td>${it.Dir === "out" ? "Out" : "In"}</td>
       <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${btc(it.FeeSats)} fee</div>` : ""}</td>
-      <td class="small">${detail}</td>
       <td class="row"><select class="cat"><option value="">Choose…</option>${cats.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
-        <span class="extra"></span><button class="save" hidden>Save</button></td></tr>`;
+        <span class="extra"></span><button class="save" hidden>Save</button></td>
+      <td class="small">${detail}</td></tr>`;
   }).join("") || `<tr><td colspan="6" class="muted">Nothing to label.</td></tr>`;
   $("#links-table tbody").innerHTML = (report.links || []).map((l) => `<tr><td class="small mono">${esc(l.From)}</td><td class="small mono">${esc(l.To)}</td><td>${esc(l.Method)}${l.Method === "manual" ? ` <button class="link" data-unlink="${esc(l.From)}" data-unlink2="${esc(l.To)}">undo</button>` : ""}</td></tr>`).join("")
     || `<tr><td colspan="3" class="muted">No transfers matched yet.</td></tr>`;
@@ -291,57 +329,178 @@ function renderTaxes() {
     <td class="num">${signed(d.Proceeds - d.Basis)}</td><td>${d.LongTerm ? "Long" : "Short"}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">None.</td></tr>`;
 }
 
-// Flow graph: one lane per account, time left to right.
+// Flow graph: exchanges and wallets in separate bands, one lane per
+// account, time left to right. Dot size is the amount.
 const KINDS = [["buy", "Buy"], ["sell", "Sale / spend"], ["income", "Income / acquired"], ["unmatched", "Needs a label"], ["gift", "Gift / other"]];
-$("#legend").innerHTML = KINDS.map(([k, l]) => `<span><svg width="10" height="10"><circle cx="5" cy="5" r="5" class="dot ${k}"></circle></svg> ${l}</span>`).join("");
+const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Transfer", unmatched: "Needs a label", spend: "Spent", sold: "Sold to a person",
+  gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", untracked: "Untracked wallet", "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
+$("#legend").innerHTML = KINDS.map(([k, l]) => `<span><svg width="10" height="10"><circle cx="5" cy="5" r="5" class="dot ${k}"></circle></svg> ${l}</span>`).join("")
+  + `<span><svg width="18" height="10"><line x1="1" y1="5" x2="17" y2="5" class="link" stroke-width="2"/></svg> Transfer</span>`;
+$("#show-transfers").addEventListener("change", () => drawGraph());
+let selected = null;
+
+function lanesByBand() {
+  const kindOf = Object.fromEntries((report.accounts || []).map((a) => [a.name, a.kind]));
+  const names = [...new Set([...(report.accounts || []).filter((a) => a.kind !== "pool").map((a) => a.name),
+    ...(report.graph || []).flatMap((e) => [e.account, e.to].filter(Boolean))])];
+  const bands = [["Exchanges", "exchange"], ["Wallets", "wallet"], ["Other", null]].map(([label, k]) => ({
+    label, lanes: names.filter((n) => (k ? kindOf[n] === k : kindOf[n] !== "exchange" && kindOf[n] !== "wallet")).sort(),
+  }));
+  return bands.filter((b) => b.lanes.length);
+}
 
 function drawGraph() {
   const svg = $("#flow");
   if (!report) return;
   const ev = report.graph || [];
-  const lanes = [...new Set([...(report.accounts || []).filter((a) => a.kind !== "pool").map((a) => a.name), ...ev.flatMap((e) => [e.account, e.to].filter(Boolean))])];
   if (!ev.length) { svg.setAttribute("width", 600); svg.setAttribute("height", 60); svg.innerHTML = `<text x="16" y="34">Nothing to draw yet.</text>`; return; }
-  const left = 140, laneH = 56, W = Math.max(720, $("#graph-wrap").clientWidth - 2), H = lanes.length * laneH + 40;
-  const t0 = Math.min(...ev.map((e) => e.t)), t1 = Math.max(...ev.map((e) => e.t)), span = Math.max(t1 - t0, 86400);
-  const x = (t) => left + 16 + ((t - t0) / span) * (W - left - 56);
-  const y = (name) => 20 + lanes.indexOf(name) * laneH + laneH / 2;
-  const maxSats = Math.max(...ev.map((e) => e.sats), 1);
-  const r = (s) => 4 + 8 * Math.sqrt(s / maxSats);
-  let out = "";
-  lanes.forEach((l) => { out += `<line class="lane" x1="${left}" x2="${W - 10}" y1="${y(l)}" y2="${y(l)}"/><text x="10" y="${y(l) + 4}">${esc(l.length > 18 ? l.slice(0, 17) + "…" : l)}</text>`; });
-  // years along the bottom
-  for (let yr = new Date(t0 * 1000).getUTCFullYear() + 1; Date.UTC(yr, 0, 1) / 1000 <= t1; yr++) {
-    const xx = x(Date.UTC(yr, 0, 1) / 1000);
-    out += `<line class="lane" x1="${xx}" x2="${xx}" y1="10" y2="${H - 24}" stroke-dasharray="2 4"/><text x="${xx + 3}" y="${H - 8}">${yr}</text>`;
+  const bands = lanesByBand();
+  const left = 150, laneH = 44, bandGap = 30;
+  let W = Math.max(720, $("#graph-wrap").clientWidth - 2); // widened below when the timeline needs room
+  const laneY = {};
+  let yy = 10, out = "";
+  for (const b of bands) {
+    const top = yy;
+    yy += 22;
+    for (const l of b.lanes) { laneY[l] = yy + laneH / 2; yy += laneH; }
+    out += `<rect class="band" x="0" y="${top}" width="100%" height="${yy - top}" rx="8"/><text class="band-label" x="10" y="${top + 15}">${esc(b.label)}</text>`;
+    yy += bandGap - 18;
   }
-  ev.filter((e) => e.kind === "transfer" && e.to).forEach((e) => {
-    const x1 = x(e.t), y1 = y(e.account), y2 = y(e.to), mid = (y1 + y2) / 2;
-    out += `<path class="arc" data-key="${esc(e.key)}" d="M${x1},${y1} C${x1 + 18},${y1 + (mid - y1) * 0.6} ${x1 + 18},${y2 - (y2 - mid) * 0.6} ${x1 + 4},${y2}" stroke-width="${1 + 6 * Math.sqrt(e.sats / maxSats)}"><title>${btc(e.sats)} BTC ${esc(e.account)} → ${esc(e.to)} on ${day(e.t)}</title></path>`;
-  });
-  ev.filter((e) => e.kind !== "transfer").forEach((e) => {
-    out += `<circle class="dot ${esc(e.kind)}" data-key="${esc(e.key)}" cx="${x(e.t)}" cy="${y(e.account)}" r="${r(e.sats)}"><title>${esc(e.kind)} ${btc(e.sats)} BTC, ${esc(e.account)}, ${day(e.t)}</title></circle>`;
-  });
+  const H = yy + 24;
+  // Time axis: every distinct moment gets room, and quiet stretches are
+  // compressed (log of the gap), so a withdrawal and its receipt minutes
+  // apart don't pile up while years of nothing don't waste the width.
+  const times = [...new Set(ev.map((e) => e.t))].sort((a, b) => a - b);
+  const pos = [0];
+  for (let i = 1; i < times.length; i++) pos.push(pos[i - 1] + 26 + 22 * Math.log2(1 + (times[i] - times[i - 1]) / 86400));
+  const avail = W - left - 40, scale = pos.at(-1) > avail ? 1 : avail / Math.max(pos.at(-1), 1);
+  if (scale === 1) W = left + pos.at(-1) + 40;
+  const t0 = times[0], t1 = times.at(-1);
+  const x = (t) => {
+    let i = times.findIndex((v) => v >= t);
+    if (i <= 0) return left + 16 + (i === 0 ? 0 : pos.at(-1) * scale);
+    const f = (t - times[i - 1]) / (times[i] - times[i - 1]);
+    return left + 16 + (pos[i - 1] + f * (pos[i] - pos[i - 1])) * scale;
+  };
+  const maxSats = Math.max(...ev.map((e) => e.sats), 1);
+  const r = (s) => 4 + 9 * Math.sqrt(s / maxSats);
+  for (const l of Object.keys(laneY)) {
+    out += `<line class="lane" x1="${left}" x2="${W - 10}" y1="${laneY[l]}" y2="${laneY[l]}"/><text x="18" y="${laneY[l] + 4}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`;
+  }
+  for (let y = new Date(t0 * 1000).getUTCFullYear() + 1; Date.UTC(y, 0, 1) / 1000 <= t1; y++) {
+    const xx = x(Date.UTC(y, 0, 1) / 1000);
+    out += `<line class="lane" x1="${xx}" x2="${xx}" y1="10" y2="${H - 24}" stroke-dasharray="2 4"/><text x="${xx + 3}" y="${H - 8}">${y}</text>`;
+  }
+  // Transfers: a straight vertical connector at the moment the coins left,
+  // from the sending lane to the receiving lane, with a hollow end on each.
+  if ($("#show-transfers").checked) {
+    for (const e of ev.filter((e) => e.kind === "transfer" && e.to && laneY[e.to] != null)) {
+      const xx = x(e.t), y1 = laneY[e.account], y2 = laneY[e.to], w = 1 + 4 * Math.sqrt(e.sats / maxSats), rr = Math.max(3, r(e.sats) * 0.6);
+      const tip = `${btc(e.sats)} BTC ${esc(e.account)} → ${esc(e.to)} on ${day(e.t)}`;
+      out += `<line class="link" data-key="${esc(e.key)}" x1="${xx}" y1="${y1}" x2="${xx}" y2="${y2}" stroke-width="${w}"><title>${tip}</title></line>`
+        + `<circle class="link-end" data-key="${esc(e.key)}" cx="${xx}" cy="${y1}" r="${rr}"><title>${tip}</title></circle>`
+        + `<circle class="link-end" data-key="${esc(e.key)}" cx="${xx}" cy="${y2}" r="${rr}"><title>${tip}</title></circle>`;
+    }
+  }
+  for (const e of ev.filter((e) => e.kind !== "transfer" && laneY[e.account] != null)) {
+    out += `<circle class="dot ${esc(e.kind)}" data-key="${esc(e.key)}" cx="${x(e.t)}" cy="${laneY[e.account]}" r="${r(e.sats)}"><title>${esc(KIND_NAMES[e.kind] || e.kind)} ${btc(e.sats)} BTC, ${esc(e.account)}, ${day(e.t)}</title></circle>`;
+  }
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = out;
+  if (selected && ev.some((e) => e.key === selected)) selectEvent(selected); else { selected = null; $("#graph-detail").hidden = true; }
+}
+
+// The likely route coins took between two accounts: a chain of transfers,
+// each later than the last, from where they were acquired to where they
+// were sold. Used only to highlight the path; basis comes from the engine.
+function route(from, t0, to, t1) {
+  const ts = (report.graph || []).filter((e) => e.kind === "transfer" && e.to && e.t >= t0 && e.t <= t1);
+  const walk = (acct, t, seen) => {
+    if (acct === to) return [];
+    if (seen.size > 6) return null;
+    for (const e of ts) {
+      if (e.account !== acct || e.t < t || seen.has(e.to)) continue;
+      const rest = walk(e.to, e.t, new Set([...seen, e.to]));
+      if (rest) return [e, ...rest];
+    }
+    return null;
+  };
+  return walk(from, t0, new Set([from])) || [];
+}
+const tsec = (iso) => Math.floor(new Date(iso).getTime() / 1000);
+const routeText = (from, hops) => hops.length ? `<div class="small muted">Route: ${[from, ...hops.map((h) => h.to)].map(esc).join(" → ")}</div>` : "";
+
+const when = (t) => new Date(t * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+const pickKey = (k) => `<button class="link" data-pick="${esc(k)}">`;
+
+// The transaction view: what happened, plus where the coins came from
+// (sales, spends, gifts) or where they went (buys, income, gifts received).
+function selectEvent(key) {
+  const e = (report.graph || []).find((g) => g.key === key);
+  const box = $("#graph-detail");
+  $$("#flow .hl, #flow .dim, #flow .sel").forEach((n) => n.classList.remove("hl", "dim", "sel"));
+  if (!e) { box.hidden = true; selected = null; return; }
+  selected = key;
+  const disposals = report.disposals || [], removals = report.removals || [], open = report.openLots || [];
+  const related = new Set([key]);
+  const byKey = Object.fromEntries((report.graph || []).map((g) => [g.key, g]));
+  const via = (hops) => { hops.forEach((h) => related.add(h.key)); return hops; };
+  const rows = [["When", when(e.t)], ["Account", esc(e.account) + (e.to ? ` → ${esc(e.to)}` : "")], ["Amount", `${btc(e.sats)} BTC`]];
+  if (e.cents) rows.push([e.kind === "sell" || e.kind === "sold" ? "Proceeds" : e.kind === "buy" ? "Cost" : "Value", usd(e.cents) + (e.sats ? ` <span class="muted small">(${usd(Math.round(e.cents * 1e8 / e.sats))}/BTC)</span>` : "")]);
+  if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
+  if (e.feeSats) rows.push(["Network fee", `${btc(e.feeSats)} BTC`]);
+  if (e.method) rows.push(["Matched by", esc(e.method)]);
+  if (e.txid) rows.push(["Transaction", `<span class="mono small">${esc(e.txid)}</span>`]);
+  if (e.address) rows.push(["Address", `<span class="mono small">${esc(e.address)}</span>`]);
+  if (e.note) rows.push(["Note", esc(e.note)]);
+
+  let trace = "";
+  const fromLots = disposals.filter((d) => d.OpID === key);
+  const fromGifts = removals.filter((d) => d.OpID === key);
+  if (fromLots.length || fromGifts.length) {
+    trace = `<b>Came from</b>` + [...fromLots, ...fromGifts].map((d) => {
+      related.add(d.OriginID);
+      if (d.Missing) return `<div class="warn">${btc(d.Sats)} BTC with no known purchase</div>`;
+      const gain = d.Proceeds != null ? `, gain ${signed(d.Proceeds - d.Basis)} (${d.LongTerm ? "long" : "short"} term)` : "";
+      const o = byKey[d.OriginID], hops = o ? via(route(o.account, o.t, e.account, e.t)) : [];
+      return `<div>${btc(d.Sats)} BTC ${pickKey(d.OriginID)}acquired ${day(d.Acquired)}</button>${o ? ` on ${esc(o.account)}` : ""}, basis ${usd(d.Basis)}${gain}${routeText(o?.account, hops)}</div>`;
+    }).join("");
+  }
+  const sold = disposals.filter((d) => d.OriginID === key), gone = removals.filter((d) => d.OriginID === key), held = open.filter((l) => l.OriginID === key);
+  if (sold.length || gone.length || held.length) {
+    trace += `<b>Where these coins went</b>`
+      + sold.map((d) => { related.add(d.OpID); const hops = via(route(e.account, e.t, d.Account, tsec(d.Disposed)));
+        return `<div>${btc(d.Sats)} BTC ${pickKey(d.OpID)}sold ${day(d.Disposed)}</button> from ${esc(d.Account)}, gain ${signed(d.Proceeds - d.Basis)}${routeText(e.account, hops)}</div>`; }).join("")
+      + gone.map((d) => { related.add(d.OpID); const hops = via(route(e.account, e.t, d.Account, tsec(d.Removed)));
+        return `<div>${btc(d.Sats)} BTC ${pickKey(d.OpID)}left ${day(d.Removed)}</button> from ${esc(d.Account)} (gift, donation or loss)${routeText(e.account, hops)}</div>`; }).join("")
+      + held.map((l) => { const hops = l.Account ? via(route(e.account, e.t, l.Account, Infinity)) : [];
+        return `<div>${btc(l.Sats)} BTC still held in ${l.Account ? esc(l.Account) : "the pre-2025 pool"}, basis ${usd(l.Basis)}${routeText(e.account, hops)}</div>`; }).join("");
+  }
+  if (e.kind === "transfer") trace += `<b>Moved between your accounts</b><div>${esc(e.account)} → ${esc(e.to)}. Not taxable; cost basis moves with the coins${e.feeSats ? ", and the network fee is handled per your Settings" : ""}.</div>`;
+  if (e.kind === "unmatched") trace += `<b>Not traced yet</b><div>This left or entered a tracked account and couldn't be matched. <a href="#review">Label it in Review</a>.</div>`;
+  if (!trace) trace = `<span class="muted">Nothing further to trace.</span>`;
+
+  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <button class="link small" id="detail-close">close</button></h3>
+    <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div>`;
+  box.hidden = false;
+  const nodes = $$("#flow [data-key]");
+  nodes.forEach((n) => n.classList.toggle("dim", !related.has(n.dataset.key)));
+  nodes.filter((n) => related.has(n.dataset.key)).forEach((n) => n.classList.add(n.dataset.key === key ? "sel" : "hl"));
 }
 $("#flow").addEventListener("click", (e) => {
   const key = e.target.dataset?.key;
-  $$("#flow .hl, #flow .dim").forEach((n) => n.classList.remove("hl", "dim"));
-  const box = $("#graph-detail");
-  if (!key) { box.hidden = true; return; }
-  const ds = (report.disposals || []).filter((d) => d.OpID === key);
-  const it = (report.unmatched || []).find((u) => u.Key === key);
-  if (it) { location.hash = "review"; return; }
-  if (!ds.length) { box.hidden = true; return; }
-  const origins = new Set(ds.map((d) => "ex:" + d.OriginID.replace(/^ex:/, "")).concat(ds.map((d) => d.OriginID)));
-  $$("#flow .dot").forEach((n) => n.classList.toggle("dim", !(origins.has(n.dataset.key) || n.dataset.key === key)));
-  $$("#flow .dot").filter((n) => origins.has(n.dataset.key) || n.dataset.key === key).forEach((n) => n.classList.add("hl"));
-  box.hidden = false;
-  box.innerHTML = `<b>Sale on ${day(ds[0].Disposed)}</b> came from:<br>` + ds.map((d) => d.Missing
-    ? `<span class="warn">${btc(d.Sats)} BTC with no known purchase</span>`
-    : `${btc(d.Sats)} BTC bought ${day(d.Acquired)} (basis ${usd(d.Basis)}, ${d.LongTerm ? "long" : "short"} term, gain ${usd(d.Proceeds - d.Basis)})`).join("<br>");
+  if (key) selectEvent(key); else { selected = null; selectEvent(null); }
+});
+$("#graph-detail").addEventListener("click", (e) => {
+  if (e.target.id === "detail-close") { selected = null; selectEvent(null); return; }
+  const k = e.target.closest("[data-pick]")?.dataset.pick;
+  if (k) {
+    if (!(report.graph || []).some((g) => g.key === k)) { toast("That record isn't on the chart."); return; }
+    selectEvent(k);
+    $(`#flow [data-key="${CSS.escape(k)}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
+  }
 });
 window.addEventListener("resize", () => { if ($("#graph").classList.contains("on")) drawGraph(); });
 
@@ -364,6 +523,7 @@ $("#settings-form").addEventListener("submit", async (e) => {
   try {
     await post("/api/settings", Object.fromEntries(new FormData(e.target)));
     toast("Saved");
+    checkFulcrum(true);
     loadSettings();
     refresh();
   } catch (err) { toast(err.message); }
@@ -405,3 +565,4 @@ $("#wipe-btn").addEventListener("click", async () => {
 show(location.hash.slice(1) || "overview");
 loadSettings();
 refresh();
+checkFulcrum();

@@ -9,18 +9,29 @@
 <script src="app.js" defer></script>
 </head>
 <body>
-<header>
-  <h1>BTC Tax</h1>
+<aside id="sidebar" aria-label="Navigation">
+  <div class="brand">
+    <button id="menu-btn" aria-label="Collapse menu" aria-expanded="true" title="Collapse or expand the menu">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+    </button>
+    <h1 class="lbl">BTC Tax</h1>
+  </div>
   <nav id="tabs">
-    <button data-tab="overview" class="on">Overview</button>
-    <button data-tab="wallets">Wallets</button>
-    <button data-tab="imports">Imports</button>
-    <button data-tab="review">Review <span id="review-count" class="pill" hidden></span></button>
-    <button data-tab="graph">Flow</button>
-    <button data-tab="taxes">Taxes</button>
-    <button data-tab="settings">Settings</button>
+    <button data-tab="overview" class="on" title="Overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg><span class="lbl">Overview</span></button>
+    <button data-tab="wallets" title="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
+    <button data-tab="imports" title="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
+    <button data-tab="review" title="Review"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg><span class="lbl">Review</span> <span id="review-count" class="pill" hidden></span></button>
+    <button data-tab="graph" title="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
+    <button data-tab="taxes" title="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
+    <button data-tab="settings" title="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
   </nav>
-</header>
+  <button id="fulcrum-status" class="fulcrum-status" title="Fulcrum: checking…">
+    <span class="status-dot" id="fulcrum-dot"></span>
+    <span class="lbl"><b>Fulcrum</b><br><span id="fulcrum-line" class="small muted">checking…</span></span>
+  </button>
+</aside>
+<div id="page">
+<header><span id="tab-title"></span></header>
 <main>
   <div id="toast" role="status" hidden></div>
 
@@ -28,6 +39,7 @@
     <div id="setup-hint" class="card hint" hidden>
       Start by connecting your Fulcrum server in <a href="#settings">Settings</a>, then add your wallets.
     </div>
+    <div class="row"><label class="inline">Tax year <select id="year-select"></select></label></div>
     <div class="tiles" id="tiles"></div>
     <h2>Accounts</h2>
     <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th></tr></thead><tbody></tbody></table></div>
@@ -87,16 +99,16 @@
   <section id="review" class="tab">
     <h2>Needs a label</h2>
     <p class="small muted">These moved BTC in or out of your tracked accounts and could not be matched to another of your accounts. Say what each one was.</p>
-    <div class="scroll"><table id="review-table"><thead><tr><th>Date</th><th>Account</th><th>Direction</th><th class="num">BTC</th><th>Details</th><th>What was it?</th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll"><table id="review-table"><thead><tr><th>Date</th><th>Account</th><th>Direction</th><th class="num">BTC</th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
     <h2>Matched transfers</h2>
     <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th>How</th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section id="graph" class="tab">
-    <div class="row"><h2>Flow of funds</h2><span class="small muted">Click a sale to see which buys it came from.</span></div>
-    <div id="legend" class="row small"></div>
+    <div class="row"><h2>Flow of funds</h2><span class="small muted">Dot size is the amount. Click any dot to open that transaction and trace it.</span></div>
+    <div class="row small"><div id="legend" class="row"></div><label class="inline check"><input type="checkbox" id="show-transfers" checked> Show transfers</label></div>
     <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg></div>
-    <div id="graph-detail" class="card small" hidden></div>
+    <div id="graph-detail" class="card" hidden></div>
   </section>
 
   <section id="taxes" class="tab">
@@ -134,5 +146,6 @@
     </div>
   </section>
 </main>
+</div>
 </body>
 </html>

@@ -3,6 +3,7 @@ package app
 import (
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"btctax/internal/importers"
@@ -37,16 +38,25 @@ type GraphEvent struct {
 	Key     string `json:"key"`
 	Account string `json:"account"`
 	Time    int64  `json:"t"`
-	Kind    string `json:"kind"` // buy sell income in out spend gift transfer unmatched
+	Kind    string `json:"kind"` // buy sell income transfer unmatched, or a label category
 	Sats    int64  `json:"sats"`
 	To      string `json:"to,omitempty"`
 	ToKey   string `json:"toKey,omitempty"`
+	// Details for the transaction view.
+	Cents    int64  `json:"cents,omitempty"` // USD paid, received or labeled
+	FeeCents int64  `json:"feeCents,omitempty"`
+	FeeSats  int64  `json:"feeSats,omitempty"`
+	Txid     string `json:"txid,omitempty"`
+	Address  string `json:"address,omitempty"`
+	Note     string `json:"note,omitempty"`
+	Method   string `json:"method,omitempty"` // how a transfer was matched
 }
 
 type Report struct {
 	Accounts   []AccountView     `json:"accounts"`
 	Years      []YearSummary     `json:"years"`
 	Disposals  []lots.Disposal   `json:"disposals"`
+	OpenLots   []lots.Lot        `json:"openLots"`
 	Removals   []lots.Removal    `json:"removals"`
 	Income     []trace.IncomeRow `json:"income"`
 	Unmatched  []trace.Item      `json:"unmatched"`
@@ -94,7 +104,7 @@ func (s *Server) buildReport() (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Report{Disposals: res.Disposals, Removals: res.Removals, Income: tr.Income, Unmatched: tr.Unmatched,
+	r := &Report{Disposals: res.Disposals, OpenLots: res.Open, Removals: res.Removals, Income: tr.Income, Unmatched: tr.Unmatched,
 		Links: tr.Links, Warnings: tr.Warnings, Settings: set}
 	for _, w := range res.Warnings {
 		r.Warnings = append(r.Warnings, w.OpID+": "+w.Message)
@@ -202,6 +212,9 @@ func (r *Report) fillNil() {
 	if r.Disposals == nil {
 		r.Disposals = []lots.Disposal{}
 	}
+	if r.OpenLots == nil {
+		r.OpenLots = []lots.Lot{}
+	}
 	if r.Removals == nil {
 		r.Removals = []lots.Removal{}
 	}
@@ -236,28 +249,61 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) 
 		default:
 			continue
 		}
-		g = append(g, GraphEvent{Key: "ex:" + e.ID, Account: e.Account, Time: e.Time.Unix(), Kind: k, Sats: e.Sats})
+		g = append(g, GraphEvent{Key: "ex:" + e.ID, Account: e.Account, Time: e.Time.Unix(), Kind: k, Sats: e.Sats,
+			Cents: e.FiatCents, FeeCents: e.FeeCents, Txid: e.Txid, Address: e.Address, Note: e.Note})
 	}
 	for _, l := range tr.Links {
 		f, t := tr.Items[l.From], tr.Items[l.To]
-		g = append(g, GraphEvent{Key: l.From, Account: f.Account, Time: f.Time.Unix(), Kind: "transfer", Sats: t.Sats, To: t.Account, ToKey: l.To})
+		txid := f.Txid
+		if txid == "" {
+			txid = t.Txid
+		}
+		addr := t.Address
+		if addr == "" {
+			addr = f.Address
+		}
+		fee := f.Sats + f.FeeSats - t.Sats
+		if f.FeeSats > 0 && t.Sats == f.Sats-f.FeeSats {
+			fee = f.FeeSats
+		}
+		g = append(g, GraphEvent{Key: l.From, Account: f.Account, Time: f.Time.Unix(), Kind: "transfer", Sats: t.Sats, To: t.Account, ToKey: l.To,
+			FeeSats: max(fee, 0), Txid: txid, Address: addr, Note: f.Note, Method: l.Method})
 	}
 	for _, op := range tr.Ops {
 		if op.Kind == lots.Transfer && op.Account != op.To && tr.Items[op.ID].Key == "" && op.To != "" && !containsGT(op.ID) {
-			g = append(g, GraphEvent{Key: op.ID, Account: op.Account, Time: op.Time.Unix(), Kind: "transfer", Sats: op.Sats, To: op.To})
+			ev := GraphEvent{Key: op.ID, Account: op.Account, Time: op.Time.Unix(), Kind: "transfer", Sats: op.Sats, To: op.To,
+				FeeSats: op.FeeSats, Method: "same transaction"}
+			if p := strings.Split(op.ID, ":"); len(p) >= 3 && p[0] == "tx" {
+				ev.Txid = p[1]
+			}
+			g = append(g, ev)
 		}
+	}
+	item := func(it trace.Item, kind string) GraphEvent {
+		return GraphEvent{Key: it.Key, Account: it.Account, Time: it.Time.Unix(), Kind: kind, Sats: it.Sats,
+			FeeSats: it.FeeSats, Txid: it.Txid, Address: it.Address, Note: it.Note}
 	}
 	unmatched := map[string]bool{}
 	for _, it := range tr.Unmatched {
 		unmatched[it.Key] = true
-		g = append(g, GraphEvent{Key: it.Key, Account: it.Account, Time: it.Time.Unix(), Kind: "unmatched", Sats: it.Sats})
+		g = append(g, item(it, "unmatched"))
 	}
 	for k, l := range labels {
 		it, ok := tr.Items[k]
 		if !ok || unmatched[k] || l.Category == trace.SelfLink {
 			continue
 		}
-		g = append(g, GraphEvent{Key: k, Account: it.Account, Time: it.Time.Unix(), Kind: string(l.Category), Sats: it.Sats})
+		ev := item(it, string(l.Category))
+		ev.Cents = l.FiatCents
+		if l.Note != "" {
+			ev.Note = l.Note
+		}
+		if l.Category == trace.Untracked {
+			if it.Dir == trace.Out {
+				ev.To = "untracked"
+			}
+		}
+		g = append(g, ev)
 	}
 	sort.Slice(g, func(i, j int) bool { return g[i].Time < g[j].Time })
 	return g

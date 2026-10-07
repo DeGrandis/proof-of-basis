@@ -36,6 +36,17 @@ type Server struct {
 	password string
 	scanMu   sync.Mutex
 	bundled  map[string]int64
+
+	statusMu sync.Mutex
+	status   fulcrumStatus
+}
+
+type fulcrumStatus struct {
+	OK      bool      `json:"ok"`
+	Height  int64     `json:"height,omitempty"`
+	Error   string    `json:"error,omitempty"`
+	Checked time.Time `json:"checked"`
+	host    string
 }
 
 func New(st *store.Store, static fs.FS, password string) *Server {
@@ -69,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("POST /api/settings", s.postSettings)
 	mux.HandleFunc("POST /api/fulcrum/test", s.testFulcrum)
+	mux.HandleFunc("GET /api/fulcrum/status", s.fulcrumStatus)
 	mux.HandleFunc("POST /api/wallets/preview", s.previewWallet)
 	mux.HandleFunc("POST /api/wallets", s.addWallet)
 	mux.HandleFunc("POST /api/wallets/{id}/scan", s.scanWallet)
@@ -219,6 +231,34 @@ func (s *Server) testFulcrum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"height": tip.Height, "cert": c.CertSHA256})
+}
+
+// fulcrumStatus reports whether the Fulcrum server answers, for the status
+// dot in the menu. Results are reused for 30 seconds so polling from
+// several tabs does not hammer the server.
+func (s *Server) fulcrumStatus(w http.ResponseWriter, r *http.Request) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	host := s.st.Setting("fulcrumHost", "") + ":" + s.st.Setting("fulcrumPort", "") + ":" + s.st.Setting("fulcrumTLS", "")
+	if s.status.host == host && time.Since(s.status.Checked) < 30*time.Second && r.URL.Query().Get("fresh") == "" {
+		writeJSON(w, s.status)
+		return
+	}
+	st := fulcrumStatus{Checked: time.Now().UTC(), host: host}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if c, err := s.dial(ctx); err != nil {
+		st.Error = err.Error()
+	} else {
+		if tip, err := c.Tip(); err != nil {
+			st.Error = err.Error()
+		} else {
+			st.OK, st.Height = true, tip.Height
+		}
+		c.Close()
+	}
+	s.status = st
+	writeJSON(w, st)
 }
 
 type walletIn struct {

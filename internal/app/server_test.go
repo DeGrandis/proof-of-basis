@@ -120,3 +120,15 @@ func TestImportStatusCodes(t *testing.T) {
 		t.Errorf("unknown format: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestFulcrumStatusNotSetUp(t *testing.T) {
+	_, h := newTest(t)
+	var st struct {
+		OK    bool
+		Error string
+	}
+	json.Unmarshal(call(h, "GET", "/api/fulcrum/status", "").Body.Bytes(), &st)
+	if st.OK || !strings.Contains(st.Error, "address first") {
+		t.Errorf("%+v", st)
+	}
+}
