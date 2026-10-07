@@ -321,3 +321,36 @@ func TestTransferFeeValued(t *testing.T) {
 		t.Errorf("no transfer to hot: %+v", r.Ops)
 	}
 }
+
+func TestNetworkAndValue(t *testing.T) {
+	ex := []ExEvent{
+		{"1", "strike", importers.Event{Kind: importers.Withdrawal, Time: at("2024-01-10T00:00:00Z"), Sats: 10_000, Address: "lnbc100n1synthetic"}},
+		{"2", "strike", importers.Event{Kind: importers.Withdrawal, Time: at("2024-01-11T00:00:00Z"), Sats: 20_000, Address: "bc1qsynthetic"}},
+		{"3", "fold", importers.Event{Kind: importers.Withdrawal, Time: at("2024-01-12T00:00:00Z"), Sats: 30_000, Note: "Lightning withdrawal"}},
+		{"4", "fold", importers.Event{Kind: importers.Withdrawal, Time: at("2024-01-13T00:00:00Z"), Sats: 40_000}},
+	}
+	r := Build(ex, nil, nil, Options{Price: func(time.Time) (int64, bool) { return 50_000_00, true }})
+	want := map[string]string{"ex:1": "lightning", "ex:2": "onchain", "ex:3": "lightning", "ex:4": ""}
+	for _, it := range r.Unmatched {
+		if it.Network != want[it.Key] {
+			t.Errorf("%s: network %q, want %q", it.Key, it.Network, want[it.Key])
+		}
+		if it.Value != it.Sats*50_000_00/100_000_000 {
+			t.Errorf("%s: value %d", it.Key, it.Value)
+		}
+	}
+}
+
+// Selling to a person without entering proceeds uses that day's price.
+func TestSoldDefaultsToMarketValue(t *testing.T) {
+	ex := []ExEvent{
+		{"1", "x", importers.Event{Kind: importers.Buy, Time: at("2024-01-01T00:00:00Z"), Sats: 100_000, FiatCents: 40_00}},
+		{"2", "x", importers.Event{Kind: importers.Withdrawal, Time: at("2024-02-01T00:00:00Z"), Sats: 100_000, Address: "a"}},
+	}
+	r := Build(ex, nil, map[string]Label{"ex:2": {Key: "ex:2", Category: Sold}}, Options{Price: func(time.Time) (int64, bool) { return 60_000_00, true }})
+	for _, op := range r.Ops {
+		if op.ID == "ex:2" && (op.Kind != lots.Dispose || op.Cents != 60_00) {
+			t.Errorf("%+v", op)
+		}
+	}
+}

@@ -128,6 +128,12 @@ func (w *world) play() {
 				}
 			}
 		}
+		// Lightning payments straight from Strike, left for the Review queue.
+		if week%9 == 4 && t.Year() >= 2023 && w.bal[strike] > 60_000 {
+			sats := 5_000 + w.rnd.Int63n(45_000)
+			w.event(strike, importers.Event{Kind: importers.Withdrawal, Time: t.Add(20 * time.Hour), Sats: sats, FeeSats: 1 + w.rnd.Int63n(20),
+				Address: fmt.Sprintf("lnbc%dn1demo%06d", sats/100, w.n), Note: "Lightning payment"})
+		}
 		// Everyday spending from the hot wallet and the spending wallet.
 		if week%3 == 1 {
 			w.pay(t.Add(30*time.Hour), []string{hot}, 20_000+w.rnd.Int63n(80_000))

@@ -6,6 +6,7 @@ package trace
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"btctax/internal/importers"
@@ -46,6 +47,26 @@ type Item struct {
 	Txid    string
 	Kind    string // importer kind for exchange items
 	Note    string
+	Network string // "onchain", "lightning", or "" when the record doesn't say
+	Value   int64  // market value in USD cents at the day's price, 0 if unknown
+}
+
+// network guesses how an exchange record moved: Lightning invoices and
+// addresses, or an on-chain txid or address.
+func network(it Item) string {
+	a := strings.ToLower(strings.TrimSpace(it.Address))
+	n := strings.ToLower(it.Note + " " + it.Kind)
+	switch {
+	case it.Source == "chain":
+		return "onchain"
+	case strings.HasPrefix(a, "lnbc"), strings.HasPrefix(a, "lntb"), strings.HasPrefix(a, "lnurl"), strings.HasPrefix(a, "lightning:"),
+		strings.Contains(a, "@"), strings.Contains(n, "lightning"):
+		return "lightning"
+	case it.Txid != "", strings.HasPrefix(a, "bc1"), strings.HasPrefix(a, "tb1"), strings.HasPrefix(a, "bcrt1"),
+		strings.HasPrefix(a, "1"), strings.HasPrefix(a, "3"), strings.Contains(n, "on-chain"), strings.Contains(n, "onchain"):
+		return "onchain"
+	}
+	return ""
 }
 
 type Link struct {
@@ -152,6 +173,13 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 			}
 			b.res.Items[key] = it
 		}
+	}
+	for k, it := range b.res.Items {
+		it.Network = network(it)
+		if p, ok := opt.Price(it.Time); ok {
+			it.Value = mulDiv(p, it.Sats, 100_000_000)
+		}
+		b.res.Items[k] = it
 	}
 	// Manual links first: the user's word beats any heuristic.
 	for _, l := range labels {
@@ -498,7 +526,8 @@ func (b *builder) applyLabel(it Item, l Label) {
 		case Spend:
 			op.Kind, op.Cents = lots.Dispose, b.fmv(it.Key, it.Time, it.Sats, l.FiatCents)
 		case Sold:
-			op.Kind, op.Cents = lots.Dispose, l.FiatCents
+			// Proceeds are what the buyer paid when given, else market value.
+			op.Kind, op.Cents = lots.Dispose, b.fmv(it.Key, it.Time, it.Sats, l.FiatCents)
 		case Gift, Donation, Lost:
 			op.Kind = lots.Remove
 		case Untracked, SelfTransfer:

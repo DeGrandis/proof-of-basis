@@ -178,3 +178,27 @@ func TestDemoReport(t *testing.T) {
 		}
 	}
 }
+
+func TestHistoryAndFreshness(t *testing.T) {
+	st, h := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	if len(rep.History) < 300 {
+		t.Fatalf("%d history points", len(rep.History))
+	}
+	if last := rep.History[len(rep.History)-1]; last.Sats != rep.Holdings {
+		t.Errorf("history ends at %d sats, holdings %d", last.Sats, rep.Holdings)
+	}
+	var fresh []struct {
+		Account string
+		Last    string
+		Days    int
+	}
+	json.Unmarshal(call(h, "GET", "/api/imports/freshness", "").Body.Bytes(), &fresh)
+	if len(fresh) != 3 {
+		t.Errorf("%+v", fresh)
+	}
+}

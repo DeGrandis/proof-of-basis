@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -87,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
 	mux.HandleFunc("GET /api/handlers", s.listHandlers)
 	mux.HandleFunc("GET /api/imports", s.listImports)
+	mux.HandleFunc("GET /api/imports/freshness", s.importFreshness)
 	mux.HandleFunc("POST /api/imports", s.postImport)
 	mux.HandleFunc("DELETE /api/imports/{id}", s.deleteImport)
 	mux.HandleFunc("GET /api/report", s.getReport)
@@ -493,6 +495,33 @@ func (s *Server) listImports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, im)
+}
+
+// importFreshness gives, for each exchange account, the date of its newest
+// imported row, so the UI can suggest downloading a fresh export.
+func (s *Server) importFreshness(w http.ResponseWriter, r *http.Request) {
+	ex, err := s.st.ExchangeEvents()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	last := map[string]time.Time{}
+	for _, e := range ex {
+		if e.Time.After(last[e.Account]) {
+			last[e.Account] = e.Time
+		}
+	}
+	type row struct {
+		Account string `json:"account"`
+		Last    string `json:"last"`
+		Days    int    `json:"days"`
+	}
+	out := []row{}
+	for a, t := range last {
+		out = append(out, row{a, t.UTC().Format("2006-01-02"), int(time.Since(t).Hours() / 24)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Days > out[j].Days })
+	writeJSON(w, out)
 }
 
 func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {

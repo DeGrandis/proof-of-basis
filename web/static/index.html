@@ -41,6 +41,8 @@
     </div>
     <div class="row"><label class="inline">Tax year <select id="year-select"></select></label></div>
     <div class="tiles" id="tiles"></div>
+    <div class="card chart-card"><div class="row"><b>BTC held over time</b><span class="small muted">with the BTC price below it on the same timeline. Hover to read both.</span></div>
+      <div id="history-wrap"><svg id="history" role="img" aria-label="Total BTC held over time, and the BTC price in USD"></svg><div id="history-tip" class="chart-tip" hidden></div></div></div>
     <h2>Accounts</h2>
     <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th></tr></thead><tbody></tbody></table></div>
     <div id="warnings"></div>
@@ -72,6 +74,7 @@
   </section>
 
   <section id="imports" class="tab">
+    <div id="freshness"></div>
     <h2>Import exchange CSVs</h2>
     <div id="drop" class="card drop" tabindex="0" role="button" aria-label="Drop CSV files here or click to choose">
       <b>Drop CSV exports here</b> <span class="muted">or click to choose. Several at once is fine: each file's platform is detected, and you'll be asked about any it can't recognise.</span>
@@ -99,7 +102,7 @@
   <section id="review" class="tab">
     <h2>Needs a label</h2>
     <p class="small muted">These moved BTC in or out of your tracked accounts and could not be matched to another of your accounts. Say what each one was.</p>
-    <div class="scroll"><table id="review-table"><thead><tr><th>Date</th><th>Account</th><th>Direction</th><th class="num">BTC</th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll"><table id="review-table"><thead><tr><th><button class="sort" data-sort="date">Date</button></th><th><button class="sort" data-sort="account">Account</button></th><th><button class="sort" data-sort="type">Type</button></th><th class="num"><button class="sort" data-sort="amount">BTC</button></th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
     <h2>Matched transfers</h2>
     <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th>How</th></tr></thead><tbody></tbody></table></div>
   </section>
@@ -114,9 +117,9 @@
     </div>
     <div class="graph-area">
       <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg></div>
-      <aside id="graph-detail" class="card" hidden></aside>
     </div>
-    <div class="small muted">Scroll to zoom, drag to pan, click a dot to open it and zoom to everything it traces to. Dot size is the amount.</div>
+    <div class="small muted">Scroll to zoom, drag to pan, click a dot to open it below and zoom to everything it traces to. Dot size is the amount.</div>
+    <section id="graph-detail" class="card" hidden></section>
   </section>
 
   <section id="taxes" class="tab">

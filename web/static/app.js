@@ -32,6 +32,7 @@ function show(tab) {
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
   document.body.classList.toggle("flow", tab === "graph");
+  if (tab === "overview" && report) drawHistory();
   if (tab === "graph") drawGraph();
 }
 // Sidebar: open by default (collapsed to icons on narrow screens); the
@@ -112,7 +113,59 @@ function renderOverview() {
   $("#review-count").hidden = !n;
   $("#review-count").textContent = n;
   $("#setup-hint").hidden = !!r.settings.fulcrumHost;
+  drawHistory();
 }
+
+// BTC held over time, with the BTC price in a second panel on the same
+// time axis (two scales never share one axis). Hover reads both.
+function drawHistory() {
+  const svg = $("#history"), pts = report.history || [];
+  if (pts.length < 2) { svg.setAttribute("height", 40); svg.innerHTML = `<text x="8" y="24">Nothing to chart yet.</text>`; return; }
+  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, top1 = 18, h1 = 150, top2 = top1 + h1 + 34, h2 = 90, H = top2 + h2 + 24;
+  const t0 = pts[0].t, t1 = pts.at(-1).t;
+  const x = (t) => L + ((t - t0) / Math.max(t1 - t0, 1)) * (W - L - R);
+  const maxS = Math.max(...pts.map((p) => p.sats), 1);
+  const priced = pts.filter((p) => p.price > 0);
+  const maxP = Math.max(...priced.map((p) => p.price), 1);
+  const y1 = (s) => top1 + h1 - (s / maxS) * h1, y2 = (c) => top2 + h2 - (c / maxP) * h2;
+  const nice = (m) => { const e = Math.pow(10, Math.floor(Math.log10(m)) - 1); return [1, 2, 2.5, 5, 10, 20, 25, 50, 100].map((k) => k * e).find((s) => m / s <= 5); };
+  let g = "";
+  const sStep = nice(maxS / 1e8) * 1e8;
+  for (let s = 0; s <= maxS * 1.001; s += sStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y1(s)}" y2="${y1(s)}"/><text x="${L - 6}" y="${y1(s) + 4}" text-anchor="end">${+(s / 1e8).toFixed(4)}</text>`;
+  const pStep = nice(maxP / 100) * 100;
+  for (let c = 0; c <= maxP * 1.001; c += pStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y2(c)}" y2="${y2(c)}"/><text x="${L - 6}" y="${y2(c) + 4}" text-anchor="end">$${c >= 100000 ? Math.round(c / 100000) + "k" : Math.round(c / 100)}</text>`;
+  for (let yr = new Date(t0 * 1000).getUTCFullYear() + 1; Date.UTC(yr, 0, 1) / 1000 <= t1; yr++) {
+    const xx = x(Date.UTC(yr, 0, 1) / 1000);
+    g += `<text x="${xx}" y="${H - 6}" text-anchor="middle">${yr}</text>`;
+  }
+  const line = (arr, fx, fy) => arr.map((p, i) => `${i ? "L" : "M"}${fx(p).toFixed(1)},${fy(p).toFixed(1)}`).join("");
+  const btcLine = line(pts, (p) => x(p.t), (p) => y1(p.sats));
+  g += `<path class="area" d="${btcLine}L${x(t1)},${top1 + h1}L${x(t0)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
+  if (priced.length > 1) g += `<path class="px" d="${line(priced, (p) => x(p.t), (p) => y2(p.price))}"/>`;
+  g += `<text class="title" x="${L}" y="${top1 - 6}">BTC held</text><text class="title" x="${L}" y="${top2 - 8}">BTC price (USD)</text>`;
+  g += `<g id="history-cross" visibility="hidden"><line class="cross" y1="${top1}" y2="${top2 + h2}"/><circle class="pt-btc" r="4"/><circle class="pt-px" r="4"/></g>`;
+  g += `<rect x="${L}" y="${top1}" width="${W - L - R}" height="${top2 + h2 - top1}" fill="transparent" id="history-hit"/>`;
+  svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+  const cross = $("#history-cross"), tip = $("#history-tip");
+  $("#history-hit").addEventListener("pointermove", (e) => {
+    const rect = svg.getBoundingClientRect(), mx = e.clientX - rect.left;
+    const t = t0 + ((mx - L) / (W - L - R)) * (t1 - t0);
+    let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k;
+    const p = pts[i], xx = x(p.t);
+    cross.setAttribute("visibility", "visible");
+    $("line", cross).setAttribute("x1", xx); $("line", cross).setAttribute("x2", xx);
+    const [cb, cp] = $$("circle", cross);
+    cb.setAttribute("cx", xx); cb.setAttribute("cy", y1(p.sats));
+    cp.setAttribute("cx", xx); cp.setAttribute("cy", p.price ? y2(p.price) : -20);
+    tip.hidden = false;
+    tip.innerHTML = `<b>${day(p.t)}</b><br>${btc(p.sats)} BTC held${p.price ? `<br>Price ${usd(p.price)}<br>Worth ${usd(Math.round(p.sats * p.price / 1e8))}` : ""}`;
+    const tx = xx + 12 + tip.offsetWidth > W ? xx - 12 - tip.offsetWidth : xx + 12;
+    tip.style.left = tx + "px"; tip.style.top = top1 + "px";
+  });
+  $("#history-hit").addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
+}
+window.addEventListener("resize", () => { if ($("#overview").classList.contains("on") && report) drawHistory(); });
 
 // Wallets
 function renderWallets() {
@@ -162,7 +215,19 @@ $("#wallet-form").addEventListener("submit", async (e) => {
 });
 
 // Imports
+// Suggest a fresh export when a provider's newest imported row is old.
+async function renderFreshness() {
+  const rows = await api("/api/imports/freshness").catch(() => []);
+  const stale = rows.filter((r) => r.days > 30);
+  const age = (d) => (d === 0 ? "today" : d === 1 ? "yesterday" : `${d} days ago`);
+  $("#freshness").innerHTML = !rows.length ? "" : stale.length
+    ? `<div class="card fresh stale"><b>Time for fresh exports?</b>${stale.map((r) => `<div>${esc(r.account)}: newest row is from ${esc(r.last)}, ${age(r.days)}.</div>`).join("")}
+       <div class="small muted">If you've used them since, download a new CSV from each and drop it below. Rows you already have are skipped.</div></div>`
+    : `<p class="small muted">Imports look current: ${rows.map((r) => `${esc(r.account)} (newest row ${age(r.days)})`).join(", ")}.</p>`;
+}
+
 async function renderImports() {
+  renderFreshness();
   const list = await api("/api/imports").catch(() => []);
   $("#imports-table tbody").innerHTML = (list || []).map((i) => `<tr>
     <td>${esc(i.filename)}</td><td>${esc(i.account)}</td><td>${esc(i.handler)}</td><td class="num">${i.rows}</td>
@@ -269,17 +334,39 @@ const OUT_CATS = [["self-transfer", "Self transfer to my own wallet (not added h
   ["sold", "Sold to a person"], ["gift", "Gift sent"], ["donation", "Donation"], ["lost", "Lost or stolen"]];
 const IN_CATS = [["self-transfer", "Self transfer from my own wallet"], ["self", "Self transfer, matches another row…"], ["income", "Income / payment received"],
   ["gift-in", "Gift received"], ["purchase", "Bought from a person"], ["refund", "Refund"], ["untracked", "From an old wallet of mine, enter its basis"]];
-const needsAmount = { spend: "Value (USD)", sold: "Proceeds (USD)", income: "Value (USD)", "gift-in": "Donor's basis (USD)", purchase: "Cost (USD)", refund: "Basis (USD)", untracked: "Basis (USD)" };
+const needsAmount = { "gift-in": "Donor's basis (USD)", purchase: "Cost (USD)", refund: "Basis (USD)", untracked: "Basis (USD)" };
+const MARKET_VALUE = { spend: "Value of what you paid for (USD)", sold: "Amount the buyer paid (USD)", income: "Value received (USD)" };
+
+// How an item moved, as a colored icon with a word beside it.
+const NET_ICON = {
+  onchain: ["On-chain", '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/><path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/></svg>'],
+  lightning: ["Lightning", '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M11.5 1.5 4 11h5l-1 7.5L16 9h-5l.5-7.5z"/></svg>'],
+  unknown: ["Not stated", '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><path d="M8 8a2 2 0 1 1 2.5 2c-.5.2-.5.6-.5 1.2M10 14h.01" stroke-linecap="round"/></svg>'],
+};
+const netBadge = (n) => { const k = NET_ICON[n] ? n : "unknown"; return `<span class="net ${k}" title="${NET_ICON[k][0]}">${NET_ICON[k][1]}</span>`; };
+let reviewSort = { key: "date", dir: 1 };
+$("#review-table thead").addEventListener("click", (e) => {
+  const k = e.target.closest("[data-sort]")?.dataset.sort;
+  if (!k) return;
+  reviewSort = { key: k, dir: reviewSort.key === k ? -reviewSort.dir : 1 };
+  renderReview();
+});
+const reviewKey = { date: (i) => new Date(i.Time).getTime(), account: (i) => i.Account.toLowerCase(), amount: (i) => i.Sats,
+  type: (i) => (i.Network || "zz") + (i.Dir === "out" ? "1" : "0") };
 
 function renderReview() {
-  const items = report.unmatched || [];
+  const items = [...(report.unmatched || [])];
+  const f = reviewKey[reviewSort.key];
+  items.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * reviewSort.dir; });
+  $$("#review-table .sort").forEach((b) => { b.classList.toggle("asc", b.dataset.sort === reviewSort.key && reviewSort.dir > 0); b.classList.toggle("desc", b.dataset.sort === reviewSort.key && reviewSort.dir < 0); });
   $("#review-table tbody").innerHTML = items.map((it) => {
     const cats = it.Dir === "out" ? OUT_CATS : IN_CATS;
-    const detail = [it.Source === "chain" ? "on-chain" : esc(it.Kind), it.Address && `<span class="mono">${esc(it.Address)}</span>`,
+    const detail = [it.Source === "chain" ? "" : esc(it.Kind), it.Address && `<span class="mono">${esc(it.Address)}</span>`,
       it.Txid && `<span class="mono" title="${esc(it.Txid)}">${esc(it.Txid.slice(0, 12))}…</span>`, it.Note && esc(it.Note)].filter(Boolean).join(" · ");
-    return `<tr data-key="${esc(it.Key)}" data-dir="${esc(it.Dir)}">
-      <td>${day(it.Time)}</td><td>${esc(it.Account)}</td><td>${it.Dir === "out" ? "Out" : "In"}</td>
-      <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${btc(it.FeeSats)} fee</div>` : ""}</td>
+    const net = it.Network || "unknown";
+    return `<tr data-key="${esc(it.Key)}" data-dir="${esc(it.Dir)}" data-value="${it.Value || 0}">
+      <td>${day(it.Time)}</td><td>${esc(it.Account)}</td><td><span class="row">${netBadge(net)}<span class="small">${NET_ICON[net]?.[0] || "Not stated"} · ${it.Dir === "out" ? "Out" : "In"}</span></span></td>
+      <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${btc(it.FeeSats)} fee</div>` : ""}${it.Value ? `<div class="small muted">≈ ${usd(it.Value)}</div>` : ""}</td>
       <td class="row"><select class="cat"><option value="">Choose…</option>${cats.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
         <span class="extra"></span><button class="save" hidden>Save</button></td>
       <td class="small">${detail}</td></tr>`;
@@ -296,6 +383,12 @@ $("#review-table").addEventListener("change", (e) => {
     extra.innerHTML = `<select class="cp">${opp.map((i) => `<option value="${esc(i.Key)}">${day(i.Time)} ${esc(i.Account)} ${btc(i.Sats)}</option>`).join("")}</select>`;
   } else if (cat === "self-transfer") {
     extra.innerHTML = `<span class="small muted">${tr.dataset.dir === "out" ? "Keeps its basis and purchase dates while it's away." : "Brings back coins you sent out as a self transfer, with their original basis and dates."}</span>`;
+  } else if (MARKET_VALUE[cat]) {
+    // Sales, payments and income are valued at that day's market price
+    // unless the user knows the actual amount.
+    const v = Number(tr.dataset.value);
+    extra.innerHTML = `<input class="amt" inputmode="decimal" placeholder="${v ? usd(v) : MARKET_VALUE[cat]}" size="11" title="${MARKET_VALUE[cat]}">`
+      + `<span class="small muted hint-line">${v ? `Uses ${usd(v)}, the market value that day. Type the actual amount only if it was different.` : "No price for that day: enter the amount."}</span>`;
   } else if (needsAmount[cat]) {
     extra.innerHTML = `<input class="amt" inputmode="decimal" placeholder="${needsAmount[cat]}" size="12">` +
       (cat === "gift-in" ? ` <input class="acq" type="date" title="Donor's acquisition date">` : "");
@@ -601,7 +694,7 @@ let relatedKeys = new Set();
 function selectEvent(key, zoom) {
   const e = (report.graph || []).find((g) => g.key === key);
   const box = $("#graph-detail");
-  if (!e) { const was = !box.hidden; box.hidden = true; selected = null; relatedKeys = new Set(); if (was) drawGraph(); else highlight(null); return; }
+  if (!e) { const was = !box.hidden; box.hidden = true; document.body.classList.remove("picked"); selected = null; relatedKeys = new Set(); if (was) setTimeout(drawGraph, 220); else highlight(null); return; }
   selected = key;
   const disposals = report.disposals || [], removals = report.removals || [], open = report.openLots || [];
   const related = new Set([key]);
@@ -650,10 +743,14 @@ function selectEvent(key, zoom) {
   if (!trace) trace = `<span class="muted">Nothing further to trace.</span>`;
 
   box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
-    <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div>`;
+    <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
+    <div id="txflow-wrap"><svg id="txflow" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
   box.hidden = false;
+  document.body.classList.add("picked");
+  lastFlow = txSides(e, { fromLots, fromGifts, sold, gone, held, byKey });
+  requestAnimationFrame(() => drawTxFlow(e, lastFlow));
   relatedKeys = related;
-  drawGraph(); // the panel may have narrowed the chart
+  setTimeout(drawGraph, 220); // the chart gets shorter to make room below
   if (zoom) {
     const ps = [...related].map((k) => byKey[k]).filter(Boolean).map((g) => posOf(g.t));
     let lo = Math.min(...ps), hi = Math.max(...ps);
@@ -663,6 +760,101 @@ function selectEvent(key, zoom) {
     animateTo(lo - pad, hi + pad);
   }
 }
+// The transaction diagram under the details, in the spirit of mempool.space:
+// where the coins came from on the left, where they went on the right, band
+// widths by amount. Only records related to the selected one appear.
+let lastFlow = null;
+function txSides(e, c) {
+  const L = [], R = [];
+  const add = (side, n) => { const f = side.find((x) => x.id === n.id); if (f) f.sats += n.sats; else side.push(n); };
+  const legs = e.txid ? (report.graph || []).filter((g) => g.txid === e.txid) : [e];
+  const fee = legs.reduce((m, g) => Math.max(m, g.feeSats || 0), 0);
+  // Left: lots a sale came from; else the wallets that funded the transaction.
+  if (c.fromLots.length || c.fromGifts.length) {
+    for (const d of [...c.fromLots, ...c.fromGifts]) {
+      const o = c.byKey[d.OriginID];
+      add(L, d.Missing ? { id: "missing", label: "Unknown origin", sub: "no purchase on record", sats: d.Sats, kind: "unmatched" }
+        : { id: d.OriginID, key: o ? d.OriginID : null, label: `${KIND_NAMES[o?.kind] || "Acquired"} ${day(d.Acquired)}`, sub: o ? o.account : "", sats: d.Sats, kind: o?.kind || "buy" });
+    }
+  } else if (e.kind === "buy" || e.kind === "income" || ["purchase", "gift-in", "refund"].includes(e.kind)) {
+    add(L, { id: "src", label: e.kind === "buy" ? `Paid ${e.cents ? usd(e.cents) : ""}` : KIND_NAMES[e.kind], sub: e.account, sats: e.sats, kind: e.kind });
+  } else if (e.kind === "unmatched" && !e.to && !legs.some((g) => g.kind === "transfer")) {
+    add(L, { id: "src", label: "From outside", sub: "needs a label", sats: e.sats, kind: "unmatched" });
+  } else {
+    const from = legs.filter((g) => g.key.includes(":from:"));
+    const out = legs.filter((g) => !g.key.includes(":from:"));
+    const total = out.reduce((s, g) => s + g.sats, 0) + fee;
+    from.forEach((g) => add(L, { id: "a:" + g.account, key: g.key, label: g.account, sub: "funded part of it", sats: g.sats, kind: "acct" }));
+    const sender = (out.find((g) => g.kind === "transfer") || out[0] || e).account;
+    add(L, { id: "a:" + sender, label: sender, sub: from.length ? "sent it" : e.inputs ? `${e.inputs} input${e.inputs === 1 ? "" : "s"}` : "", sats: Math.max(total - from.reduce((s, g) => s + g.sats, 0), 0), kind: "acct" });
+  }
+  // Right: where they went.
+  if (c.sold.length || c.gone.length || c.held.length) {
+    c.sold.forEach((d) => add(R, { id: d.OpID, key: d.OpID, label: `Sold ${day(d.Disposed)}`, sub: d.Account, sats: d.Sats, kind: c.byKey[d.OpID]?.kind || "sell" }));
+    c.gone.forEach((d) => add(R, { id: d.OpID, key: d.OpID, label: `Left ${day(d.Removed)}`, sub: d.Account, sats: d.Sats, kind: "other" }));
+    c.held.forEach((l) => add(R, { id: "held:" + l.Account, label: `Still held`, sub: l.Account || "pre-2025 pool", sats: l.Sats, kind: "acct" }));
+  } else if (e.kind === "sell" || e.kind === "sold") {
+    add(R, { id: "proceeds", label: `Proceeds ${e.cents ? usd(e.cents) : ""}`, sub: e.account, sats: e.sats, kind: "sell" });
+  } else if (legs.length > 1 || e.kind === "transfer" || e.kind === "consolidation") {
+    legs.filter((g) => !g.key.includes(":from:")).forEach((g) => add(R, g.kind === "transfer"
+      ? { id: g.key, key: g.key, label: g.to, sub: "transfer", sats: g.sats, kind: "acct" }
+      : g.kind === "consolidation" ? { id: g.key, key: g.key, label: g.account, sub: "merged, stays in the wallet", sats: g.sats, kind: "consolidation" }
+      : { id: g.key, key: g.key, label: "Outside", sub: KIND_NAMES[g.kind] || g.kind, sats: g.sats, kind: g.kind }));
+  } else {
+    add(R, { id: "dst", label: e.kind === "unmatched" ? "Outside" : KIND_NAMES[e.kind] || e.kind, sub: e.kind === "unmatched" ? "needs a label" : e.account, sats: e.sats, kind: e.kind });
+  }
+  if (fee > 0 && !(c.fromLots.length && e.kind !== "transfer")) add(R, { id: "fee", label: "Network fee", sub: "", sats: fee, kind: "fee" });
+  // Keep it readable: the biggest nine, then one "more" node.
+  const cap = (side) => {
+    if (side.length <= 10) return side;
+    side.sort((a, b) => b.sats - a.sats);
+    const rest = side.slice(9);
+    return [...side.slice(0, 9), { id: "more", label: `${rest.length} more`, sub: "smaller amounts", sats: rest.reduce((s, n) => s + n.sats, 0), kind: "other" }];
+  };
+  return { L: cap(L), R: cap(R) };
+}
+
+function drawTxFlow(e, { L, R }) {
+  const svg = $("#txflow");
+  if (!svg) return;
+  const W = Math.max(360, svg.parentElement.clientWidth), labelW = Math.min(190, W * 0.28);
+  const n = Math.max(L.length, R.length, 1), gap = 6;
+  const H = Math.max(140, n * 34 + 40), avail = H - 40 - gap * (n - 1);
+  const tl = L.reduce((s, x) => s + x.sats, 0), tr = R.reduce((s, x) => s + x.sats, 0), total = Math.max(tl, tr, 1);
+  const k = avail / total, hgt = (s) => Math.max(4, s * k);
+  const xL = labelW, xR = W - labelW - 12, cx = W / 2 - 7, nodeW = 12, top = 26;
+  const place = (side) => { let y = top + (avail + gap * (n - 1) - (side.reduce((s, x) => s + hgt(x.sats), 0) + gap * (side.length - 1))) / 2;
+    return side.map((x) => { const r = { ...x, y, h: hgt(x.sats) }; y += r.h + gap; return r; }); };
+  const lp = place(L), rp = place(R);
+  const cTop = top, cH = Math.max(lp.reduce((s, x) => s + x.h, 0), rp.reduce((s, x) => s + x.h, 0), 20);
+  const cy0 = cTop + (avail + gap * (n - 1) - cH) / 2;
+  let g = `<text class="col" x="${xL}" y="14" text-anchor="end">From</text><text class="col" x="${xR + nodeW}" y="14">To</text>`;
+  let yc = cy0;
+  for (const x of lp) {
+    const y2 = yc; yc += x.h;
+    g += `<path class="band f-${esc(x.kind)}" d="M${xL + nodeW},${x.y} C${(xL + cx) / 2},${x.y} ${(xL + cx) / 2},${y2} ${cx},${y2} L${cx},${y2 + x.h} C${(xL + cx) / 2},${y2 + x.h} ${(xL + cx) / 2},${x.y + x.h} ${xL + nodeW},${x.y + x.h}Z"/>`;
+  }
+  yc = cy0;
+  for (const x of rp) {
+    const y1 = yc; yc += x.h;
+    g += `<path class="band f-${esc(x.kind)}" d="M${cx + 14},${y1} C${(cx + xR) / 2},${y1} ${(cx + xR) / 2},${x.y} ${xR},${x.y} L${xR},${x.y + x.h} C${(cx + xR) / 2},${x.y + x.h} ${(cx + xR) / 2},${y1 + x.h} ${cx + 14},${y1 + x.h}Z"/>`;
+  }
+  const node = (x, nx, anchor, tx) => `<g class="node${x.key ? " link-node" : ""}"${x.key ? ` data-flowkey="${esc(x.key)}"` : ""}><title>${esc(x.label)} ${btc(x.sats)} BTC${x.sub ? ", " + esc(x.sub) : ""}</title>
+    <rect class="f-${esc(x.kind)}" x="${nx}" y="${x.y}" width="${nodeW}" height="${x.h}" rx="2"/>
+    <text x="${tx}" y="${x.y + x.h / 2 - 1}" text-anchor="${anchor}">${esc(x.label)} · ${btc(x.sats)}</text>
+    <text class="sub" x="${tx}" y="${x.y + x.h / 2 + 12}" text-anchor="${anchor}">${esc(x.sub || "")}</text></g>`;
+  g += lp.map((x) => node(x, xL, "end", xL - 6)).join("") + rp.map((x) => node(x, xR, "start", xR + nodeW + 6)).join("");
+  g += `<rect class="center" x="${cx}" y="${cy0}" width="14" height="${cH}" rx="3"><title>${esc(KIND_NAMES[e.kind] || e.kind)} ${btc(e.sats)} BTC</title></rect>
+    <text x="${cx + 7}" y="${cy0 + cH + 16}" text-anchor="middle" class="sub">${esc(KIND_NAMES[e.kind] || e.kind)} · ${day(e.t)}</text>`;
+  svg.setAttribute("width", W); svg.setAttribute("height", H + 10); svg.setAttribute("viewBox", `0 0 ${W} ${H + 10}`);
+  svg.innerHTML = g;
+}
+$("#graph-detail").addEventListener("click", (e) => {
+  const k = e.target.closest("[data-flowkey]")?.dataset.flowkey;
+  if (k && (report.graph || []).some((g) => g.key === k)) selectEvent(k, true);
+});
+window.addEventListener("resize", () => { if (selected && lastFlow) { const e = (report.graph || []).find((g) => g.key === selected); if (e) drawTxFlow(e, lastFlow); } });
+
 function highlight(key) {
   const nodes = $$("#flow [data-key]");
   nodes.forEach((n) => n.classList.remove("hl", "dim", "sel"));

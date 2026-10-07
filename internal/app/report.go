@@ -70,6 +70,56 @@ type Report struct {
 	Unrealized int64             `json:"unrealized"`
 	Holdings   int64             `json:"holdingsSats"`
 	Settings   map[string]string `json:"settings"`
+	History    []HistoryPoint    `json:"history"`
+}
+
+// HistoryPoint is the BTC held at the end of a week and that day's price.
+type HistoryPoint struct {
+	T     int64 `json:"t"`
+	Sats  int64 `json:"sats"`
+	Price int64 `json:"price"` // USD cents per BTC, 0 if unknown
+}
+
+// history replays the engine's inputs to get total BTC held over time,
+// sampled weekly from the first record to today. Coins parked in wallets
+// that are not added here still count as held.
+func history(ops []lots.Op, price func(time.Time) (int64, bool)) []HistoryPoint {
+	if len(ops) == 0 {
+		return []HistoryPoint{}
+	}
+	sorted := append([]lots.Op(nil), ops...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Time.Before(sorted[j].Time) })
+	delta := func(o lots.Op) int64 {
+		switch o.Kind {
+		case lots.Acquire:
+			return o.Sats
+		case lots.Dispose, lots.Remove:
+			return -o.Sats
+		case lots.Transfer:
+			return -o.FeeSats
+		}
+		return 0
+	}
+	start := sorted[0].Time.UTC().Truncate(24 * time.Hour)
+	end := time.Now().UTC()
+	var out []HistoryPoint
+	var held int64
+	i := 0
+	for t := start.AddDate(0, 0, 7); ; t = t.AddDate(0, 0, 7) {
+		if t.After(end) {
+			t = end
+		}
+		for i < len(sorted) && !sorted[i].Time.After(t) {
+			held += delta(sorted[i])
+			i++
+		}
+		p, _ := price(t)
+		out = append(out, HistoryPoint{T: t.Unix(), Sats: held, Price: p})
+		if !t.Before(end) {
+			break
+		}
+	}
+	return out
 }
 
 func (s *Server) buildReport() (*Report, error) {
@@ -198,6 +248,7 @@ func (s *Server) buildReport() (*Report, error) {
 		r.Unrealized = lots.MulDiv(p, r.Holdings, 100_000_000) - totalBasis
 	}
 	r.Graph = graph(ex, tr, labels)
+	r.History = history(tr.Ops, prices.lookup)
 	r.fillNil()
 	return r, nil
 }
@@ -234,6 +285,9 @@ func (r *Report) fillNil() {
 	}
 	if r.Warnings == nil {
 		r.Warnings = []string{}
+	}
+	if r.History == nil {
+		r.History = []HistoryPoint{}
 	}
 }
 
