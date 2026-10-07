@@ -186,7 +186,40 @@ func (s *Server) buildReport() (*Report, error) {
 		r.Unrealized = lots.MulDiv(p, r.Holdings, 100_000_000) - totalBasis
 	}
 	r.Graph = graph(ex, tr, labels)
+	r.fillNil()
 	return r, nil
+}
+
+// fillNil turns empty lists into [] rather than null, so the UI can treat
+// every list the same way.
+func (r *Report) fillNil() {
+	if r.Accounts == nil {
+		r.Accounts = []AccountView{}
+	}
+	if r.Years == nil {
+		r.Years = []YearSummary{}
+	}
+	if r.Disposals == nil {
+		r.Disposals = []lots.Disposal{}
+	}
+	if r.Removals == nil {
+		r.Removals = []lots.Removal{}
+	}
+	if r.Income == nil {
+		r.Income = []trace.IncomeRow{}
+	}
+	if r.Unmatched == nil {
+		r.Unmatched = []trace.Item{}
+	}
+	if r.Links == nil {
+		r.Links = []trace.Link{}
+	}
+	if r.Graph == nil {
+		r.Graph = []GraphEvent{}
+	}
+	if r.Warnings == nil {
+		r.Warnings = []string{}
+	}
 }
 
 func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) []GraphEvent {

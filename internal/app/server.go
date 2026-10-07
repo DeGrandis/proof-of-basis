@@ -84,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/prices", s.priceInfo)
 	mux.HandleFunc("POST /api/prices/fetch", s.fetchPrices)
 	mux.HandleFunc("GET /api/export/8949.csv", s.export8949)
+	mux.HandleFunc("POST /api/wipe", s.wipe)
 	mux.Handle("GET /", http.FileServerFS(s.static))
 	return s.secure(mux)
 }
@@ -286,6 +287,21 @@ func (s *Server) addWallet(w http.ResponseWriter, r *http.Request) {
 	if in.Gap <= 0 {
 		in.Gap = 20
 	}
+	if dup, err := s.findOverlap(acct); err != nil {
+		fail(w, 500, err)
+		return
+	} else if dup != "" {
+		fail(w, 409, fmt.Errorf("this wallet is already added as %q", dup))
+		return
+	}
+	if accts, err := s.st.Accounts(); err == nil {
+		for _, a := range accts {
+			if strings.EqualFold(a.Name, in.Name) {
+				fail(w, 409, fmt.Errorf("there is already an account named %q", a.Name))
+				return
+			}
+		}
+	}
 	_, script := describe(acct)
 	if _, ok := acct.(*wallet.Descriptor); ok {
 		in.Script = "" // the descriptor itself defines the script
@@ -298,6 +314,61 @@ func (s *Server) addWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"id": id})
+}
+
+// findOverlap returns the name of an existing wallet that derives any of
+// the new wallet's first receive or change addresses: the same key added
+// twice, or the same key as an xpub and as a descriptor.
+func (s *Server) findOverlap(d wallet.Deriver) (string, error) {
+	const n = 5
+	mine := map[string]bool{}
+	for chain := uint32(0); chain < d.Chains(); chain++ {
+		for i := uint32(0); i < n; i++ {
+			a, err := d.Derive(chain, i)
+			if err != nil {
+				return "", err
+			}
+			mine[a.Address] = true
+		}
+	}
+	accts, err := s.st.Accounts()
+	if err != nil {
+		return "", err
+	}
+	for _, a := range accts {
+		if a.Kind != "wallet" {
+			continue
+		}
+		other, err := s.parseWallet(walletIn{Key: a.XPub, Script: a.Script})
+		if err != nil {
+			continue // e.g. saved under the other network setting
+		}
+		for chain := uint32(0); chain < other.Chains(); chain++ {
+			for i := uint32(0); i < n; i++ {
+				if x, err := other.Derive(chain, i); err == nil && mine[x.Address] {
+					return a.Name, nil
+				}
+			}
+		}
+	}
+	return "", nil
+}
+
+// wipe deletes all data. The body must be {"confirm":"WIPE"} so a stray
+// request cannot do it.
+func (s *Server) wipe(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Confirm string }
+	if err := decode(r, &in); err != nil || in.Confirm != "WIPE" {
+		fail(w, 400, errors.New(`send {"confirm":"WIPE"} to delete everything`))
+		return
+	}
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+	if err := s.st.Wipe(); err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // cachedSource serves raw transactions and headers from SQLite when it can.

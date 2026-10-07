@@ -417,3 +417,27 @@ func (s *Store) Prices() (map[string]int64, error) {
 	}
 	return out, rows.Err()
 }
+
+// Wipe deletes everything: settings, accounts, imports, scans, labels,
+// prices and caches. The file is then compacted so deleted rows do not
+// linger in free pages or the write-ahead log.
+func (s *Store) Wipe() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, t := range []string{"labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "settings"} {
+		if _, err := tx.Exec(`DELETE FROM ` + t); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`VACUUM`); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	return err
+}

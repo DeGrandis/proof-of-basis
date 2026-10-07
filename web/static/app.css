@@ -26,6 +26,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 48px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 input, select, button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
 button { cursor: pointer; } button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { background: #b42318; color: #fff; border-color: #b42318; }
 button.link { border: 0; background: none; color: var(--accent); padding: 0; }
 .scroll { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 table { width: 100%; border-collapse: collapse; }

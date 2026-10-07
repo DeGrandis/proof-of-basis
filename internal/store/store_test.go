@@ -33,3 +33,25 @@ func TestOverlappingImportsDoNotDuplicate(t *testing.T) {
 		t.Errorf("%d events", len(all))
 	}
 }
+
+func TestWipe(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	st.SetSetting("fulcrumHost", "node.local")
+	st.AddWallet("cold", "xpub-placeholder", "p2wpkh", 20)
+	acct, _ := st.ExchangeAccount("River", "river")
+	st.AddImport(acct, "river", "a.csv", "a", []importers.Event{{Kind: importers.Buy, Time: time.Unix(1, 0), Sats: 1, UID: "r:1"}}, nil)
+	st.PutPrices(map[string]int64{"2024-01-01": 1}, "import")
+	if err := st.Wipe(); err != nil {
+		t.Fatal(err)
+	}
+	accts, _ := st.Accounts()
+	evs, _ := st.ExchangeEvents()
+	ps, _ := st.Prices()
+	if len(accts)+len(evs)+len(ps) != 0 || st.Setting("fulcrumHost", "") != "" {
+		t.Errorf("left behind: %d accounts, %d events, %d prices, host %q", len(accts), len(evs), len(ps), st.Setting("fulcrumHost", ""))
+	}
+}

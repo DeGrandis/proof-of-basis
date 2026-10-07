@@ -45,17 +45,16 @@ async function refresh() {
     toast(e.message);
     return;
   }
-  renderOverview();
-  renderWallets();
-  renderReview();
-  renderTaxes();
+  // One broken section must not stop the others from drawing.
+  for (const f of [renderOverview, renderWallets, renderReview, renderTaxes, renderImports]) {
+    try { await f(); } catch (e) { console.error(e); toast(`Could not draw the page: ${e.message}`); }
+  }
   if ($("#graph").classList.contains("on")) drawGraph();
-  renderImports();
 }
 
 function renderOverview() {
   const r = report;
-  const latest = r.years.at(-1);
+  const latest = (r.years || []).at(-1);
   const tiles = [
     ["Holdings", btc(r.holdingsSats) + " BTC"],
     ["Unrealized gain", r.price ? usd(r.unrealized) : "needs a price"],
@@ -117,6 +116,7 @@ $("#wallet-form").addEventListener("submit", async (e) => {
     e.target.reset();
     $("#preview").textContent = "";
     toast("Wallet added. Scanning…");
+    await refresh(); // show it now; the scan can take a while
     await post(`/api/wallets/${id}/scan`, {}).then((r) => toast(`Found ${r.txs} transactions`)).catch((err) => toast("Added, but the scan failed: " + err.message));
     refresh();
   } catch (err) { toast(err.message); }
@@ -211,10 +211,12 @@ $("#links-table").addEventListener("click", async (e) => {
 
 // Taxes
 function renderTaxes() {
+  const sales = {};
+  for (const d of report.disposals || []) { const yr = new Date(d.Disposed).getUTCFullYear(); sales[yr] = (sales[yr] || 0) + 1; }
   $("#years-table tbody").innerHTML = (report.years || []).map((y) => `<tr><td>${y.year}</td>
     <td class="num">${signed(y.shortProceeds - y.shortBasis)}</td><td class="num">${signed(y.longProceeds - y.longBasis)}</td>
     <td class="num">${usd(y.income)}</td><td class="num">${usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${btc(y.missingBasisSats)} BTC sold with no known basis">!</span>` : ""}</td>
-    <td><a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
+    <td>${sales[y.year] ? `<a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a> <span class="small muted">${sales[y.year]} sales</span>` : `<span class="small muted" title="Form 8949 lists sales and spends. This year only has income, which is reported elsewhere.">No sales to report</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
   $("#disposals-table tbody").innerHTML = (report.disposals || []).map((d) => `<tr>
     <td>${day(d.Disposed)}</td><td>${d.Missing ? '<span class="warn">unknown</span>' : day(d.Acquired)}</td><td>${esc(d.Account)}</td>
     <td class="num">${btc(d.Sats)}</td><td class="num">${usd(d.Proceeds)}</td><td class="num">${usd(d.Basis)}</td>
@@ -317,6 +319,19 @@ $("#test-btn").addEventListener("click", async () => {
     toast(`Connected. Chain tip is block ${r.height}.`);
     loadSettings();
   } catch (e) { toast("Could not connect: " + e.message); }
+});
+
+$("#wipe-btn").addEventListener("click", async () => {
+  const typed = prompt("This deletes every wallet, import, label, price and setting, including your Fulcrum address. It cannot be undone.\n\nType WIPE to continue.");
+  if (typed !== "WIPE") { if (typed !== null) toast("Nothing deleted."); return; }
+  try {
+    await post("/api/wipe", { confirm: "WIPE" });
+    toast("Everything was deleted.");
+    $("#preview").textContent = "";
+    await loadSettings();
+    await refresh();
+    location.hash = "overview";
+  } catch (e) { toast("Wipe failed: " + e.message); }
 });
 
 show(location.hash.slice(1) || "overview");

@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -175,5 +176,49 @@ func TestWithdrawalFeeIncludedOrNot(t *testing.T) {
 		if res.Balances["cold"] != recv || len(res.Warnings) != 0 {
 			t.Errorf("recv %d: balances %+v warnings %+v", recv, res.Balances, res.Warnings)
 		}
+	}
+}
+
+// The same wallet added twice must not double count, and its change must
+// stay change instead of becoming a transfer between the two copies.
+func TestDuplicateWalletIgnored(t *testing.T) {
+	ex, w := fixture()
+	dup := WalletTxs{"cold copy", w[0].Txs}
+	one := Build(ex, w, nil, Options{})
+	two := Build(ex, append(w, dup), nil, Options{})
+	if len(two.Ops) != len(one.Ops) || len(two.Unmatched) != len(one.Unmatched) || len(two.Links) != len(one.Links) {
+		t.Fatalf("ops %d/%d unmatched %d/%d links %d/%d", len(two.Ops), len(one.Ops), len(two.Unmatched), len(one.Unmatched), len(two.Links), len(one.Links))
+	}
+	for _, op := range two.Ops {
+		if op.Account == "cold copy" || op.To == "cold copy" {
+			t.Errorf("duplicate wallet used: %+v", op)
+		}
+	}
+	found := false
+	for _, w := range two.Warnings {
+		found = found || strings.Contains(w, "share addresses")
+	}
+	if !found {
+		t.Errorf("no overlap warning: %v", two.Warnings)
+	}
+}
+
+// Change that lands in another tracked wallet is a transfer between my own
+// wallets; change back to the sender is ignored. Neither needs a label.
+func TestChangeToOwnWallets(t *testing.T) {
+	tx := func(outs ...scan.Output) scan.Tx {
+		return scan.Tx{Txid: "dd", Height: 9, Time: at("2024-02-01T00:00:00Z"),
+			Inputs: []scan.Input{{PrevTxid: "00", Sats: 500_000, Ours: true}}, Outputs: outs}
+	}
+	hot := tx(scan.Output{Vout: 0, Address: "shop", Sats: 100_000}, scan.Output{Vout: 1, Sats: 50_000}, scan.Output{Vout: 2, Address: "hot-1", Sats: 349_000, Ours: true})
+	hot.SentSats, hot.RecvSats, hot.FeeSats = 500_000, 349_000, 1_000
+	cold := tx(scan.Output{Vout: 0, Sats: 100_000}, scan.Output{Vout: 1, Address: "cold-0", Sats: 50_000, Ours: true}, scan.Output{Vout: 2, Sats: 349_000})
+	cold.Inputs[0].Ours, cold.Inputs[0].Sats, cold.RecvSats = false, 0, 50_000
+	r := Build(nil, []WalletTxs{{"hot", []scan.Tx{hot}}, {"cold", []scan.Tx{cold}}}, nil, Options{})
+	if len(r.Unmatched) != 1 || r.Unmatched[0].Address != "shop" || r.Unmatched[0].FeeSats != 1_000 {
+		t.Errorf("unmatched %+v", r.Unmatched)
+	}
+	if len(r.Ops) != 1 || r.Ops[0].Kind != lots.Transfer || r.Ops[0].Account != "hot" || r.Ops[0].To != "cold" || r.Ops[0].Sats != 50_000 {
+		t.Errorf("ops %+v", r.Ops)
 	}
 }

@@ -207,6 +207,11 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 	}
 	txs := map[string]*agg{}
 	var order []string
+	// If two tracked wallets share addresses (the same key added twice, or
+	// overlapping descriptors), the first wallet owns them and the other
+	// sees nothing, so nothing is counted twice or turned into a transfer.
+	spentBy := map[string]string{} // "txid:vout" of a spent prevout -> wallet
+	overlap := map[[2]string]bool{}
 	for _, w := range wallets {
 		for _, t := range w.Txs {
 			if t.Height <= 0 {
@@ -218,18 +223,43 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 				txs[t.Txid] = a
 				order = append(order, t.Txid)
 			}
-			if t.SentSats > 0 {
+			for _, in := range t.Inputs {
+				if !in.Ours {
+					continue
+				}
+				k := fmt.Sprintf("%s:%d", in.PrevTxid, in.PrevVout)
+				if prev, ok := spentBy[k]; ok && prev != w.Account {
+					overlap[[2]string{prev, w.Account}] = true
+					continue
+				}
+				spentBy[k] = w.Account
+				a.sent[w.Account] += in.Sats
+			}
+			if t.SentSats > 0 && !hasOurInput(t) { // summaries without input detail
 				a.sent[w.Account] += t.SentSats
 			}
 			for _, o := range t.Outputs {
-				if o.Ours {
-					a.owner[o.Vout] = w.Account
+				if !o.Ours {
+					continue
 				}
+				if prev, ok := a.owner[o.Vout]; ok && prev != w.Account {
+					overlap[[2]string{prev, w.Account}] = true
+					continue
+				}
+				a.owner[o.Vout] = w.Account
 			}
 			if t.FeeSats > 0 {
 				a.fee, a.feeSet = t.FeeSats, true
 			}
 		}
+	}
+	pairs := make([][2]string, 0, len(overlap))
+	for p := range overlap {
+		pairs = append(pairs, p)
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i][0]+pairs[i][1] < pairs[j][0]+pairs[j][1] })
+	for _, p := range pairs {
+		b.warn("wallets %q and %q share addresses (the same wallet added twice?); %q is ignored where they overlap. Remove one of them.", p[0], p[1], p[1])
 	}
 	for _, id := range order {
 		a := txs[id]
@@ -285,6 +315,15 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 			b.op(lots.Op{ID: key(0) + ":fee", Kind: lots.Transfer, Time: t.Time, Account: sender, To: sender, FeeSats: fee})
 		}
 	}
+}
+
+func hasOurInput(t scan.Tx) bool {
+	for _, in := range t.Inputs {
+		if in.Ours {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *builder) chainKeys(d Dir) []string {
