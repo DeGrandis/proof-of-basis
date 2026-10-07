@@ -35,6 +35,22 @@ Environment: `BTCTAX_ADDR` (default `127.0.0.1:8080`, the image uses
 | Basis | FIFO, LIFO, specific lot; universal pool before 2025, per wallet from 1 Jan 2025 (Rev. Proc. 2024-28); network fee on own transfers carried into basis or treated as a disposal |
 | Output | Per-year short/long gains, income, estimated tax at your rates, Form 8949-style CSV, flow-of-funds graph |
 
+## Lightning (optional)
+
+Connect a Core Lightning node in **Settings** with its CLNRest address and
+a rune that can only read the bookkeeper:
+
+```sh
+lightning-cli createrune restrictions='[["method=getinfo","method=bkpr-listincome","method=bkpr-listbalances"]]'
+```
+
+The rune is stored in the database, never sent back to the browser and
+never logged. The node is read only when you sync (or Recheck everything).
+Payments count as spends at market value and received payments as income,
+unless you label them otherwise; routing fees earned are income; on-chain
+deposits and withdrawals match your wallets and exchanges as self transfers.
+`test/regtest/lightning.sh` adds two throwaway regtest nodes for testing.
+
 ## Prices
 
 Spends and income need a fair market value. Daily BTC/USD closes come from,

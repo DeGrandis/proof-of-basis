@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"btctax/internal/importers"
+	"btctax/internal/lightning"
 	"btctax/internal/lots"
 	"btctax/internal/scan"
 )
@@ -49,6 +50,10 @@ type Item struct {
 	Note    string
 	Network string // "onchain", "lightning", or "" when the record doesn't say
 	Value   int64  // market value in USD cents at the day's price, 0 if unknown
+	// Default is how an unmatched item counts when the user hasn't labeled
+	// it (Lightning payments are spends, receipts income); empty means it
+	// waits in Review.
+	Default Category
 }
 
 // network guesses how an exchange record moved: Lightning invoices and
@@ -129,6 +134,7 @@ type TxInfo struct {
 
 type Result struct {
 	Txs       map[string]TxInfo
+	Defaults  map[string]Category // items counted by their default category
 	Items     map[string]Item
 	Links     []Link
 	Unmatched []Item
@@ -141,6 +147,10 @@ type Options struct {
 	// Window is how far apart a withdrawal and its on-chain receipt may be.
 	Window time.Duration
 	Price  PriceFunc
+	// Lightning is a Core Lightning node's bookkeeper history, tracked as
+	// one account named LightningAccount.
+	Lightning        []lightning.Event
+	LightningAccount string
 }
 
 func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Options) *Result {
@@ -150,7 +160,7 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 	if opt.Price == nil {
 		opt.Price = func(time.Time) (int64, bool) { return 0, false }
 	}
-	b := &builder{res: &Result{Items: map[string]Item{}, Txs: map[string]TxInfo{}}, opt: opt, linked: map[string]bool{}}
+	b := &builder{res: &Result{Items: map[string]Item{}, Txs: map[string]TxInfo{}, Defaults: map[string]Category{}}, opt: opt, linked: map[string]bool{}}
 	b.chainLegs(wallets)
 	var withdrawals, deposits []string
 	for _, e := range ex {
@@ -174,8 +184,13 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 			b.res.Items[key] = it
 		}
 	}
+	lnW, lnD, lnIn, lnOut := b.lightningItems(opt.Lightning, opt.LightningAccount)
+	withdrawals = append(withdrawals, lnW...)
+	deposits = append(deposits, lnD...)
 	for k, it := range b.res.Items {
-		it.Network = network(it)
+		if it.Network == "" {
+			it.Network = network(it)
+		}
 		if p, ok := opt.Price(it.Time); ok {
 			it.Value = mulDiv(p, it.Sats, 100_000_000)
 		}
@@ -187,7 +202,7 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 			b.link(l.Key, l.Counterpart, "manual")
 		}
 	}
-	ins, outs := b.chainKeys(In), b.chainKeys(Out)
+	ins, outs := append(b.chainKeys(In), lnIn...), append(b.chainKeys(Out), lnOut...)
 	// exchange withdrawal -> wallet receipt; wallet send -> exchange deposit
 	b.match(withdrawals, ins, false)
 	b.match(outs, deposits, false)
@@ -201,6 +216,11 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 		it := b.res.Items[k]
 		if l, ok := labels[k]; ok && l.Category != SelfLink {
 			b.applyLabel(it, l)
+			continue
+		}
+		if it.Default != "" {
+			b.res.Defaults[k] = it.Default
+			b.applyLabel(it, Label{Key: k, Category: it.Default})
 			continue
 		}
 		b.res.Unmatched = append(b.res.Unmatched, it)
@@ -396,6 +416,71 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 	}
 }
 
+// lightningItems turns a node's bookkeeper events into items and ops. Its
+// on-chain deposits and withdrawals are matched like an exchange's (by txid
+// with your wallets); payments and receipts are matched by amount with
+// exchange Lightning records, and otherwise count as spends and income.
+// Routing fees earned are income; fees the node pays leave as fees.
+func (b *builder) lightningItems(evs []lightning.Event, acct string) (withdrawals, deposits, ins, outs []string) {
+	if acct == "" {
+		acct = "Lightning node"
+	}
+	fees := map[string]int64{}
+	for _, e := range evs {
+		if e.Tag == "invoice_fee" && e.PaymentID != "" {
+			fees[e.PaymentID] += e.DebitSats
+		}
+	}
+	used := map[string]bool{}
+	for _, e := range evs {
+		key := "ln:" + e.UID
+		t := time.Unix(e.Time, 0).UTC()
+		it := Item{Key: key, Source: "lightning", Account: acct, Time: t, Txid: e.Txid, Note: e.Description, Kind: e.Tag}
+		switch {
+		case e.Tag == "deposit" && e.CreditSats > 0:
+			it.Dir, it.Sats, it.Network, it.Kind = In, e.CreditSats, "onchain", "node deposit"
+			b.res.Items[key] = it
+			deposits = append(deposits, key)
+		case e.Tag == "withdrawal" && e.DebitSats > 0:
+			it.Dir, it.Sats, it.Network, it.Kind = Out, e.DebitSats, "onchain", "node withdrawal"
+			b.res.Items[key] = it
+			withdrawals = append(withdrawals, key)
+		case e.Tag == "invoice" && e.CreditSats > 0:
+			it.Dir, it.Sats, it.Network, it.Kind, it.Default = In, e.CreditSats, "lightning", "lightning received", IncomeIn
+			b.res.Items[key] = it
+			ins = append(ins, key)
+		case e.Tag == "invoice" && e.DebitSats > 0:
+			it.Dir, it.Sats, it.Network, it.Kind, it.Default = Out, e.DebitSats, "lightning", "lightning payment", Spend
+			if e.PaymentID != "" && !used[e.PaymentID] {
+				it.FeeSats, used[e.PaymentID] = fees[e.PaymentID], true
+			}
+			b.res.Items[key] = it
+			outs = append(outs, key)
+		case e.Tag == "invoice_fee":
+			// carried on its payment above; a fee with no payment leaves alone
+			if e.PaymentID == "" || !hasPayment(evs, e.PaymentID) {
+				b.op(lots.Op{ID: key, Kind: lots.Transfer, Time: t, Account: acct, To: acct, FeeSats: e.DebitSats})
+			}
+		case (e.Tag == "routed" || e.Tag == "lease_fee") && e.CreditSats > 0:
+			b.income(key, acct, t, e.CreditSats, 0, "routing")
+		case e.DebitSats > 0 && strings.HasSuffix(e.Tag, "fee"):
+			b.op(lots.Op{ID: key, Kind: lots.Transfer, Time: t, Account: acct, To: acct, FeeSats: e.DebitSats})
+		case e.CreditSats > 0 || e.DebitSats > 0:
+			b.warn("%s: Lightning %q event of %d/%d sats isn't handled yet; check it", key, e.Tag, e.CreditSats, e.DebitSats)
+		}
+	}
+	return
+}
+
+func hasPayment(evs []lightning.Event, id string) bool {
+	for _, e := range evs {
+		if e.Tag == "invoice" && e.PaymentID == id && e.DebitSats > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func hasOurInput(t scan.Tx) bool {
 	for _, in := range t.Inputs {
 		if in.Ours {
@@ -443,8 +528,8 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 		return r
 	}
 	ok := func(o, i Item) bool {
-		if crossAccountOnly && o.Account == i.Account {
-			return false
+		if o.Account == i.Account {
+			return false // a record can't be a transfer to its own account
 		}
 		return !i.Time.Before(o.Time.Add(-6*time.Hour)) && !i.Time.After(o.Time.Add(b.opt.Window))
 	}
@@ -453,7 +538,7 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 	}
 	for _, o := range free(outs) {
 		for _, i := range free(ins) {
-			if o.Txid != "" && o.Txid == i.Txid && (i.Sats <= o.Sats+o.FeeSats) {
+			if o.Txid != "" && o.Txid == i.Txid && o.Account != i.Account && (i.Sats <= o.Sats+o.FeeSats) {
 				b.link(o.Key, i.Key, "txid")
 				break
 			}

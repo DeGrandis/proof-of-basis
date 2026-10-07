@@ -21,6 +21,7 @@
     <button data-tab="wallets" title="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
     <button data-tab="imports" title="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
     <button data-tab="review" title="Review"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg><span class="lbl">Review</span> <span id="review-count" class="pill" hidden></span></button>
+    <button data-tab="lightning" title="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
     <button data-tab="graph" title="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
     <button data-tab="taxes" title="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
     <button data-tab="settings" title="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
@@ -43,6 +44,7 @@
     </div>
     <div class="row"><label class="inline">Tax year <select id="year-select"></select></label></div>
     <div class="tiles" id="tiles"></div>
+    <div id="node-card"></div>
     <div class="card chart-card"><div class="row"><b>BTC held over time</b><span class="small muted">with the BTC price below it on the same timeline. Hover to read both.</span></div>
       <div id="history-wrap"><svg id="history" role="img" aria-label="Total BTC held over time, and the BTC price in USD"></svg><div id="history-tip" class="chart-tip" hidden></div></div></div>
     <h2>Accounts</h2>
@@ -159,6 +161,17 @@
 
   <section id="lookup" class="tab"></section>
 
+  <section id="lightning" class="tab">
+    <div id="ln-head"></div>
+    <div class="row small"><label class="inline">Show <select id="ln-filter">
+      <option value="">Everything</option><option value="out">Payments</option><option value="in">Received</option>
+      <option value="chain">On-chain in and out</option><option value="fee">Fees and routing</option></select></label>
+      <span class="spacer"></span><button type="button" id="ln-sync">Sync now</button></div>
+    <div class="scroll"><table id="ln-table"><thead><tr><th>Date</th><th>What</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th><th>Counts as</th></tr></thead><tbody></tbody></table></div>
+    <h2>Channels and wallet</h2>
+    <div class="scroll"><table id="ln-channels"><thead><tr><th>Account</th><th>Peer</th><th class="num">Balance</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
   <section id="taxes" class="tab">
     <h2>By tax year</h2>
     <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num">Estimated tax</th><th></th></tr></thead><tbody></tbody></table></div>
@@ -189,6 +202,15 @@
       <div class="wide small muted" id="price-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn">Test connection</button><button type="button" id="fetch-prices-btn">Update prices</button></div>
       <div class="wide small muted">Updating prices is the only time this app contacts anything besides your node, and only when you press the button. The image already includes daily history up to when it was built.</div>
+    </form>
+    <h2>Lightning node (optional)</h2>
+    <form id="ln-form" class="card grid">
+      <label class="wide">Core Lightning CLNRest address <input name="clnUrl" placeholder="https://192.168.1.10:3010" autocomplete="off" spellcheck="false"></label>
+      <label class="wide">Rune <input name="clnRune" type="password" autocomplete="off" spellcheck="false" placeholder="paste a read-only rune"></label>
+      <label>Name in this app <input name="clnName" placeholder="Lightning node"></label>
+      <div class="wide small muted">Make a rune that can only read the bookkeeper, on the node: <code>lightning-cli createrune restrictions='[["method=getinfo","method=bkpr-listincome","method=bkpr-listbalances"]]'</code>. It's stored here, never shown again and never logged. The app only reads from your node, and only when you sync.</div>
+      <div class="wide small muted" id="ln-cert-line"></div>
+      <div class="wide row"><button type="submit" class="primary">Save and sync</button><button type="button" id="ln-forget" class="link">Disconnect and forget the rune</button></div>
     </form>
     <h2>Recheck everything</h2>
     <div class="card">

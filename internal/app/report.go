@@ -1,12 +1,14 @@
 package app
 
 import (
+	"encoding/json"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"btctax/internal/importers"
+	"btctax/internal/lightning"
 	"btctax/internal/lots"
 	"btctax/internal/tax"
 	"btctax/internal/trace"
@@ -53,6 +55,7 @@ type GraphEvent struct {
 	Inputs   int    `json:"inputs,omitempty"` // on-chain shape, when known
 	Outputs  int    `json:"outputs,omitempty"`
 	// For records the user can label: direction, market value, current label.
+	Auto      bool   `json:"auto,omitempty"` // counted by its default category (Lightning)
 	Dir       string `json:"dir,omitempty"`
 	Value     int64  `json:"value,omitempty"`
 	Label     string `json:"label,omitempty"`
@@ -76,6 +79,17 @@ type Report struct {
 	Holdings   int64             `json:"holdingsSats"`
 	Settings   map[string]string `json:"settings"`
 	History    []HistoryPoint    `json:"history"`
+	Lightning  *LightningView    `json:"lightning,omitempty"`
+}
+
+// LightningView is the node's state for the Overview and Lightning tab.
+type LightningView struct {
+	Account  string              `json:"account"`
+	Alias    string              `json:"alias,omitempty"`
+	Synced   string              `json:"synced,omitempty"`
+	Balance  int64               `json:"balanceSats"`
+	Channels []lightning.Channel `json:"channels"`
+	Events   []lightning.Event   `json:"events"`
 }
 
 // HistoryPoint is the BTC held at the end of a week and that day's price.
@@ -137,6 +151,7 @@ type pipeline struct {
 	set    map[string]string
 	cfg    lots.Config
 	prot   map[string]bool
+	ln     []lightning.Event
 }
 
 func (s *Server) pipeline() (*pipeline, error) {
@@ -156,7 +171,11 @@ func (s *Server) pipeline() (*pipeline, error) {
 	if err != nil {
 		return nil, err
 	}
-	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup})
+	lnEvents, err := s.st.LightningEvents()
+	if err != nil {
+		return nil, err
+	}
+	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup, Lightning: lnEvents, LightningAccount: s.lnAccount()})
 	set := s.settings()
 	rules, _ := tax.ByID(set["jurisdiction"])
 	prot := s.protected()
@@ -171,8 +190,10 @@ func (s *Server) pipeline() (*pipeline, error) {
 		},
 		Protected: func(id string) bool { return prot[id] },
 	}
-	return &pipeline{ex, labels, prices, tr, set, cfg, prot}, nil
+	return &pipeline{ex, labels, prices, tr, set, cfg, prot, lnEvents}, nil
 }
+
+func (s *Server) lnAccount() string { return s.st.Setting("clnName", "Lightning node") }
 
 // protected is the set of acquisitions the user asked to sell last.
 func (s *Server) protected() map[string]bool {
@@ -283,6 +304,33 @@ func (s *Server) buildReport() (*Report, error) {
 			r.Accounts = append(r.Accounts, AccountView{Name: name, Kind: "other", Sats: sats, Basis: basis[name]})
 		}
 	}
+	if len(p.ln) > 0 || s.st.Setting("clnUrl", "") != "" {
+		lv := &LightningView{Account: s.lnAccount(), Alias: s.st.Setting("clnAlias", ""), Synced: s.st.Setting("clnSynced", ""), Events: p.ln}
+		json.Unmarshal([]byte(s.st.Setting("clnChannels", "[]")), &lv.Channels)
+		for _, c := range lv.Channels {
+			lv.Balance += c.Sats
+		}
+		if lv.Events == nil {
+			lv.Events = []lightning.Event{}
+		}
+		if lv.Channels == nil {
+			lv.Channels = []lightning.Channel{}
+		}
+		r.Lightning = lv
+		// Show the node like a wallet: traced balance beside what the node reports.
+		for i := range r.Accounts {
+			if r.Accounts[i].Name == lv.Account {
+				r.Accounts = append(r.Accounts[:i], r.Accounts[i+1:]...)
+				break
+			}
+		}
+		b := lv.Balance
+		v := AccountView{Name: lv.Account, Kind: "lightning", Sats: res.Balances[lv.Account], Basis: basis[lv.Account], ScannedAt: lv.Synced}
+		if lv.Synced != "" {
+			v.ChainSats = &b
+		}
+		r.Accounts = append(r.Accounts, v)
+	}
 	if len(res.Open) > 0 && basis[""] != 0 {
 		r.Accounts = append(r.Accounts, AccountView{Name: "(pooled before per-wallet tracking)", Kind: "pool", Basis: basis[""]})
 	}
@@ -295,7 +343,7 @@ func (s *Server) buildReport() (*Report, error) {
 		r.Price, r.PriceDay = p, day
 		r.Unrealized = lots.MulDiv(p, r.Holdings, 100_000_000) - totalBasis
 	}
-	r.Graph = graph(ex, tr, labels)
+	r.Graph = graph(ex, tr, labels, s.lnAccount())
 	for i := range r.Graph {
 		r.Graph[i].Protected = p.prot[r.Graph[i].Key]
 	}
@@ -342,7 +390,7 @@ func (r *Report) fillNil() {
 	}
 }
 
-func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) []GraphEvent {
+func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, lnAcct string) []GraphEvent {
 	var g []GraphEvent
 	for _, e := range ex {
 		var k string
@@ -402,9 +450,26 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label) 
 		unmatched[it.Key] = true
 		g = append(g, item(it, "unmatched"))
 	}
+	linked := map[string]bool{}
+	for _, l := range tr.Links {
+		linked[l.From], linked[l.To] = true, true
+	}
+	for k, c := range tr.Defaults {
+		if _, labeled := labels[k]; labeled {
+			continue
+		}
+		ev := item(tr.Items[k], string(c))
+		ev.Label, ev.Auto = string(c), true
+		g = append(g, ev)
+	}
+	for _, in := range tr.Income {
+		if strings.HasPrefix(in.Key, "ln:") && in.Kind == "routing" {
+			g = append(g, GraphEvent{Key: in.Key, Account: lnAcct, Time: in.Time.Unix(), Kind: "income", Sats: in.Sats, Cents: in.Cents, Note: "Routing fees earned"})
+		}
+	}
 	for k, l := range labels {
 		it, ok := tr.Items[k]
-		if !ok || unmatched[k] || l.Category == trace.SelfLink {
+		if !ok || unmatched[k] || linked[k] || l.Category == trace.SelfLink {
 			continue
 		}
 		ev := item(it, string(l.Category))

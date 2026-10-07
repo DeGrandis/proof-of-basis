@@ -434,6 +434,18 @@ func (s *Server) startRecheck(w http.ResponseWriter, r *http.Request) {
 	s.recheck.st = recheckState{Running: true, Total: len(ids), Errors: []string{}}
 	s.recheck.mu.Unlock()
 	go func() {
+		if s.st.Setting("clnUrl", "") != "" {
+			s.recheck.mu.Lock()
+			s.recheck.st.Current = s.lnAccount()
+			s.recheck.mu.Unlock()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			if _, err := s.lightningSync(ctx); err != nil {
+				s.recheck.mu.Lock()
+				s.recheck.st.Errors = append(s.recheck.st.Errors, s.lnAccount()+": "+err.Error())
+				s.recheck.mu.Unlock()
+			}
+			cancel()
+		}
 		for _, id := range ids {
 			s.recheck.mu.Lock()
 			s.recheck.st.Current = names[id]

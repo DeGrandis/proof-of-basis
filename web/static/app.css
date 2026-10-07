@@ -121,6 +121,11 @@ body.picked .graph-area { height: max(320px, 58vh); }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 td input, td select { padding: 3px 6px; }
 a { color: var(--accent); }
+.node-card .bal { display: flex; gap: 24px; flex-wrap: wrap; align-items: baseline; margin: 4px 0 10px; }
+.node-card .big { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ledger td { font-variant-numeric: tabular-nums; }
+.ledger .in { color: var(--buy); } .ledger .out { color: var(--text); }
+code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; background: var(--bg); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
 #search input { width: min(380px, 40vw); font-size: 13px; }
 #lookup h2 .mono { font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
 .io { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

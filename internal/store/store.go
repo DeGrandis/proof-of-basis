@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"btctax/internal/importers"
+	"btctax/internal/lightning"
 	"btctax/internal/scan"
 	"btctax/internal/trace"
 
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS raw_txs (txid TEXT PRIMARY KEY, hex TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS headers (height INTEGER PRIMARY KEY, hex TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS labels (key TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prices (day TEXT PRIMARY KEY, cents INTEGER NOT NULL, source TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS ln_events (uid TEXT PRIMARY KEY, data TEXT NOT NULL);
 `
 
 func Open(path string) (*Store, error) {
@@ -418,6 +421,50 @@ func (s *Store) Prices() (map[string]int64, error) {
 	return out, rows.Err()
 }
 
+// PutLightning saves a node's bookkeeper events. Events already saved are
+// kept even if the node no longer reports them, so history isn't lost if
+// the node's database is reset.
+func (s *Store) PutLightning(evs []lightning.Event) (added int, err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, e := range evs {
+		b, _ := json.Marshal(e)
+		r, err := tx.Exec(`INSERT OR IGNORE INTO ln_events(uid,data) VALUES(?,?)`, e.UID, string(b))
+		if err != nil {
+			return 0, err
+		}
+		if n, _ := r.RowsAffected(); n > 0 {
+			added++
+		}
+	}
+	return added, tx.Commit()
+}
+
+func (s *Store) LightningEvents() ([]lightning.Event, error) {
+	rows, err := s.db.Query(`SELECT data FROM ln_events`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []lightning.Event
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		var e lightning.Event
+		if err := json.Unmarshal([]byte(data), &e); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Time < out[j].Time })
+	return out, rows.Err()
+}
+
 // Wipe deletes everything: settings, accounts, imports, scans, labels,
 // prices and caches. The file is then compacted so deleted rows do not
 // linger in free pages or the write-ahead log.
@@ -427,7 +474,7 @@ func (s *Store) Wipe() error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, t := range []string{"labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "settings"} {
+	for _, t := range []string{"labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings"} {
 		if _, err := tx.Exec(`DELETE FROM ` + t); err != nil {
 			return err
 		}

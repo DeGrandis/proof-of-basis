@@ -98,7 +98,7 @@ async function refresh() {
     return;
   }
   // One broken section must not stop the others from drawing.
-  for (const f of [renderOverview, renderWallets, renderReview, renderTaxes, renderImports]) {
+  for (const f of [renderOverview, renderWallets, renderReview, renderTaxes, renderImports, renderLightning]) {
     try { await f(); } catch (e) { console.error(e); toast(`Could not draw the page: ${e.message}`); }
   }
   if ($("#graph").classList.contains("on")) drawGraph();
@@ -165,6 +165,91 @@ $("#whatif-form").addEventListener("submit", async (e) => {
       + (r.missingSats ? `<p class="warn small">${btc(r.missingSats)} BTC of this has no known purchase; its basis is counted as zero.</p>` : "")
       + (r.warnings || []).map((w) => `<p class="warn small">${esc(w)}</p>`).join("");
   } catch (err) { out.innerHTML = `<p class="warn">${esc(err.message)}</p>`; }
+});
+
+// Lightning: the node as a checking account. Each bookkeeper event is a
+// ledger line; the running balance is worked back from the node's current
+// balance. Payments count as spends and receipts as income unless labeled.
+const LN_WHAT = { deposit: "On-chain deposit", withdrawal: "On-chain withdrawal", onchain_fee: "On-chain fee", invoice_fee: "Routing fee paid",
+  routed: "Routing fees earned", lease_fee: "Liquidity lease fee", rebalance_fee: "Rebalance fee" };
+function lnLedger() {
+  const ln = report.lightning;
+  if (!ln) return [];
+  const byKey = Object.fromEntries((report.graph || []).map((g) => [g.key, g]));
+  const linkedTo = {};
+  for (const l of report.links || []) { linkedTo[l.From] = l.To; linkedTo[l.To] = l.From; }
+  const rows = ln.events.map((e) => {
+    const key = "ln:" + e.uid, g = byKey[key];
+    const what = e.tag === "invoice" ? (e.credit ? "Received" : "Paid") + (e.description ? `: ${e.description}` : "") : LN_WHAT[e.tag] || e.tag;
+    let counts = "";
+    if (linkedTo[key]) counts = `Self transfer with ${esc(linkedTo[key].startsWith("ex:") ? "an exchange" : "your wallet")}`;
+    else if (g?.label) counts = `${esc(KIND_NAMES[g.label] || g.label)}${g.auto ? ' <span class="muted">(automatic)</span>' : ""}`;
+    else if (g?.kind === "unmatched") counts = '<span class="warn">Needs a label</span>';
+    else if (e.tag === "routed") counts = "Income";
+    else if (e.tag.endsWith("fee")) counts = "Fee";
+    return { e, key, g, what, counts, delta: e.credit - e.debit };
+  });
+  let bal = ln.balanceSats;
+  for (let i = rows.length - 1; i >= 0; i--) { rows[i].balance = bal; bal -= rows[i].delta; }
+  return rows.reverse(); // newest first
+}
+function renderLightning() {
+  const ln = report.lightning;
+  const nodeCard = $("#node-card");
+  if (!ln) {
+    nodeCard.innerHTML = "";
+    $("#ln-head").innerHTML = `<div class="card">No Lightning node connected. Add your Core Lightning node in <a href="#settings">Settings</a>; it's optional.</div>`;
+    $("#ln-table tbody").innerHTML = ""; $("#ln-channels tbody").innerHTML = "";
+    return;
+  }
+  const worth = report.price ? usd(Math.round(ln.balanceSats * report.price / 1e8)) : "";
+  const rows = lnLedger();
+  const line = (r) => `<tr><td>${day(r.e.t)}</td><td>${r.g ? `<a href="${pageLink(r.g)}">${esc(r.what)}</a>` : esc(r.what)}</td>
+    <td class="num in">${r.delta > 0 ? btc(r.delta) : ""}</td><td class="num out">${r.delta < 0 ? btc(-r.delta) : ""}</td><td class="num">${btc(r.balance)}</td><td class="small">${r.counts}</td></tr>`;
+  const head = `<div class="bal"><div><div class="small muted">Balance</div><div class="big">${btc(ln.balanceSats)} BTC</div></div>${worth ? `<div><div class="small muted">Worth</div><div class="big">${worth}</div></div>` : ""}
+    <div class="small muted">${ln.alias ? esc(ln.alias) + " · " : ""}${ln.synced ? `synced ${esc(ln.synced.replace("T", " ").slice(0, 16))} UTC` : "not synced yet"}</div></div>`;
+  nodeCard.innerHTML = `<div class="card node-card"><div class="row"><b>${esc(ln.account)}</b><span class="spacer"></span><a href="#lightning">All Lightning activity</a></div>${head}
+    <div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>What</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th><th>Counts as</th></tr></thead>
+    <tbody>${rows.slice(0, 8).map(line).join("") || `<tr><td colspan="6" class="muted">No activity yet. Sync from Settings.</td></tr>`}</tbody></table></div></div>`;
+  // The Lightning tab
+  const pay = rows.filter((r) => r.e.tag === "invoice" && r.delta < 0), recv = rows.filter((r) => r.e.tag === "invoice" && r.delta > 0);
+  const sum = (a, f) => a.reduce((s, r) => s + f(r), 0);
+  const routed = sum(rows.filter((r) => r.e.tag === "routed"), (r) => r.delta), feesPaid = sum(rows.filter((r) => r.e.tag.endsWith("fee") && r.e.tag !== "lease_fee"), (r) => -r.delta);
+  const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  $("#ln-head").innerHTML = `<div class="card node-card"><div class="row"><b>${esc(ln.account)}</b></div>${head}<div class="tiles">
+    ${tile("Paid out", `${btc(-sum(pay, (r) => r.delta))} BTC`, `${pay.length} payments`)}${tile("Received", `${btc(sum(recv, (r) => r.delta))} BTC`, `${recv.length} payments`)}
+    ${tile("Routing fees earned", `${btc(routed)} BTC`, "counted as income")}${tile("Fees paid", `${btc(feesPaid)} BTC`, "routing and on-chain")}</div></div>`;
+  const f = $("#ln-filter").value;
+  const shown = rows.filter((r) => !f || (f === "out" && r.e.tag === "invoice" && r.delta < 0) || (f === "in" && r.e.tag === "invoice" && r.delta > 0)
+    || (f === "chain" && (r.e.tag === "deposit" || r.e.tag === "withdrawal")) || (f === "fee" && (r.e.tag.endsWith("fee") || r.e.tag === "routed")));
+  $("#ln-table tbody").innerHTML = shown.map(line).join("") || `<tr><td colspan="6" class="muted">Nothing here.</td></tr>`;
+  $("#ln-channels tbody").innerHTML = ln.channels.map((c) => `<tr><td>${c.account === "wallet" ? "On-chain wallet" : `<span class="mono small">${esc(c.account.slice(0, 16))}…</span>`}${c.closed ? ' <span class="muted">(closed)</span>' : ""}</td>
+    <td class="mono small">${c.peerId ? esc(c.peerId.slice(0, 16)) + "…" : ""}</td><td class="num">${btc(c.sats)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">None.</td></tr>`;
+}
+$("#ln-filter").addEventListener("change", renderLightning);
+async function syncLightning() {
+  try {
+    const r = await post("/api/lightning/sync", {});
+    toast(`Synced ${r.alias || "your node"}: ${r.events} events (${r.added} new)`);
+    await loadSettings();
+    refresh();
+  } catch (e) { toast("Lightning sync failed: " + e.message); }
+}
+$("#ln-sync").addEventListener("click", syncLightning);
+$("#ln-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  try {
+    await post("/api/settings", f);
+    e.target.elements.clnRune.value = "";
+    await syncLightning();
+  } catch (err) { toast(err.message); }
+});
+$("#ln-forget").addEventListener("click", async () => {
+  if (!confirm("Disconnect the node and forget its rune? Its synced history stays until you remove it with Wipe everything.")) return;
+  await post("/api/settings", { clnForget: "1" });
+  toast("Node disconnected; rune forgotten.");
+  loadSettings(); refresh();
 });
 
 // BTC held over time, with the BTC price in a second panel on the same
@@ -546,8 +631,8 @@ function lanesByBand() {
   const kindOf = Object.fromEntries((report.accounts || []).map((a) => [a.name, a.kind]));
   const names = [...new Set([...(report.accounts || []).filter((a) => a.kind !== "pool").map((a) => a.name),
     ...(report.graph || []).flatMap((e) => [e.account, e.to].filter(Boolean))])];
-  const bands = [["Exchanges", "exchange"], ["Wallets", "wallet"], ["Other", null]].map(([label, k]) => ({
-    label, lanes: names.filter((n) => (k ? kindOf[n] === k : kindOf[n] !== "exchange" && kindOf[n] !== "wallet")).sort(),
+  const bands = [["Exchanges", "exchange"], ["Wallets", "wallet"], ["Lightning", "lightning"], ["Other", null]].map(([label, k]) => ({
+    label, lanes: names.filter((n) => (k ? kindOf[n] === k : !["exchange", "wallet", "lightning"].includes(kindOf[n]))).sort(),
   }));
   return bands.filter((b) => b.lanes.length);
 }
@@ -1132,6 +1217,10 @@ async function loadSettings() {
   const f = $("#settings-form");
   for (const [k, v] of Object.entries(s)) if (f.elements[k]) f.elements[k].value = v;
   $("#cert-line").textContent = s.fulcrumCert ? `Pinned server certificate SHA-256: ${s.fulcrumCert}` : "";
+  const lf = $("#ln-form");
+  lf.elements.clnUrl.value = s.clnUrl || ""; lf.elements.clnName.value = s.clnName || "";
+  lf.elements.clnRune.placeholder = s.clnRuneSet === "true" ? "saved (paste a new one to replace it)" : "paste a read-only rune";
+  $("#ln-cert-line").textContent = s.clnCert ? `Pinned node certificate SHA-256: ${s.clnCert}` : "";
   const hs = handlers = await api("/api/handlers");
   $("#handler-select").innerHTML = `<option value="">Detect automatically</option>` + hs.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("");
 }

@@ -67,6 +67,9 @@ var defaults = map[string]string{
 	"rateShort":    "24",
 	"rateLong":     "15",
 	"priceSource":  "yahoo",
+	"clnUrl":       "",
+	"clnCert":      "",
+	"clnName":      "Lightning node",
 }
 
 func (s *Server) settings() map[string]string {
@@ -105,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tx/{txid}", s.getTx)
 	mux.HandleFunc("GET /api/address/{addr}", s.getAddress)
 	mux.HandleFunc("POST /api/recheck", s.startRecheck)
+	mux.HandleFunc("POST /api/lightning/sync", s.syncLightning)
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
 	mux.Handle("GET /", http.FileServerFS(s.static))
 	return s.secure(mux)
@@ -149,7 +153,12 @@ func decode(r *http.Request, v any) error {
 	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
 }
 
-func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) { writeJSON(w, s.settings()) }
+// The node's rune is write-only: it is saved but never sent back.
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	m := s.settings()
+	m["clnRuneSet"] = strconv.FormatBool(s.st.Setting("clnRune", "") != "")
+	writeJSON(w, m)
+}
 
 func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 	var in map[string]string
@@ -157,6 +166,22 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
+	if rn, ok := in["clnRune"]; ok {
+		delete(in, "clnRune")
+		if rn = strings.TrimSpace(rn); rn != "" {
+			if err := s.st.SetSetting("clnRune", rn); err != nil {
+				fail(w, 500, err)
+				return
+			}
+		}
+	}
+	if _, ok := in["clnForget"]; ok {
+		delete(in, "clnForget")
+		for _, k := range []string{"clnRune", "clnUrl", "clnCert", "clnChannels", "clnSynced", "clnAlias"} {
+			s.st.SetSetting(k, "")
+		}
+	}
+	delete(in, "clnRuneSet")
 	for k, v := range in {
 		if _, ok := defaults[k]; !ok && !strings.HasPrefix(k, "method:") {
 			fail(w, 400, fmt.Errorf("unknown setting %q", k))
@@ -177,6 +202,10 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 			if v != string(lots.FeeCarry) && v != string(lots.FeeAsDisposal) {
 				fail(w, 400, fmt.Errorf("feeMode must be carry or dispose"))
 				return
+			}
+		case "clnUrl":
+			if s.st.Setting(k, "") != strings.TrimSpace(v) {
+				s.st.SetSetting("clnCert", "")
 			}
 		case "fulcrumHost", "fulcrumPort", "fulcrumTLS":
 			// A new server means a new certificate to pin.
