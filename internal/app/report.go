@@ -489,7 +489,12 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, 
 			g[i].Inputs, g[i].Outputs = info.Inputs, info.Outputs
 		}
 	}
-	sort.Slice(g, func(i, j int) bool { return g[i].Time < g[j].Time })
+	sort.Slice(g, func(i, j int) bool {
+		if g[i].Time != g[j].Time {
+			return g[i].Time < g[j].Time
+		}
+		return g[i].Key < g[j].Key
+	})
 	return g
 }
 

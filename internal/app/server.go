@@ -109,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/address/{addr}", s.getAddress)
 	mux.HandleFunc("POST /api/recheck", s.startRecheck)
 	mux.HandleFunc("POST /api/lightning/sync", s.syncLightning)
+	mux.HandleFunc("POST /api/backup", s.postBackup)
+	mux.HandleFunc("POST /api/restore", s.postRestore)
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
 	mux.Handle("GET /", http.FileServerFS(s.static))
 	return s.secure(mux)

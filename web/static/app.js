@@ -196,6 +196,7 @@ function lnLedger() {
 function renderLightning() {
   const ln = report.lightning;
   const nodeCard = $("#node-card");
+  $('#tabs button[data-tab="lightning"]').hidden = !ln;
   if (!ln) {
     nodeCard.innerHTML = "";
     $("#ln-head").innerHTML = `<div class="card">No Lightning node connected. Add your Core Lightning node in <a href="#settings">Settings</a>; it's optional.</div>`;
@@ -1246,6 +1247,48 @@ $("#fetch-prices-btn").addEventListener("click", async () => {
     refresh();
   } catch (e) { toast("Price update failed: " + e.message); }
 });
+// Backup: one file with all data, encrypted by default. Restore checks the
+// file's version and integrity, asks before replacing anything, and the
+// server keeps a copy of the current database first.
+$("#backup-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, encrypt = f.encrypt.checked;
+  if (encrypt && f.pass.value.length < 8) { toast("Choose a passphrase of at least 8 characters."); return; }
+  if (encrypt && f.pass.value !== f.pass2.value) { toast("The passphrases don't match."); return; }
+  if (!encrypt && !confirm("Without encryption, anyone with the file can see your wallets' public keys, your history and your Lightning rune. Download it unencrypted anyway?")) return;
+  const btn = $("button[type=submit]", f);
+  btn.disabled = true; btn.textContent = "Preparing…";
+  try {
+    const r = await fetch("/api/backup", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(encrypt ? { passphrase: f.pass.value } : { unencrypted: true }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    const blob = await r.blob();
+    const name = (r.headers.get("content-disposition") || "").match(/filename="([^"]+)"/)?.[1] || "btctax-backup.json";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    f.pass.value = f.pass2.value = "";
+    toast(`Backup saved as ${name}`);
+  } catch (err) { toast("Backup failed: " + err.message); }
+  btn.disabled = false; btn.textContent = "Download backup";
+});
+$("#restore-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const typed = prompt("Restoring replaces ALL data in this app with the backup's: wallets, imports, labels, settings and Lightning history. A copy of the current data is saved first.\n\nType REPLACE to continue.");
+  if (typed !== "REPLACE") { if (typed !== null) toast("Nothing was changed."); return; }
+  const fd = new FormData(f);
+  fd.append("confirm", "REPLACE");
+  try {
+    const r = await api("/api/restore", { method: "POST", body: fd });
+    f.reset();
+    toast(`Restored: ${r.rows.accounts || 0} accounts, ${r.rows.events || 0} exchange rows, ${r.rows.labels || 0} labels.`);
+    await loadSettings();
+    await refresh();
+    checkFulcrum(true);
+  } catch (err) { toast("Restore failed: " + err.message); }
+});
+
 // Recheck everything: rescan every wallet in the background, then redraw.
 async function pollRecheck() {
   let st;

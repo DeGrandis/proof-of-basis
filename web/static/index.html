@@ -212,6 +212,24 @@
       <div class="wide small muted" id="ln-cert-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save and sync</button><button type="button" id="ln-forget" class="link">Disconnect and forget the rune</button></div>
     </form>
+    <h2>Backup and restore</h2>
+    <div class="card grid">
+      <form id="backup-form" class="wide grid">
+        <b class="wide">Download a backup</b>
+        <label>Passphrase <input name="pass" type="password" autocomplete="new-password" minlength="8" placeholder="at least 8 characters"></label>
+        <label>Repeat it <input name="pass2" type="password" autocomplete="new-password"></label>
+        <label class="check inline"><input type="checkbox" name="encrypt" checked> Encrypt the file (recommended)</label>
+        <div class="wide small muted">One file with everything: settings, wallets and their keys, imports, labels, protected purchases, scans, prices and your Lightning node's history and rune. It holds your xpubs, so keep encryption on. There's no way to recover a forgotten passphrase.</div>
+        <div class="wide row"><button type="submit" class="primary">Download backup</button></div>
+      </form>
+      <form id="restore-form" class="wide grid">
+        <b class="wide">Restore from a backup</b>
+        <label class="wide">Backup file <input name="file" type="file" accept=".json,application/json" required></label>
+        <label>Passphrase <input name="passphrase" type="password" autocomplete="off" placeholder="if the backup is encrypted"></label>
+        <div class="wide small muted">Restoring replaces everything in this app with the backup's contents. A copy of the current database is saved beside it first.</div>
+        <div class="wide row"><button type="submit">Restore…</button></div>
+      </form>
+    </div>
     <h2>Recheck everything</h2>
     <div class="card">
       <div class="row"><button type="button" id="recheck-btn">Recheck everything</button>

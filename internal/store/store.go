@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -17,7 +19,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db   *sql.DB
+	path string
+}
 
 const schema = `
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -79,7 +84,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	return &Store{db}, nil
+	return &Store{db: db, path: path}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -484,6 +489,13 @@ func (s *Store) Wipe() error {
 	}
 	if _, err := s.db.Exec(`VACUUM`); err != nil {
 		return err
+	}
+	// Copies saved before a restore hold the same data; remove them too.
+	if s.path != "" {
+		old, _ := filepath.Glob(s.path + ".before-restore-*")
+		for _, f := range old {
+			os.Remove(f)
+		}
 	}
 	_, err = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	return err
