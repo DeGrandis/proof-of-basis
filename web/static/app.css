@@ -183,3 +183,19 @@ button.sort.asc::after { content: "▲"; font-size: 9px; } button.sort.desc::aft
 .kind { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: #fff; background: var(--move); }
 .kind.buy { background: var(--buy); } .kind.sell, .kind.spend, .kind.sold { background: var(--sell); }
 .kind.income, .kind.purchase, .kind.gift-in { background: var(--income); } .kind.unmatched { background: var(--warn); }
+
+/* Sankey demo */
+#sankey { display: block; }
+#sankey .sk-band { fill-opacity: .32; stroke: none; transition: fill-opacity .15s; }
+#sankey .sk-band:hover { fill-opacity: .6; }
+#sankey .sk-band.dim { fill-opacity: .06; }
+#sankey .sk-band.transfer { fill: var(--move); fill-opacity: .14; }
+#sankey .buy { fill: var(--buy); } #sankey .income { fill: var(--income); } #sankey .sell { fill: var(--sell); }
+#sankey .unmatched { fill: var(--warn); } #sankey .held { fill: var(--accent); } #sankey .fee { fill: var(--muted); } #sankey .move { fill: var(--move); }
+#sankey .sk-node.acct { fill: var(--text); cursor: pointer; }
+#sankey .sk-acct.sel .sk-node { fill: var(--accent); }
+#sankey .sk-acct { cursor: pointer; }
+#sankey .sk-label { fill: var(--text); font-size: 12px; }
+#sankey .sk-label.strong { font-weight: 600; }
+#sankey .sk-amt { fill: var(--muted); font-size: 11px; }
+#sankey .sk-col { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
