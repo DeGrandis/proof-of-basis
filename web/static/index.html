@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="app.css">
 <script src="app.js" defer></script>
 <script src="sankey.js" defer></script>
+<script src="vendor/vis-network.min.js" defer></script>
+<script src="network.js" defer></script>
 </head>
 <body>
 <aside id="sidebar" aria-label="Navigation">
@@ -150,20 +152,25 @@
       <div class="seg" id="flow-mode" role="radiogroup" aria-label="Flow view">
         <label><input type="radio" name="flowmode" value="timeline" checked> Timeline</label>
         <label><input type="radio" name="flowmode" value="sankey"> Sankey (demo)</label>
+        <label><input type="radio" name="flowmode" value="network"> Network (demo)</label>
       </div>
       <div id="legend" class="row timeline-only"></div>
       <label class="inline check timeline-only"><input type="checkbox" id="show-transfers" checked> Show transfers</label>
       <label class="inline sankey-only" style="display:none">Period <select id="sankey-period"><option value="">All time</option></select></label>
       <label class="inline check sankey-only" style="display:none"><input type="checkbox" id="sankey-transfers" checked> Show transfers between your accounts</label>
+      <label class="inline network-only" style="display:none">Period <select id="net-period"><option value="">All time</option></select></label>
+      <label class="inline check network-only" style="display:none"><input type="checkbox" id="net-lots" checked> Link buys to the sales that used them</label>
       <span class="spacer"></span>
       <span class="small muted sankey-only" style="display:none">Click an account to follow only its coins.</span>
+      <span id="net-status" class="small muted network-only" style="display:none"></span><button id="net-fit" class="network-only" style="display:none">Fit all</button>
       <span id="zoom-level" class="muted timeline-only"></span>
       <span class="timeline-only"><button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button><button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button><button id="zoom-fit">Fit all</button></span>
     </div>
     <div class="graph-area">
-      <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg><svg id="sankey" role="img" aria-label="Sankey diagram: how coins arrived, which accounts held them, and how they left" style="display:none"></svg></div>
+      <div id="graph-wrap"><svg id="flow" role="img" aria-label="Flow of bitcoin between accounts over time"></svg><svg id="sankey" role="img" aria-label="Sankey diagram: how coins arrived, which accounts held them, and how they left" style="display:none"></svg><div id="net" style="display:none" aria-label="Network of accounts, transactions, buys and sales"></div></div>
     </div>
     <div class="small muted timeline-only">Scroll to zoom, drag to pan, click a dot to open it below and zoom to everything it traces to. Dot size is the amount.</div>
+    <div class="small muted network-only" style="display:none">Big shapes are your accounts (boxes exchanges, hexagons wallets, diamond your Lightning node). Green dots are buys, blue income, red sales and spends, amber items that need a label, small grey dots on-chain transactions between your accounts. Dashed links follow coins from a buy to the sale that used them. Hover to light up what's connected; click to open details below.</div>
     <div class="small muted sankey-only" style="display:none">Band width is the amount of BTC. Grey loops on the right of your accounts are moves between them. Hover any band for its amount.</div>
     <section id="graph-detail" class="card" hidden></section>
   </section>
