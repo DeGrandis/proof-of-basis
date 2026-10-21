@@ -66,12 +66,14 @@ function drawSummary() {
   const groups = OUT_GROUPS.map(([g, list]) => [g, list.filter((d) => dstT.has(d))]).filter(([, l]) => l.length);
   const dsts = groups.flatMap(([, l]) => l);
   const total = [...srcT.values()].reduce((s, a) => s + a.sats, 0);
-  // Nodes and bands are strictly proportional to BTC. Labels are laid out
-  // separately, nudged apart so they never overlap, with a thin leader
-  // back to the node when they had to move.
-  const top = 26, gap = 6, groupGap = 30, nodeW = 14;
+  // Nodes and bands are strictly proportional to BTC. The height comes
+  // from the labels: every row gets its full two or three lines, so the
+  // chart grows with the number of sources and outcomes instead of
+  // squeezing the text. Labels are still nudged apart from their node's
+  // centre when bands are thin, with a thin leader back to the node.
+  const top = 26, gap = 6, groupGap = 34, nodeW = 14, rowL = 40, rowR = 56;
   const leftW = Math.max(190, Math.min(230, W * 0.26)), rightW = Math.max(250, Math.min(340, W * 0.36));
-  const H = Math.round(1.2 * Math.max(300, Math.max(srcs.length * 30, dsts.length * 42 + groups.length * groupGap) + 80));
+  const H = Math.max(420, srcs.length * rowL + 90, dsts.length * rowR + groups.length * groupGap + 90);
   const k = (H - top - 24 - gap * Math.max(srcs.length, dsts.length) - groupGap * groups.length) / total;
   const h = (s) => Math.max(1, s * k);
   const xA = leftW, xM = leftW + (W - leftW - rightW) / 2 - nodeW / 2, xC = W - rightW - nodeW;
@@ -89,7 +91,7 @@ function drawSummary() {
     if (over > 0) for (const r of rows) r.y -= over;
     return new Map(rows.map((r) => [r.n, r.y]));
   };
-  const lA = layout(srcs, pA, 30), lC = layout(dsts, pC, 44);
+  const lA = layout(srcs, pA, rowL), lC = layout(dsts, pC, rowR);
   const taxable = new Set(OUT_GROUPS[0][1]);
   const exchanges = new Set((report.accounts || []).filter((a) => a.kind === "exchange").map((a) => a.name));
   const cls = (name) => exchanges.has(name) ? "buy" : /Income|routing|Gifts|Refunds|Bought from|wallets not added$/.test(name) ? "income" : name === "Unknown origin" ? "unmatched"

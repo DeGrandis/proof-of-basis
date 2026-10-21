@@ -236,6 +236,7 @@ div.vis-tooltip { position: absolute; visibility: hidden; padding: 6px 9px; whit
 #hero .gain { font-size: 14px; font-weight: 600; }
 #history .buy-dot { fill: #f97316; fill-opacity: .55; stroke: var(--panel); stroke-width: 1; }
 #history .sell-dot { fill: #a855f7; fill-opacity: .7; stroke: var(--panel); stroke-width: 1; }
+#history .buy-dot.hot, #history .sell-dot.hot { fill-opacity: 1; stroke: var(--text); stroke-width: 2; }
 #flow .lane-name { cursor: grab; }
 #flow .lane-name.lifting { fill: var(--accent); }
 #flow .lane-drop { stroke: var(--accent); stroke-width: 2; }
