@@ -215,5 +215,46 @@ div.vis-tooltip { position: absolute; visibility: hidden; padding: 6px 9px; whit
 #summary .sk-node.acct { fill: var(--text); }
 #summary .sk-label { fill: var(--text); font-size: 12px; } #summary .sk-label.strong { font-weight: 600; }
 #summary .sk-amt { fill: var(--muted); font-size: 11px; }
+#summary .sk-leader { stroke: var(--line); stroke-width: 1; }
 #summary .sk-col { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 #coin-panel { margin: 0; }
+
+/* Overview cards: draggable order, a hero number, and a phone layout */
+.ov-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; }
+.ov-card.dragging { opacity: .5; }
+.ov-card.drop-before { box-shadow: 0 -3px 0 0 var(--accent); } .ov-card.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.ov-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 8px; }
+.ov-grip { cursor: grab; color: var(--muted); user-select: none; touch-action: none; padding: 0 4px; letter-spacing: -3px; }
+.ov-grip:active { cursor: grabbing; }
+.ov-card .tiles { margin-top: 10px; }
+.ov-card .chart-card { margin: 0; }
+#hero { display: flex; flex-wrap: wrap; gap: 4px 24px; align-items: baseline; }
+#menu-top { display: none; border: 0; background: none; padding: 4px 6px; color: var(--text); }
+#menu-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9; }
+#hero .worth { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+#hero .held { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#hero .gain { font-size: 14px; font-weight: 600; }
+#history .buy-dot { fill: #f97316; fill-opacity: .55; stroke: var(--panel); stroke-width: 1; }
+#history .sell-dot { fill: #a855f7; fill-opacity: .7; stroke: var(--panel); stroke-width: 1; }
+#flow .lane-name { cursor: grab; }
+#flow .lane-name.lifting { fill: var(--accent); }
+#flow .lane-drop { stroke: var(--accent); stroke-width: 2; }
+@media (max-width: 760px) {
+  #sidebar { width: 240px !important; transform: translateX(-102%); transition: transform .15s ease; box-shadow: 0 0 24px rgba(0,0,0,.4); }
+  body.menu-open #sidebar { transform: none !important; }
+  body.collapsed #sidebar .lbl { display: revert; }
+  #sidebar .brand #menu-btn { display: none; }
+  #page { margin-left: 0 !important; }
+  #menu-top { display: inline-flex; }
+  #hero .worth { font-size: clamp(26px, 9.5vw, 38px); }
+  main { padding: 6px 10px 40px; }
+  header { padding: 8px 10px; }
+  #search input { width: 150px; }
+  .ov-card { padding: 10px; margin: 8px 0; }
+  .ov-head .small { display: none; }
+  #hero { flex-direction: column; gap: 2px; align-items: flex-start; }
+  .tiles { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile { padding: 8px 10px; } .tile .v { font-size: 16px; }
+  .seg label { padding: 5px 9px; }
+  th, td { padding: 6px 7px; font-size: 13px; }
+}

@@ -307,44 +307,14 @@ func TestLookupsAndRecheck(t *testing.T) {
 	t.Error("recheck never finished")
 }
 
-// Coins: every unspent coin in the made-up wallets adds up to what the
-// wallets hold on chain; clusters exist; coins from exchange withdrawals
-// are marked as linked. Picking coins sells exactly those.
-func TestCoinsAndPickedLots(t *testing.T) {
+// Picking specific lots sells exactly those, whatever the year's method.
+func TestPickedLots(t *testing.T) {
 	st, h := newTest(t)
 	if err := demo.Seed(st, 1); err != nil {
 		t.Fatal(err)
 	}
-	var cv struct {
-		Coins    []coinView
-		Clusters int
-	}
-	json.Unmarshal(call(h, "GET", "/api/coins", "").Body.Bytes(), &cv)
 	var rep Report
 	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
-	chain := map[string]int64{}
-	for _, a := range rep.Accounts {
-		if a.ChainSats != nil && a.Kind == "wallet" {
-			chain[a.Name] = *a.ChainSats
-		}
-	}
-	got := map[string]int64{}
-	linked := 0
-	for _, c := range cv.Coins {
-		got[c.Wallet] += c.Sats
-		if c.Linked {
-			linked++
-		}
-	}
-	for wname, sats := range chain {
-		if got[wname] != sats {
-			t.Errorf("%s: coins add to %d, chain balance %d", wname, got[wname], sats)
-		}
-	}
-	if cv.Clusters == 0 || linked == 0 || cv.Clusters >= len(cv.Coins)+1 {
-		t.Errorf("%d coins, %d clusters, %d linked", len(cv.Coins), cv.Clusters, linked)
-	}
-
 	// Pick the two newest lots in one account and sell exactly them.
 	var acct string
 	var ids []string

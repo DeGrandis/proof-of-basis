@@ -10,7 +10,6 @@
 <script src="sankey.js" defer></script>
 <script src="vendor/vis-network.min.js" defer></script>
 <script src="timelinegraph.js" defer></script>
-<script src="coins.js" defer></script>
 </head>
 <body>
 <aside id="sidebar" aria-label="Navigation">
@@ -36,7 +35,8 @@
   </button>
 </aside>
 <div id="page">
-<header><span id="tab-title"></span><span class="spacer"></span>
+<div id="menu-backdrop" hidden></div>
+<header><button id="menu-top" aria-label="Menu" title="Menu"><svg viewBox="0 0 20 20" aria-hidden="true" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button><span id="tab-title"></span><span class="spacer"></span>
   <form id="search" role="search"><input name="q" placeholder="Search a txid or address" aria-label="Search a transaction id or bitcoin address" autocomplete="off" spellcheck="false"></form>
 </header>
 <main>
@@ -46,25 +46,41 @@
     <div id="setup-hint" class="card hint" hidden>
       Start by connecting your Fulcrum server in <a href="#settings">Settings</a>, then add your wallets.
     </div>
-    <div class="row"><label class="inline">Tax year <select id="year-select"></select></label></div>
-    <div class="tiles" id="tiles"></div>
-    <div class="card chart-card"><div class="row"><b>Where did it all end up?</b><span class="small muted">Coins traced from how they arrived to how they left, by tax treatment.</span><span class="spacer"></span>
-      <div class="seg" id="summary-scope" role="radiogroup" aria-label="Summary period"><label><input type="radio" name="sumscope" value="year" checked> Tax year <span id="summary-year"></span></label><label><input type="radio" name="sumscope" value="all"> All time</label></div></div>
-      <div id="summary-wrap"><svg id="summary" role="img" aria-label="Sankey summary of where your bitcoin came from and where it went"></svg></div></div>
-    <div id="node-card"></div>
-    <div class="card chart-card"><div class="row"><b>BTC held over time</b><span class="small muted">with the BTC price below it on the same timeline. Hover to read both.</span></div>
-      <div id="history-wrap"><svg id="history" role="img" aria-label="Total BTC held over time, and the BTC price in USD"></svg><div id="history-tip" class="chart-tip" hidden></div></div></div>
-    <h2>Accounts</h2>
-    <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th></tr></thead><tbody></tbody></table></div>
-    <div id="warnings"></div>
-    <h2>What would I owe?</h2>
-    <form id="whatif-form" class="card grid">
-      <label>Sell or spend <span class="row"><input name="amount" inputmode="decimal" placeholder="0.1" size="12" required>
-        <select name="unit"><option value="btc">BTC</option><option value="usd">USD</option></select></span></label>
-      <label>From <select name="account" id="whatif-account"></select></label>
-      <div class="row"><button type="submit" class="primary">Estimate</button></div>
-      <div id="whatif-out" class="wide"></div>
-    </form>
+    <div id="ov-cards">
+    <section class="ov-card" data-card="now">
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Right now</b><span class="spacer"></span><label class="inline small">Tax year <select id="year-select"></select></label></div>
+      <div id="hero"></div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+    <section class="ov-card" data-card="history">
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>BTC held over time</b><span class="small muted">with the BTC price below it. Orange dots are buys, purple dots sales, sized by amount.</span></div>
+      <div id="history-wrap"><svg id="history" role="img" aria-label="Total BTC held over time, and the BTC price in USD with buys and sales"></svg><div id="history-tip" class="chart-tip" hidden></div></div>
+    </section>
+    <section class="ov-card" data-card="summary">
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Where your bitcoin went</b><span class="small muted">Every coin, from how it arrived to how it left or where it still sits.</span><span class="spacer"></span>
+        <div class="seg" id="summary-scope" role="radiogroup" aria-label="Summary period"><label><input type="radio" name="sumscope" value="year" checked> Tax year <span id="summary-year"></span></label><label><input type="radio" name="sumscope" value="all"> All time</label></div></div>
+      <div id="summary-wrap"><svg id="summary" role="img" aria-label="Sankey summary of where your bitcoin came from and where it went"></svg></div>
+    </section>
+    <section class="ov-card" data-card="lightning" id="node-card-wrap" hidden>
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b id="node-card-title">Lightning node</b><span class="spacer"></span><a href="#lightning">All Lightning activity</a></div>
+      <div id="node-card"></div>
+    </section>
+    <section class="ov-card" data-card="accounts">
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Accounts</b></div>
+      <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th></tr></thead><tbody></tbody></table></div>
+      <div id="warnings"></div>
+    </section>
+    <section class="ov-card" data-card="whatif">
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>What would I owe?</b></div>
+      <form id="whatif-form" class="grid">
+        <label>Sell or spend <span class="row"><input name="amount" inputmode="decimal" placeholder="0.1" size="12" required>
+          <select name="unit"><option value="btc">BTC</option><option value="usd">USD</option></select></span></label>
+        <label>From <select name="account" id="whatif-account"></select></label>
+        <div class="row"><button type="submit" class="primary">Estimate</button></div>
+        <div id="whatif-out" class="wide"></div>
+      </form>
+    </section>
+    </div>
   </section>
 
   <section id="wallets" class="tab">
@@ -156,30 +172,21 @@
       <div class="seg" id="flow-mode" role="radiogroup" aria-label="Flow view">
         <label title="What happened in each account?"><input type="radio" name="flowmode" value="accounts" checked> Accounts</label>
         <label title="How did my coins move between accounts over time?"><input type="radio" name="flowmode" value="custody"> Custody</label>
-        <label title="Which coin should I spend next, and what can be linked?"><input type="radio" name="flowmode" value="coins"> Coins</label>
       </div>
       <label class="inline" data-view="custody">Period <select id="tg-period"><option value="">All time</option></select></label>
       <label class="inline check" data-view="custody"><input type="checkbox" id="tg-transfers"> Transfers only</label>
-      <div class="seg" id="coins-mode" data-view="coins" role="radiogroup" aria-label="Color coins by">
-        <label><input type="radio" name="coinsmode" value="tax" checked> Tax if spent today</label>
-        <label><input type="radio" name="coinsmode" value="privacy"> Privacy links</label>
-      </div>
       <span class="spacer"></span>
       <span id="zoom-level" class="muted" data-view="accounts"></span>
       <span data-view="accounts"><button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button><button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button><button id="zoom-fit">Fit all</button></span>
       <span id="tg-status" class="small muted" data-view="custody"></span><button id="tg-fit" data-view="custody">Fit all</button>
-      <span id="coins-status" class="small muted" data-view="coins"></span><button id="coins-fit" data-view="coins">Fit all</button>
     </div>
     <div id="legend" class="row small tg-legend" data-view="accounts"></div>
     <div id="tg-legend" class="row small tg-legend" data-view="custody"></div>
-    <div id="coins-legend" class="row small tg-legend" data-view="coins"></div>
     <div class="graph-area">
-      <div id="graph-wrap"><svg id="flow" role="img" aria-label="Each account's balance over time with its events"></svg><div id="tg" style="display:none" aria-label="How coins moved between your accounts over time"></div><div id="net" style="display:none" aria-label="The coins you hold"></div></div>
+      <div id="graph-wrap"><svg id="flow" role="img" aria-label="Each account's balance over time with its events"></svg><div id="tg" style="display:none" aria-label="How coins moved between your accounts over time"></div></div>
     </div>
-    <div class="small muted" data-view="accounts">Each lane is one account: the line is its balance (scaled per account), the icons are what happened. Scroll to zoom, drag to pan, click an icon to open it below.</div>
+    <div class="small muted" data-view="accounts">Each lane is one account: the line is its balance (scaled per account), the icons are what happened. Scroll to zoom, drag to pan, click an icon to open it below. Drag an account's name up or down to reorder the lanes.</div>
     <div class="small muted" data-view="custody">Each ribbon is an account over time, thicker when it held more. Hover anything to follow its coins from the buys to where they ended up; click to open it below.</div>
-    <div class="small muted" data-view="coins">Hover to light up what's connected; click a coin for its details, to pick it for a what-if sale, or to protect its purchase.</div>
-    <section id="coin-panel" class="card" data-view="coins" hidden></section>
     <section id="graph-detail" class="card" hidden></section>
   </section>
 

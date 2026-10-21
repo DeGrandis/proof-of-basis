@@ -73,8 +73,14 @@ setMenu((() => { try { const v = localStorage.getItem("menu"); if (v) return v =
 $("#menu-btn").addEventListener("click", () => setMenu(document.body.classList.contains("collapsed"), true));
 $("#tabs").addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  if (b) location.hash = b.dataset.tab;
+  if (b) { location.hash = b.dataset.tab; document.body.classList.remove("menu-open"); }
 });
+// On a phone the sidebar is a drawer: the header's menu button opens it over
+// the page, and tapping outside or picking a page closes it.
+const menuOpen = (on) => { document.body.classList.toggle("menu-open", on); $("#menu-backdrop").hidden = !on; };
+$("#menu-top").addEventListener("click", () => menuOpen(!document.body.classList.contains("menu-open")));
+$("#menu-backdrop").addEventListener("click", () => menuOpen(false));
+$("#tabs").addEventListener("click", () => menuOpen(false));
 
 // Fulcrum status dot: green when the server answers, red when it does not.
 async function checkFulcrum(fresh) {
@@ -121,13 +127,16 @@ function renderOverview() {
   const yr = years.includes(pickedYear) ? pickedYear : thisYear;
   $("#year-select").innerHTML = years.map((y) => `<option value="${y}"${y === yr ? " selected" : ""}>${y}${y === thisYear ? " (this year)" : ""}</option>`).join("");
   const ys = (r.years || []).find((y) => y.year === yr);
+  const worth = r.price ? Math.round(r.holdingsSats * r.price / 1e8) : 0;
+  $("#hero").innerHTML = r.price
+    ? `<div class="worth">${usd(worth)}</div><div class="held">${btc(r.holdingsSats)} BTC · ${usd(r.price)} per BTC <span class="muted">(${esc(r.priceDay)})</span></div>
+       <div class="gain ${r.unrealized < 0 ? "neg" : "pos"}">${r.unrealized >= 0 ? "+" : "-"}${usd(Math.abs(r.unrealized))} unrealized</div>`
+    : `<div class="worth">${btc(r.holdingsSats)} BTC</div><div class="held">No price yet: press Update prices in Settings</div>`;
   const tiles = [
-    ["Holdings", btc(r.holdingsSats) + " BTC", r.price ? `worth ${usd(Math.round(r.holdingsSats * r.price / 1e8))}` : ""],
-    ["BTC price", r.price ? usd(r.price) : "no price yet", r.priceDay ? `as of ${r.priceDay}` : "Update prices in Settings"],
-    ["Unrealized gain", r.price ? usd(r.unrealized) : "needs a price"],
     [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
     [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
   ];
+  tiles.push([`${yr} income`, ys ? usd(ys.income) : "$0.00"]);
   $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
   const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
   const cur = $("#whatif-account").value;
@@ -199,6 +208,7 @@ function renderLightning() {
   const ln = report.lightning;
   const nodeCard = $("#node-card");
   $('#tabs button[data-tab="lightning"]').hidden = !ln;
+  $("#node-card-wrap").hidden = !ln;
   if (!ln) {
     nodeCard.innerHTML = "";
     $("#ln-head").innerHTML = `<div class="card">No Lightning node connected. Add your Core Lightning node in <a href="#settings">Settings</a>; it's optional.</div>`;
@@ -211,7 +221,8 @@ function renderLightning() {
     <td class="num in">${r.delta > 0 ? btc(r.delta) : ""}</td><td class="num out">${r.delta < 0 ? btc(-r.delta) : ""}</td><td class="num">${btc(r.balance)}</td><td class="small">${r.counts}</td></tr>`;
   const head = `<div class="bal"><div><div class="small muted">Balance</div><div class="big">${btc(ln.balanceSats)} BTC</div></div>${worth ? `<div><div class="small muted">Worth</div><div class="big">${worth}</div></div>` : ""}
     <div class="small muted">${ln.alias ? esc(ln.alias) + " · " : ""}${ln.synced ? `synced ${esc(ln.synced.replace("T", " ").slice(0, 16))} UTC` : "not synced yet"}</div></div>`;
-  nodeCard.innerHTML = `<div class="card node-card"><div class="row"><b>${esc(ln.account)}</b><span class="spacer"></span><a href="#lightning">All Lightning activity</a></div>${head}
+  $("#node-card-title").textContent = ln.account;
+  nodeCard.innerHTML = `<div class="node-card">${head}
     <div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>What</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th><th>Counts as</th></tr></thead>
     <tbody>${rows.slice(0, 8).map(line).join("") || `<tr><td colspan="6" class="muted">No activity yet. Sync from Settings.</td></tr>`}</tbody></table></div></div>`;
   // The Lightning tab
@@ -255,12 +266,53 @@ $("#ln-forget").addEventListener("click", async () => {
   loadSettings(); refresh();
 });
 
+// Overview cards can be dragged into any order by their grip; the order is
+// remembered. By default the chart sits above the summary.
+const OV_DEFAULT = ["now", "history", "summary", "lightning", "accounts", "whatif"];
+function applyCardOrder() {
+  let order = OV_DEFAULT;
+  try { const saved = JSON.parse(localStorage.getItem("ovOrder") || "null"); if (Array.isArray(saved)) order = [...saved.filter((c) => OV_DEFAULT.includes(c)), ...OV_DEFAULT.filter((c) => !saved.includes(c))]; } catch {}
+  const wrap = $("#ov-cards");
+  for (const name of order) { const el = $(`.ov-card[data-card="${name}"]`); if (el) wrap.append(el); }
+}
+applyCardOrder();
+(() => {
+  let lift = null;
+  $("#ov-cards").addEventListener("pointerdown", (e) => {
+    const grip = e.target.closest(".ov-grip");
+    if (!grip) return;
+    e.preventDefault();
+    lift = { card: grip.closest(".ov-card"), target: null, after: false };
+    lift.card.classList.add("dragging");
+    grip.setPointerCapture?.(e.pointerId);
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!lift) return;
+    $$(".ov-card").forEach((c) => c.classList.remove("drop-before", "drop-after"));
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest(".ov-card");
+    if (!el || el === lift.card) { lift.target = null; return; }
+    const r = el.getBoundingClientRect();
+    lift.target = el; lift.after = e.clientY > r.top + r.height / 2;
+    el.classList.add(lift.after ? "drop-after" : "drop-before");
+  });
+  window.addEventListener("pointerup", () => {
+    if (!lift) return;
+    $$(".ov-card").forEach((c) => c.classList.remove("drop-before", "drop-after", "dragging"));
+    if (lift.target) {
+      lift.target[lift.after ? "after" : "before"](lift.card);
+      try { localStorage.setItem("ovOrder", JSON.stringify($$(".ov-card").map((c) => c.dataset.card))); } catch {}
+      if (report) { drawHistory(); if (typeof drawSummary === "function") drawSummary(); }
+    }
+    lift = null;
+  });
+})();
+
 // BTC held over time, with the BTC price in a second panel on the same
 // time axis (two scales never share one axis). Hover reads both.
 function drawHistory() {
   const svg = $("#history"), pts = report.history || [];
   if (pts.length < 2) { svg.setAttribute("height", 40); svg.innerHTML = `<text x="8" y="24">Nothing to chart yet.</text>`; return; }
-  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, top1 = 18, h1 = 150, top2 = top1 + h1 + 34, h2 = 90, H = top2 + h2 + 24;
+  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, top1 = 18, h1 = 130, top2 = top1 + h1 + 34, h2 = 130, H = top2 + h2 + 24;
   const t0 = pts[0].t, t1 = pts.at(-1).t;
   const x = (t) => L + ((t - t0) / Math.max(t1 - t0, 1)) * (W - L - R);
   const maxS = Math.max(...pts.map((p) => p.sats), 1);
@@ -281,6 +333,17 @@ function drawHistory() {
   const btcLine = line(pts, (p) => x(p.t), (p) => y1(p.sats));
   g += `<path class="area" d="${btcLine}L${x(t1)},${top1 + h1}L${x(t0)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
   if (priced.length > 1) g += `<path class="px" d="${line(priced, (p) => x(p.t), (p) => y2(p.price))}"/>`;
+  // Buys and sales on the price line, sized by amount. The dot sits at the
+  // price actually paid or received when the record has one.
+  const trades = (report.graph || []).filter((e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind));
+  const maxT = Math.max(...trades.map((e) => e.sats), 1);
+  const priceAt = (t) => { let i = 0; for (let k = 1; k < priced.length; k++) if (Math.abs(priced[k].t - t) < Math.abs(priced[i].t - t)) i = k; return priced[i]?.price || 0; };
+  for (const e of trades) {
+    const p = e.cents && e.sats ? Math.round(e.cents * 1e8 / e.sats) : priceAt(e.t);
+    if (!p) continue;
+    const buy = e.kind === "buy";
+    g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" cx="${x(e.t).toFixed(1)}" cy="${y2(Math.min(p, maxP)).toFixed(1)}" r="${(1.5 + 5.5 * Math.sqrt(e.sats / maxT)).toFixed(1)}"><title>${esc(`${buy ? "Bought" : KIND_NAMES[e.kind] || "Sold"} ${btc(e.sats)} BTC at ${usd(p)}\n${e.account}, ${day(e.t)}`)}</title></circle>`;
+  }
   g += `<text class="title" x="${L}" y="${top1 - 6}">BTC held</text><text class="title" x="${L}" y="${top2 - 8}">BTC price (USD)</text>`;
   g += `<g id="history-cross" visibility="hidden"><line class="cross" y1="${top1}" y2="${top2 + h2}"/><circle class="pt-btc" r="4"/><circle class="pt-px" r="4"/></g>`;
   g += `<rect x="${L}" y="${top1}" width="${W - L - R}" height="${top2 + h2 - top1}" fill="transparent" id="history-hit"/>`;
@@ -621,10 +684,10 @@ const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Tran
   sold: "Sold to a person", gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", untracked: "Untracked wallet", "self-transfer": "Self transfer",
   "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
 const flowViews = {};
-let flowMode = (() => { try { const m = localStorage.getItem("flowMode"); return ["accounts", "custody", "coins"].includes(m) ? m : "accounts"; } catch { return "accounts"; } })();
+let flowMode = (() => { try { const m = localStorage.getItem("flowMode"); return ["accounts", "custody"].includes(m) ? m : "accounts"; } catch { return "accounts"; } })();
 function drawGraph() {
   if (!report || !$("#graph").classList.contains("on")) return;
-  const box = { accounts: "#flow", custody: "#tg", coins: "#net" };
+  const box = { accounts: "#flow", custody: "#tg" };
   for (const [m, sel] of Object.entries(box)) $(sel).style.display = m === flowMode ? "" : "none";
   $$("#graph [data-view]").forEach((el) => (el.style.display = el.dataset.view.split(" ").includes(flowMode) ? "" : "none"));
   $("#graph-wrap").style.overflow = "hidden";
@@ -656,11 +719,45 @@ function lanesByBand() {
   const kindOf = Object.fromEntries((report.accounts || []).map((a) => [a.name, a.kind]));
   const names = [...new Set([...(report.accounts || []).filter((a) => a.kind !== "pool").map((a) => a.name),
     ...(report.graph || []).flatMap((e) => [e.account, e.to].filter(Boolean))])];
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem("laneOrder") || "[]"); } catch {}
+  const rank = (n) => { const i = saved.indexOf(n); return i < 0 ? 1e9 : i; };
   const bands = [["Exchanges", "exchange"], ["Wallets", "wallet"], ["Lightning", "lightning"], ["Other", null]].map(([label, k]) => ({
-    label, lanes: names.filter((n) => (k ? kindOf[n] === k : !["exchange", "wallet", "lightning"].includes(kindOf[n]))).sort(),
+    label, lanes: names.filter((n) => (k ? kindOf[n] === k : !["exchange", "wallet", "lightning"].includes(kindOf[n]))).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
   }));
   return bands.filter((b) => b.lanes.length);
 }
+// Drag a lane's name up or down to reorder the lanes (within its band).
+(() => {
+  let lift = null;
+  $("#flow").addEventListener("pointerdown", (e) => {
+    const name = e.target.closest(".lane-name");
+    if (!name) return;
+    e.preventDefault(); e.stopPropagation();
+    lift = { acct: name.querySelector("title")?.textContent || name.textContent, el: name, over: null };
+    name.classList.add("lifting");
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!lift) return;
+    const rect = $("#flow").getBoundingClientRect(), y = e.clientY - rect.top;
+    let best = null;
+    for (const t of $$("#flow .lane-name")) { const ty = Number(t.getAttribute("y")); if (best == null || Math.abs(ty - y) < Math.abs(Number(best.getAttribute("y")) - y)) best = t; }
+    lift.over = best && best !== lift.el ? (best.querySelector("title")?.textContent || best.textContent) : null;
+    $$("#flow .lane-drop").forEach((l) => l.remove());
+    if (best && lift.over) best.insertAdjacentHTML("beforebegin", `<line class="lane-drop" x1="4" x2="${LEFT - 4}" y1="${Number(best.getAttribute("y")) - 22}" y2="${Number(best.getAttribute("y")) - 22}"/>`);
+  });
+  window.addEventListener("pointerup", () => {
+    if (!lift) return;
+    const { acct, over } = lift;
+    lift = null;
+    $$("#flow .lane-drop").forEach((l) => l.remove());
+    if (!over || over === acct) { drawGraph(); return; }
+    const order = lanesByBand().flatMap((b) => b.lanes).filter((n) => n !== acct);
+    order.splice(order.indexOf(over), 0, acct);
+    try { localStorage.setItem("laneOrder", JSON.stringify(order)); } catch {}
+    drawGraph();
+  });
+})();
 
 // Every distinct moment gets room and quiet stretches are compressed (log
 // of the gap), so events minutes apart don't pile up and empty years don't
@@ -858,7 +955,7 @@ svgEl.addEventListener("wheel", (e) => {
   zoomAt(e.clientX - rect.left, Math.exp(e.deltaY * 0.0015));
 }, { passive: false });
 let drag = null;
-svgEl.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, d0: view.d0, d1: view.d1, moved: false }; });
+svgEl.addEventListener("pointerdown", (e) => { if (e.target.closest(".lane-name")) return; drag = { x: e.clientX, d0: view.d0, d1: view.d1, moved: false }; });
 window.addEventListener("pointermove", (e) => {
   if (!drag) return;
   const dx = e.clientX - drag.x;
