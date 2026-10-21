@@ -367,9 +367,8 @@ function drawHistory() {
   g += `<defs><clipPath id="hclip"><rect x="${L}" y="0" width="${W - L - R}" height="${H}"/></clipPath></defs><g clip-path="url(#hclip)">`;
   g += `<path class="area" d="${btcLine}L${x(pts.at(-1).t)},${top1 + h1}L${x(pts[0].t)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
   if (priced.length > 1) g += `<path class="px" d="${line(priced, (p) => x(p.t), (p) => y2(p.price))}"/>`;
-  // Buys and sales as dots on both panels, sized by amount: on the price
-  // line at the price paid or received, and on the holdings line at that
-  // moment. Hovering a dot shows its details.
+  // Buys and sales as dots on the price line, sized by amount, at the
+  // price paid or received. Hovering a dot shows its details.
   const trades = (report.graph || []).filter((e) => (e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)) && e.t >= t0 - DAY && e.t <= t1 + DAY);
   const maxT = Math.max(...(report.graph || []).filter((e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)).map((e) => e.sats), 1);
   const nearest = (t) => { let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k; return pts[i]; };
@@ -382,8 +381,7 @@ function drawHistory() {
     const buy = e.kind === "buy", r = 3 + (dotR - 3) * Math.sqrt(e.sats / maxT), cx = x(e.t);
     const cyP = y2(Math.min(Math.max(p, minP), maxP)), cyH = y1(nearest(e.t).sats);
     dots.push({ e, p, r, cx, cyP, cyH, i });
-    g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" data-dot="${i}" cx="${cx.toFixed(1)}" cy="${cyH.toFixed(1)}" r="${r.toFixed(1)}"/>`
-      + `<circle class="${buy ? "buy-dot" : "sell-dot"}" data-dot="${i}" cx="${cx.toFixed(1)}" cy="${cyP.toFixed(1)}" r="${r.toFixed(1)}"/>`;
+    g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" data-dot="${i}" cx="${cx.toFixed(1)}" cy="${cyP.toFixed(1)}" r="${r.toFixed(1)}"/>`;
   });
   g += `</g>`;
   g += `<text class="title" x="${L}" y="${top1 - 6}">BTC held</text><text class="title" x="${L}" y="${top2 - 8}">BTC price (USD)</text>`;
@@ -399,7 +397,7 @@ function drawHistory() {
     const rect = svg.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
     // A dot under the pointer wins over the plain readout.
     let best = null, bd = Infinity;
-    for (const d of dots) for (const cy of [d.cyH, d.cyP]) { const dist = Math.hypot(d.cx - mx, cy - my) - d.r; if (dist < bd) { bd = dist; best = d; } }
+    for (const d of dots) { const dist = Math.hypot(d.cx - mx, d.cyP - my) - d.r; if (dist < bd) { bd = dist; best = d; } }
     if (hot != null) $$(`#history [data-dot="${hot}"]`).forEach((c) => c.classList.remove("hot"));
     hot = null;
     if (best && bd < 6) {

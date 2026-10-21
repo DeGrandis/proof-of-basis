@@ -7,7 +7,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"   # local only; change deliberately for LAN access
+      - "8080:8080"             # reachable from your LAN; set BTCTAX_PASSWORD below
     environment:
       # BTCTAX_PASSWORD: change-me   # require a password (recommended on a LAN)
       BTCTAX_ADDR: 0.0.0.0:8080
