@@ -7,6 +7,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const btc = (sats) => (sats < 0 ? "-" : "") + (Math.abs(sats) / 1e8).toFixed(8);
 const usd = (cents) => (cents < 0 ? "-$" : "$") + (Math.abs(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (cents) => `<span class="${cents < 0 ? "neg" : cents > 0 ? "pos" : ""}">${usd(cents)}</span>`;
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; // theme color, for canvas drawing
 const day = (t) => new Date(typeof t === "number" ? t * 1000 : t).toISOString().slice(0, 10);
 
 let report = null;
@@ -35,7 +36,7 @@ function show(route) {
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
   document.body.classList.toggle("flow", tab === "graph");
-  if (tab === "overview" && report) drawHistory();
+  if (tab === "overview" && report) { drawHistory(); if (typeof drawSummary === "function") drawSummary(); }
   if (tab === "graph") drawGraph();
 }
 function showLookup(kind, arg) {
@@ -143,6 +144,7 @@ function renderOverview() {
   $("#review-count").textContent = n;
   $("#setup-hint").hidden = !!r.settings.fulcrumHost;
   drawHistory();
+  if (typeof drawSummary === "function") drawSummary();
 }
 
 // What would I owe: a sale today from one account, at the latest price,
@@ -611,19 +613,41 @@ function renderTaxes() {
     <td class="num">${signed(d.Proceeds - d.Basis)}</td><td>${d.LongTerm ? "Long" : "Short"}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">None.</td></tr>`;
 }
 
-// Flow graph: exchanges and wallets in separate bands, one lane per
-// account, time left to right, dot size by amount. It fills the page;
-// the wheel zooms the timeline around the pointer, dragging pans, and
-// clicking a dot opens it and zooms to it and everything it traces to.
-const KINDS = [["buy", "Buy"], ["sell", "Sale / spend"], ["income", "Income / acquired"], ["unmatched", "Needs a label"], ["gift", "Gift / other"]];
+// Flow has three views, each answering one question:
+//   Accounts: what happened in each account (this file, below)
+//   Custody:  how coins moved between accounts over time (timelinegraph.js)
+//   Coins:    which coin to spend next, and what can be linked (coins.js)
 const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Transfer", consolidation: "Consolidation", unmatched: "Needs a label", spend: "Spent",
   sold: "Sold to a person", gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", untracked: "Untracked wallet", "self-transfer": "Self transfer",
   "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
-$("#legend").innerHTML = KINDS.map(([k, l]) => `<span><svg width="10" height="10"><circle cx="5" cy="5" r="5" class="dot ${k}"></circle></svg> ${l}</span>`).join("")
-  + `<span><svg width="18" height="10"><line x1="1" y1="5" x2="12" y2="5" class="link" stroke-width="2"/><path d="M12,1 L12,9 L17,5 Z" class="arrowhead"/></svg> Transfer, arrow points where the coins went</span>`
-  + `<span><svg width="30" height="14"><rect x="1" y="1" width="28" height="12" rx="6" class="hub"/><text x="15" y="10" text-anchor="middle" class="hub-text">1 → 3</text></svg> One transaction to several of your accounts (or from several)</span>`
-  + `<span><svg width="30" height="14"><rect x="1" y="1" width="28" height="12" rx="2" class="consol"/><text x="15" y="10" text-anchor="middle" class="consol-text">6 → 1</text></svg> Coins merged in one wallet</span>`;
-$("#show-transfers").addEventListener("change", () => drawGraph());
+const flowViews = {};
+let flowMode = (() => { try { const m = localStorage.getItem("flowMode"); return ["accounts", "custody", "coins"].includes(m) ? m : "accounts"; } catch { return "accounts"; } })();
+function drawGraph() {
+  if (!report || !$("#graph").classList.contains("on")) return;
+  const box = { accounts: "#flow", custody: "#tg", coins: "#net" };
+  for (const [m, sel] of Object.entries(box)) $(sel).style.display = m === flowMode ? "" : "none";
+  $$("#graph [data-view]").forEach((el) => (el.style.display = el.dataset.view.split(" ").includes(flowMode) ? "" : "none"));
+  $("#graph-wrap").style.overflow = "hidden";
+  if (flowMode !== "accounts" && selected && !flowViews[flowMode]?.keepsSelection) selectEvent(null);
+  (flowMode === "accounts" ? drawTimeline : flowViews[flowMode] || drawTimeline)();
+}
+$$("#flow-mode input").forEach((r) => {
+  r.checked = r.value === flowMode;
+  r.addEventListener("change", () => {
+    flowMode = r.value;
+    try { localStorage.setItem("flowMode", flowMode); } catch {}
+    drawGraph();
+  });
+});
+
+// Accounts: one lane per account, time left to right. Each lane draws the
+// account's balance as a line, with a plain icon on it for every event.
+// Moves between accounts show as an "out" icon on one lane and an "in"
+// icon on the other, without lines across lanes.
+const LEDGER_KEY = [["buy", "●", "Buy"], ["income", "●", "Income or received"], ["in", "▲", "Moved in from your account"], ["out", "▼", "Moved out to your account"],
+  ["sell", "▼", "Sold or spent"], ["gift", "▼", "Gift, donation, sent outside"], ["unmatched", "◆", "Needs a label"], ["consol", "■", "Coins merged"]];
+$("#legend").innerHTML = LEDGER_KEY.map(([k, g, l]) => `<span><span class="lg ${k}">${g}</span> ${l}</span>`).join("")
+  + `<span><svg width="22" height="10"><path d="M1,8 L7,8 L7,4 L15,4 L15,2 L21,2" class="bal-line"/></svg> Balance</span>`;
 let selected = null;
 const view = { d0: 0, d1: 1, full: 1, key: "" }; // visible slice of the compressed timeline
 let axis = null; // {times, pos}: event times and their positions on the timeline
@@ -691,7 +715,33 @@ function ticks(t0, t1) {
   return out;
 }
 
-function drawGraph() {
+// Each account's balance after every event that touches it, in time order.
+// The same running total the custody view uses; unlabeled outflows count as
+// gone from the account, as they are on chain.
+function accountBalances(ev) {
+  const sorted = ev.slice().sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
+  const bal = {}, series = {};
+  const add = (a, v, t, e, dir) => { if (!a) return; bal[a] = (bal[a] || 0) + v; (series[a] ||= []).push({ t, bal: bal[a], e, dir }); };
+  for (const e of sorted) {
+    if (e.kind === "transfer" && e.to) { add(e.account, -(e.sats + (e.feeSats || 0)), e.t, e, "out"); add(e.to, e.sats, e.t, e, "in"); }
+    else if (e.kind === "consolidation") add(e.account, -(e.feeSats || 0), e.t, e, "consol");
+    else if (e.kind === "buy" || e.kind === "income" || e.dir === "in") add(e.account, e.sats, e.t, e, "in");
+    else add(e.account, -(e.sats + (e.kind === "sell" ? 0 : e.feeSats || 0)), e.t, e, "out");
+  }
+  return series;
+}
+function ledgerIcon(p) {
+  const e = p.e;
+  if (e.kind === "transfer") return p.dir === "in" ? ["in", "▲"] : ["out", "▼"];
+  if (e.kind === "consolidation") return ["consol", "■"];
+  if (e.kind === "unmatched") return ["unmatched", "◆"];
+  if (e.kind === "buy") return ["buy", "●"];
+  if (e.kind === "income" || e.dir === "in") return ["income", "●"];
+  if (["sell", "spend", "sold"].includes(e.kind)) return ["sell", "▼"];
+  return ["gift", "▼"];
+}
+
+function drawTimeline() {
   const svg = $("#flow");
   if (!report || !$("#graph").classList.contains("on")) return;
   const ev = report.graph || [];
@@ -701,24 +751,25 @@ function drawGraph() {
     axis = buildAxis(ev);
     view.full = axis.pos.at(-1) || 1;
     view.d0 = -view.full * 0.01; view.d1 = view.full * 1.01; view.key = sig;
+    accountBalances.cache = accountBalances(ev);
   }
+  const series = accountBalances.cache;
   const { W, H } = geometry();
   const bands = lanesByBand();
   const nLanes = bands.reduce((n, b) => n + b.lanes.length, 0);
-  const laneH = Math.max(26, Math.min(70, (H - 40 - bands.length * 34) / nLanes));
-  const laneY = {};
+  const laneH = Math.max(40, Math.min(110, (H - 40 - bands.length * 34) / nLanes));
+  const laneTop = {};
   let yy = 6, out = "", labels = "";
   for (const b of bands) {
     const top = yy;
     yy += 22;
-    for (const l of b.lanes) { laneY[l] = yy + laneH / 2; yy += laneH; }
+    for (const l of b.lanes) { laneTop[l] = yy; yy += laneH; }
     out += `<rect class="band" x="0" y="${top}" width="${W}" height="${yy - top}" rx="8"/>`;
     labels += `<text class="band-label" x="10" y="${top + 15}">${esc(b.label)}</text>`;
     yy += 12;
   }
   const bottom = yy;
   const visible = (p) => p >= view.d0 - (view.d1 - view.d0) * 0.02 && p <= view.d1 + (view.d1 - view.d0) * 0.02;
-  // ticks
   const tt0 = timeOf(Math.max(view.d0, 0)), tt1 = timeOf(Math.min(view.d1, view.full));
   let lastLabel = -1e9;
   for (const [t, label, major] of ticks(tt0, tt1)) {
@@ -727,73 +778,36 @@ function drawGraph() {
     out += `<line class="lane${major ? "" : " minor"}" x1="${xx}" x2="${xx}" y1="6" y2="${bottom}" stroke-dasharray="2 4"/>`;
     if (xx - lastLabel > (major ? 34 : 44)) { out += `<text x="${xx + 3}" y="${bottom + 14}"${major ? ' class="major"' : ""}>${label}</text>`; lastLabel = xx; }
   }
-  for (const l of Object.keys(laneY)) out += `<line class="lane" x1="${LEFT}" x2="${W - 10}" y1="${laneY[l]}" y2="${laneY[l]}"/>`;
-  const maxSats = Math.max(...ev.map((e) => e.sats), 1);
-  const r = (s) => 3 + 9 * Math.sqrt(s / maxSats);
-
-  // Transfers, grouped by transaction. One account to one account is a
-  // straight connector; one to many or many to one meets at a diamond hub.
-  const hubbed = new Set();
-  if ($("#show-transfers").checked) {
-    const groups = new Map();
-    for (const e of ev) {
-      if (e.kind !== "transfer" || !e.to || laneY[e.to] == null || laneY[e.account] == null) continue;
-      const g = e.txid || e.key;
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push(e);
+  const nowBal = {};
+  for (const [acct, top] of Object.entries(laneTop)) {
+    const pts = series[acct] || [];
+    const maxB = Math.max(...pts.map((p) => p.bal), 1);
+    const yOf = (b) => top + laneH - 8 - (Math.max(b, 0) / maxB) * (laneH - 22);
+    out += `<line class="lane" x1="${LEFT}" x2="${W - 10}" y1="${top + laneH - 8}" y2="${top + laneH - 8}"/>`;
+    // Step line of the balance, clipped to the visible span.
+    let d = "", prevY = yOf(0), started = false;
+    for (const p of pts) {
+      const x = Math.min(Math.max(xOf(posOf(p.t), W), LEFT), W - 10), y = yOf(p.bal);
+      d += started ? `L${x},${prevY}L${x},${y}` : `M${LEFT},${prevY}L${x},${prevY}L${x},${y}`;
+      started = true; prevY = y;
     }
-    for (const legs of groups.values()) {
-      const p = posOf(legs[0].t);
-      if (!visible(p)) continue;
-      const xx = xOf(p, W), keys = legs.map((l) => l.key).join(" ");
-      const srcs = [...new Set(legs.map((l) => l.account))], dsts = [...new Set(legs.map((l) => l.to))];
-      const tip = legs.map((l) => `${btc(l.sats)} BTC ${l.account} → ${l.to}`).join("\n") + `\n${day(legs[0].t)}`;
-      const width = (s) => 1 + 4 * Math.sqrt(s / maxSats);
-      // Every leg is a straight vertical arrow pointing to where the coins
-      // went. A transaction touching several accounts gets a small label on
-      // the sending lane saying how many accounts it paid (or drew from).
-      const arrow = (x1, y1, x2, y2, sats) => {
-        const dir = Math.sign(y2 - y1) || 1, end = y2 - dir * 6;
-        return `<line class="link" x1="${x1}" y1="${y1}" x2="${x2}" y2="${end}" stroke-width="${width(sats)}"/>`
-          + `<path class="arrowhead" d="M${x2 - 4},${end - dir * 1} L${x2 + 4},${end - dir * 1} L${x2},${y2} Z"/>`;
-      };
-      if (legs.length === 1) {
-        const e = legs[0], y1 = laneY[e.account], y2 = laneY[e.to];
-        out += `<g data-key="${esc(e.key)}" data-keys="${esc(keys)}" class="tr"><title>${esc(tip)}</title>${arrow(xx, y1, xx, y2, e.sats)}<circle class="link-end" cx="${xx}" cy="${y1}" r="3.5"/></g>`;
-        continue;
-      }
-      if (legs[0].txid) hubbed.add(legs[0].txid);
-      const fanOut = srcs.length === 1;
-      let paths = "";
-      legs.forEach((l, i) => {
-        const off = (i - (legs.length - 1) / 2) * 5;
-        paths += arrow(xx + off, laneY[l.account], xx + off, laneY[l.to], l.sats) + `<circle class="link-end" cx="${xx + off}" cy="${laneY[l.account]}" r="3"/>`;
-      });
-      const hy = fanOut ? laneY[srcs[0]] : laneY[dsts[0]];
-      const tag = fanOut ? `1 → ${dsts.length}` : `${srcs.length} → 1`;
-      out += `<g data-key="${esc(legs[0].key)}" data-keys="${esc(keys)}" class="tr"><title>${esc((fanOut ? `One transaction from ${srcs[0]} paid ${dsts.length} of your accounts:
-` : `One transaction drew on ${srcs.length} of your accounts:
-`) + tip)}</title>${paths}`
-        + `<rect class="hub" x="${xx - 17}" y="${hy - 8}" width="34" height="16" rx="8"/><text class="hub-text" x="${xx}" y="${hy + 3.5}" text-anchor="middle">${tag}</text></g>`;
+    if (started) {
+      d += `L${W - 10},${prevY}`;
+      out += `<path class="bal-area" d="${d}L${W - 10},${top + laneH - 8}L${LEFT},${top + laneH - 8}Z"/><path class="bal-line" d="${d}"/>`;
     }
+    for (const p of pts) {
+      const pp = posOf(p.t);
+      if (!visible(pp)) continue;
+      const [cls, glyph] = ledgerIcon(p);
+      const e = p.e;
+      const what = e.kind === "transfer" ? (p.dir === "in" ? `Moved in from ${e.account}` : `Moved out to ${e.to}`) : KIND_NAMES[e.label || e.kind] || e.kind;
+      out += `<text class="lg-icon ${cls}" data-key="${esc(e.key)}" x="${xOf(pp, W)}" y="${yOf(p.bal) + 4}" text-anchor="middle"><title>${esc(`${what}: ${btc(e.sats)} BTC\n${day(e.t)}\nBalance after: ${btc(p.bal)} BTC`)}</title>${glyph}</text>`;
+    }
+    nowBal[acct] = pts.length ? pts.at(-1).bal : 0;
   }
-  for (const e of ev) {
-    if (e.kind === "transfer" || laneY[e.account] == null) continue;
-    const p = posOf(e.t);
-    if (!visible(p)) continue;
-    const xx = xOf(p, W) + (e.txid && hubbed.has(e.txid) ? 26 : 0), yy2 = laneY[e.account];
-    const tip = `${KIND_NAMES[e.kind] || e.kind} ${btc(e.sats)} BTC, ${e.account}, ${day(e.t)}` + (e.inputs ? `\n${e.inputs} inputs → ${e.outputs} outputs` : "");
-    if (e.kind === "consolidation") {
-      const label = e.inputs ? `${e.inputs} → 1` : "merge";
-      out += `<g class="consol-g" data-key="${esc(e.key)}"><title>${esc(`Coins merged inside ${e.account}: ${e.inputs || "several"} coins into one. Not a sale; only the fee left.
-${btc(e.sats)} BTC, ${day(e.t)}`)}</title>`
-        + `<rect class="consol" x="${xx - 18}" y="${yy2 - 8}" width="36" height="16" rx="3"/><text class="consol-text" x="${xx}" y="${yy2 + 3.5}" text-anchor="middle">${label}</text></g>`;
-    } else {
-      out += `<circle class="dot ${esc(e.kind)}" data-key="${esc(e.key)}" cx="${xx}" cy="${yy2}" r="${r(e.sats)}"><title>${esc(tip)}</title></circle>`;
-    }
-  }
-  // Lane names stay put while the timeline pans underneath them.
-  labels += Object.keys(laneY).map((l) => `<text class="lane-name" x="16" y="${laneY[l] + 4}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`).join("");
+  // Lane names and the current balance stay put while the timeline pans.
+  labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${top + laneH / 2}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
+    + `<text class="lane-bal" x="16" y="${top + laneH / 2 + 14}">${btc(nowBal[l] || 0)}</text>`).join("");
   out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);

@@ -109,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/address/{addr}", s.getAddress)
 	mux.HandleFunc("POST /api/recheck", s.startRecheck)
 	mux.HandleFunc("POST /api/lightning/sync", s.syncLightning)
+	mux.HandleFunc("GET /api/coins", s.getCoins)
 	mux.HandleFunc("POST /api/backup", s.postBackup)
 	mux.HandleFunc("POST /api/restore", s.postRestore)
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
@@ -499,9 +500,10 @@ func (s *Server) protect(w http.ResponseWriter, r *http.Request) {
 // changes nothing.
 func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Account string  `json:"account"`
-		BTC     float64 `json:"btc"`
-		USD     float64 `json:"usd"`
+		Account string   `json:"account"`
+		BTC     float64  `json:"btc"`
+		USD     float64  `json:"usd"`
+		Lots    []string `json:"lots"` // specific lots to sell, by open-lot id
 	}
 	if err := decode(r, &in); err != nil {
 		fail(w, 400, err)
@@ -521,13 +523,45 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 	if in.USD > 0 {
 		sats = lots.MulDiv(int64(in.USD*100+0.5), 100_000_000, price)
 	}
-	if sats <= 0 || in.Account == "" {
-		fail(w, 400, errors.New("enter an amount and pick an account"))
-		return
-	}
 	base, err := lots.Run(p.tr.Ops, p.cfg)
 	if err != nil {
 		fail(w, 500, err)
+		return
+	}
+	// Picking coins: sell exactly those lots, whatever the year's method.
+	var picks []lots.Pick
+	if len(in.Lots) > 0 {
+		want := map[string]bool{}
+		for _, id := range in.Lots {
+			want[id] = true
+		}
+		sats = 0
+		for _, l := range base.Open {
+			if want[l.ID] {
+				if l.Account != in.Account {
+					fail(w, 400, errors.New("pick coins from one account at a time"))
+					return
+				}
+				picks = append(picks, lots.Pick{LotID: l.ID, Sats: l.Sats})
+				sats += l.Sats
+			}
+		}
+		if len(picks) != len(want) {
+			fail(w, 400, errors.New("some picked coins no longer exist; refresh and pick again"))
+			return
+		}
+		cfg := p.cfg
+		yearMethod := cfg.Method
+		cfg.Method = func(y int) tax.Method {
+			if y == time.Now().UTC().Year() {
+				return tax.Specific
+			}
+			return yearMethod(y)
+		}
+		p.cfg = cfg
+	}
+	if sats <= 0 || in.Account == "" {
+		fail(w, 400, errors.New("enter an amount and pick an account"))
 		return
 	}
 	if have := base.Balances[in.Account]; sats > have {
@@ -536,7 +570,7 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	ops := append(append([]lots.Op(nil), p.tr.Ops...), lots.Op{ID: "whatif", Kind: lots.Dispose, Time: now, Account: in.Account,
-		Sats: sats, Cents: lots.MulDiv(price, sats, 100_000_000)})
+		Sats: sats, Cents: lots.MulDiv(price, sats, 100_000_000), Picks: picks})
 	res, err := lots.Run(ops, p.cfg)
 	if err != nil {
 		fail(w, 500, err)

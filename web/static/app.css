@@ -184,22 +184,6 @@ button.sort.asc::after { content: "▲"; font-size: 9px; } button.sort.desc::aft
 .kind.buy { background: var(--buy); } .kind.sell, .kind.spend, .kind.sold { background: var(--sell); }
 .kind.income, .kind.purchase, .kind.gift-in { background: var(--income); } .kind.unmatched { background: var(--warn); }
 
-/* Sankey demo */
-#sankey { display: block; }
-#sankey .sk-band { fill-opacity: .32; stroke: none; transition: fill-opacity .15s; }
-#sankey .sk-band:hover { fill-opacity: .6; }
-#sankey .sk-band.dim { fill-opacity: .06; }
-#sankey .sk-band.transfer { fill: var(--move); fill-opacity: .14; }
-#sankey .buy { fill: var(--buy); } #sankey .income { fill: var(--income); } #sankey .sell { fill: var(--sell); }
-#sankey .unmatched { fill: var(--warn); } #sankey .held { fill: var(--accent); } #sankey .fee { fill: var(--muted); } #sankey .move { fill: var(--move); }
-#sankey .sk-node.acct { fill: var(--text); cursor: pointer; }
-#sankey .sk-acct.sel .sk-node { fill: var(--accent); }
-#sankey .sk-acct { cursor: pointer; }
-#sankey .sk-label { fill: var(--text); font-size: 12px; }
-#sankey .sk-label.strong { font-weight: 600; }
-#sankey .sk-amt { fill: var(--muted); font-size: 11px; }
-#sankey .sk-col { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-
 /* Network demo (vis-network draws on a canvas; its tooltip is styled here
    because the app's security policy blocks the library's own stylesheet) */
 #net { width: 100%; height: 100%; }
@@ -210,3 +194,26 @@ div.vis-tooltip { position: absolute; visibility: hidden; padding: 6px 9px; whit
 #tg { width: 100%; height: 100%; }
 .tg-legend { gap: 6px 16px; }
 .tg-key { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Accounts ledger */
+#flow .bal-line, #legend .bal-line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+#flow .bal-area { fill: var(--accent); fill-opacity: .08; }
+#flow .lane-bal { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#flow .lg-icon { font-size: 12px; cursor: pointer; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+#flow .lg-icon.hl { font-size: 15px; } #flow .lg-icon.sel { font-size: 17px; } #flow .lg-icon.dim { opacity: .2; }
+.lg { font-size: 12px; }
+.lg.buy, #flow .lg-icon.buy { fill: var(--buy); color: var(--buy); } .lg.income, #flow .lg-icon.income { fill: var(--income); color: var(--income); }
+.lg.in, #flow .lg-icon.in { fill: #14b8a6; color: #14b8a6; } .lg.out, #flow .lg-icon.out { fill: #a855f7; color: #a855f7; }
+.lg.sell, #flow .lg-icon.sell { fill: var(--sell); color: var(--sell); } .lg.gift, #flow .lg-icon.gift { fill: var(--move); color: var(--move); }
+.lg.unmatched, #flow .lg-icon.unmatched { fill: var(--warn); color: var(--warn); } .lg.consol, #flow .lg-icon.consol { fill: var(--muted); color: var(--muted); }
+/* Overview summary */
+#summary-wrap { overflow-x: auto; }
+#summary { display: block; }
+#summary .sk-band { fill-opacity: .32; } #summary .sk-band:hover { fill-opacity: .6; }
+#summary .buy { fill: var(--buy); } #summary .income { fill: var(--income); } #summary .sell { fill: var(--sell); }
+#summary .unmatched { fill: var(--warn); } #summary .held { fill: var(--accent); } #summary .move { fill: var(--move); }
+#summary .sk-node.acct { fill: var(--text); }
+#summary .sk-label { fill: var(--text); font-size: 12px; } #summary .sk-label.strong { font-weight: 600; }
+#summary .sk-amt { fill: var(--muted); font-size: 11px; }
+#summary .sk-col { fill: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+#coin-panel { margin: 0; }

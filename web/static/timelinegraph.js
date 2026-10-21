@@ -1,5 +1,6 @@
 "use strict";
-// Timeline graph demo: a network pinned to time. X is the date, strictly
+// Custody: how coins moved between your accounts over time. A network
+// pinned to time. No tax figures or labels here, only where coins were. X is the date, strictly
 // left to right; Y is free (physics moves nodes up and down only) so lines
 // untangle. Each account is a ribbon of nodes along time, sized by what it
 // held at that moment; buys are dots in their exchange's color; every kind
@@ -7,18 +8,11 @@
 // whole chain: back to the buys it came from and on to the sale or spend.
 
 let tgState = null;
-const tgPrevDraw = drawGraph;
-drawGraph = function () {
-  const on = flowMode === "tgraph";
-  $("#tg").style.display = on ? "" : "none";
-  $$(".tg-only").forEach((el) => (el.style.display = on ? "" : "none"));
-  if (!on) { tgPrevDraw(); return; }
-  for (const id of ["#flow", "#sankey", "#net"]) $(id).style.display = "none";
-  $("#graph-wrap").style.overflow = "hidden";
-  $$(".timeline-only, .sankey-only, .network-only").forEach((el) => (el.style.display = "none"));
-  drawTimelineGraph();
-};
-$("#tg-period").addEventListener("change", () => { tgState?.network.destroy(); tgState = null; drawTimelineGraph(); });
+flowViews.custody = () => drawTimelineGraph();
+flowViews.custody.keepsSelection = true; // its clicks open the shared details panel
+const tgRebuild = () => { tgState?.network.destroy(); tgState = null; drawTimelineGraph(); };
+$("#tg-period").addEventListener("change", tgRebuild);
+$("#tg-transfers").addEventListener("change", tgRebuild);
 $("#tg-fit").addEventListener("click", () => tgState?.network.fit({ animation: { duration: 400 } }));
 
 // Fixed category order (never cycled by rank) for accounts.
@@ -32,14 +26,14 @@ function tgLegend() {
     : shape === "tri" ? `<svg width="12" height="12"><path d="M1,2 L11,2 L6,11 Z" fill="${c}"/></svg>` : `<svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="${c}"/></svg>`;
   $("#tg-legend").innerHTML = [
     item(`<svg width="26" height="12"><rect x="1" y="3" width="24" height="6" rx="3" fill="#888"/></svg>`, "Account over time (thicker = more BTC)"),
-    item(dot("#888"), "Buy, in its exchange's color"), item(dot(TG.income), "Income"),
+    item(dot("#888"), "Buy, in its exchange's color"), item(dot(TG.income), "Received from outside"),
     item(line(TG.withdraw), "Exchange → wallet"), item(line(TG.self), "Between your wallets"), item(line(TG.deposit), "Wallet → exchange"),
     item(dot(TG.merge, "square"), "Coins merged in a wallet"), item(line(TG.outside, true) + dot(TG.outside, "tri"), "Sent outside"),
-    item(dot(TG.sale, "tri"), "Sold or spent"), item(dot(TG.unmatched), "Needs a label"),
+    item(dot(TG.sale, "tri"), "Sold or spent"),
   ].join("");
 }
 
-function timelineGraphData(year) {
+function timelineGraphData(year, transfersOnly) {
   const evs = (report.graph || []).filter((e) => !year || new Date(e.t * 1000).getUTCFullYear() === year)
     .slice().sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
   if (!evs.length) return null;
@@ -120,21 +114,22 @@ function timelineGraphData(year) {
       states.get(id).mergeTip = tip(e, "Coins merged");
       continue;
     }
+    if (transfersOnly) continue; // only moves between your accounts
     const st = stateNode(e.account, e.t);
     if (e.kind === "buy") {
-      const id = evNode(e, { shape: "dot", size: k * (3 + 10 * Math.sqrt(e.sats / maxSats)), color: { background: color[e.account], border: "#fff" }, borderWidth: 1, title: tip(e, "Buy" + (e.cents ? ` for ${usd(e.cents)}` : "")), dy: -gap * 0.3 });
+      const id = evNode(e, { shape: "dot", size: k * (3 + 10 * Math.sqrt(e.sats / maxSats)), color: { background: color[e.account], border: "#fff" }, borderWidth: 1, title: tip(e, "Buy"), dy: -gap * 0.3 });
       edges.push({ id: "in:" + e.key, from: id, to: st, color: { color: color[e.account], opacity: 0.5 }, width: k });
     } else if (e.kind === "income" || e.dir === "in") {
-      const c = e.kind === "unmatched" ? TG.unmatched : TG.income;
-      const id = evNode(e, { shape: "dot", size: k * (4 + 9 * Math.sqrt(e.sats / maxSats)), color: { background: c, border: c }, title: tip(e, KIND_NAMES[e.kind] || "Received"), dy: -gap * 0.3 });
+      const c = TG.income;
+      const id = evNode(e, { shape: "dot", size: k * (4 + 9 * Math.sqrt(e.sats / maxSats)), color: { background: c, border: c }, title: tip(e, "Received from outside"), dy: -gap * 0.3 });
       edges.push({ id: "in:" + e.key, from: id, to: st, arrows: "to", color: { color: c }, width: width(e.sats) });
     } else {
       // Leaving: sales and spends end in a red triangle; anything sent to an
       // unknown address exits down a dashed arrow to an "outside" sink.
       const sale = ["sell", "sold", "spend"].includes(e.kind);
-      const c = e.kind === "unmatched" ? TG.unmatched : sale ? TG.sale : TG.outside;
-      const id = evNode(e, { shape: "triangleDown", size: k * (5 + 9 * Math.sqrt(e.sats / maxSats)), color: { background: c, border: c }, title: tip(e, KIND_NAMES[e.kind] || "Sent"), dy: gap * 0.35 });
-      edges.push({ id: "out:" + e.key, key: e.key, from: st, to: id, arrows: "to", dashes: !sale, width: width(e.sats), color: { color: e.kind === "unmatched" ? TG.unmatched : sale ? TG.sale : TG.outside } });
+      const c = sale ? TG.sale : TG.outside;
+      const id = evNode(e, { shape: "triangleDown", size: k * (5 + 9 * Math.sqrt(e.sats / maxSats)), color: { background: c, border: c }, title: tip(e, sale ? "Sold or spent" : "Sent outside"), dy: gap * 0.35 });
+      edges.push({ id: "out:" + e.key, key: e.key, from: st, to: id, arrows: "to", dashes: !sale, width: width(e.sats), color: { color: sale ? TG.sale : TG.outside } });
     }
   }
   // Size each account node by its balance right after that moment. When one
@@ -187,10 +182,10 @@ function drawTimelineGraph() {
     sel.value = keep;
   }
   const year = Number(sel.value) || 0;
-  const sig = `${(report.graph || []).length}:${year}`;
+  const sig = `${(report.graph || []).length}:${year}:${$("#tg-transfers").checked}`;
   if (tgState && tgState.sig === sig) { tgState.network.redraw(); return; }
   if (tgState) tgState.network.destroy();
-  const data = timelineGraphData(year);
+  const data = timelineGraphData(year, $("#tg-transfers").checked);
   if (!data) { $("#tg-status").textContent = "Nothing in this period."; return; }
   const nodeSet = new vis.DataSet(data.nodes), edgeSet = new vis.DataSet(data.edges);
   const network = new vis.Network($("#tg"), { nodes: nodeSet, edges: edgeSet }, {
@@ -232,11 +227,18 @@ function drawTimelineGraph() {
     ctx.restore();
   });
   $("#tg-status").textContent = `Laying out ${data.nodes.length} nodes…`;
-  network.once("stabilizationIterationsDone", () => {
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
     network.setOptions({ physics: false });
     network.fit();
     $("#tg-status").textContent = `${data.nodes.length} nodes. Scroll to zoom, drag to pan; hover to follow a chain.`;
-  });
+  };
+  network.once("stabilizationIterationsDone", settle);
+  // With only account ribbons (Transfers only) nothing floats, so there is
+  // no layout to wait for.
+  if (!data.nodes.some((n) => n.physics !== false)) setTimeout(settle, 0);
   const baseN = new Map(data.nodes.map((n) => [n.id, n.color]));
   const baseE = new Map(data.edges.map((e) => [e.id, { color: e.color, width: e.width }]));
   const faded = { background: "rgba(128,128,128,0.12)", border: "rgba(128,128,128,0.15)" };
