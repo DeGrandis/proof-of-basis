@@ -100,7 +100,7 @@ type HistoryPoint struct {
 }
 
 // history replays the engine's inputs to get total BTC held over time,
-// sampled weekly from the first record to today. Coins parked in wallets
+// sampled daily from the first record to today. Coins parked in wallets
 // that are not added here still count as held.
 func history(ops []lots.Op, price func(time.Time) (int64, bool)) []HistoryPoint {
 	if len(ops) == 0 {
@@ -124,7 +124,7 @@ func history(ops []lots.Op, price func(time.Time) (int64, bool)) []HistoryPoint 
 	var out []HistoryPoint
 	var held int64
 	i := 0
-	for t := start.AddDate(0, 0, 7); ; t = t.AddDate(0, 0, 7) {
+	for t := start.AddDate(0, 0, 1); ; t = t.AddDate(0, 0, 1) {
 		if t.After(end) {
 			t = end
 		}

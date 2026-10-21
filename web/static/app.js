@@ -136,7 +136,6 @@ function renderOverview() {
     [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
     [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
   ];
-  tiles.push([`${yr} income`, ys ? usd(ys.income) : "$0.00"]);
   $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
   const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
   const cur = $("#whatif-account").value;
@@ -308,49 +307,88 @@ applyCardOrder();
 })();
 
 // BTC held over time, with the BTC price in a second panel on the same
-// time axis (two scales never share one axis). Hover reads both.
+// time axis (two scales never share one axis). The range presets, the
+// wheel and dragging pick the window; hover reads both lines.
+const hist = { t0: 0, t1: 0, preset: "all" };
+const DAY = 86400;
+function histBounds() {
+  const pts = report?.history || [];
+  return pts.length ? [pts[0].t, pts.at(-1).t] : [0, 0];
+}
+function setHistRange(preset) {
+  const [a, b] = histBounds();
+  hist.preset = preset;
+  if (preset === "all") { hist.t0 = a; hist.t1 = b; }
+  else { hist.t1 = b; hist.t0 = Math.max(a, b - Number(preset) * DAY); }
+  $$("#history-range button").forEach((x) => x.classList.toggle("on", x.dataset.range === preset));
+  drawHistory();
+}
+$("#history-range").addEventListener("click", (e) => { const r = e.target.closest("[data-range]")?.dataset.range; if (r) setHistRange(r); });
 function drawHistory() {
-  const svg = $("#history"), pts = report.history || [];
-  if (pts.length < 2) { svg.setAttribute("height", 40); svg.innerHTML = `<text x="8" y="24">Nothing to chart yet.</text>`; return; }
-  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, top1 = 18, h1 = 130, top2 = top1 + h1 + 34, h2 = 130, H = top2 + h2 + 24;
-  const t0 = pts[0].t, t1 = pts.at(-1).t;
-  const x = (t) => L + ((t - t0) / Math.max(t1 - t0, 1)) * (W - L - R);
-  const maxS = Math.max(...pts.map((p) => p.sats), 1);
-  const priced = pts.filter((p) => p.price > 0);
-  const maxP = Math.max(...priced.map((p) => p.price), 1);
-  const y1 = (s) => top1 + h1 - (s / maxS) * h1, y2 = (c) => top2 + h2 - (c / maxP) * h2;
+  const svg = $("#history"), all = report.history || [];
+  if (all.length < 2) { svg.setAttribute("height", 40); svg.innerHTML = `<text x="8" y="24">Nothing to chart yet.</text>`; return; }
+  const [a, b] = histBounds();
+  if (!hist.t1 || hist.t1 > b || hist.t0 < a) { hist.t0 = hist.preset === "all" ? a : Math.max(a, b - (Number(hist.preset) || 1e9) * DAY); hist.t1 = b; }
+  const t0 = hist.t0, t1 = Math.max(hist.t1, t0 + DAY);
+  // Points in view, plus one either side so lines reach the edges.
+  let i0 = all.findIndex((p) => p.t >= t0), i1 = all.findIndex((p) => p.t > t1);
+  if (i0 < 0) i0 = all.length - 1;
+  if (i1 < 0) i1 = all.length;
+  const pts = all.slice(Math.max(i0 - 1, 0), Math.min(i1 + 1, all.length));
+  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, top1 = 18, h1 = 140, top2 = top1 + h1 + 34, h2 = 160, H = top2 + h2 + 24;
+  const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+  const inView = pts.filter((p) => p.t >= t0 && p.t <= t1);
+  const maxS = Math.max(...(inView.length ? inView : pts).map((p) => p.sats), 1);
+  const priced = pts.filter((p) => p.price > 0), pricedIn = priced.filter((p) => p.t >= t0 && p.t <= t1);
+  const span = pricedIn.length ? pricedIn : priced;
+  // The price axis fits the window, with a little headroom, so a zoomed-in
+  // week isn't a flat line at the bottom.
+  const minP0 = Math.min(...span.map((p) => p.price), Infinity), maxP0 = Math.max(...span.map((p) => p.price), 1);
+  const pad = Math.max((maxP0 - minP0) * 0.1, maxP0 * 0.02);
+  const minP = hist.preset === "all" ? 0 : Math.max(0, minP0 - pad), maxP = maxP0 + (hist.preset === "all" ? 0 : pad);
+  const y1 = (s) => top1 + h1 - (s / maxS) * h1, y2 = (c) => top2 + h2 - ((c - minP) / Math.max(maxP - minP, 1)) * h2;
   const nice = (m) => { const e = Math.pow(10, Math.floor(Math.log10(m)) - 1); return [1, 2, 2.5, 5, 10, 20, 25, 50, 100].map((k) => k * e).find((s) => m / s <= 5); };
   let g = "";
   const sStep = nice(maxS / 1e8) * 1e8;
   for (let s = 0; s <= maxS * 1.001; s += sStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y1(s)}" y2="${y1(s)}"/><text x="${L - 6}" y="${y1(s) + 4}" text-anchor="end">${+(s / 1e8).toFixed(4)}</text>`;
-  const pStep = nice(maxP / 100) * 100;
-  for (let c = 0; c <= maxP * 1.001; c += pStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y2(c)}" y2="${y2(c)}"/><text x="${L - 6}" y="${y2(c) + 4}" text-anchor="end">$${c >= 100000 ? Math.round(c / 100000) + "k" : Math.round(c / 100)}</text>`;
-  for (let yr = new Date(t0 * 1000).getUTCFullYear() + 1; Date.UTC(yr, 0, 1) / 1000 <= t1; yr++) {
-    const xx = x(Date.UTC(yr, 0, 1) / 1000);
-    g += `<text x="${xx}" y="${H - 6}" text-anchor="middle">${yr}</text>`;
-  }
+  const pStep = nice(Math.max(maxP - minP, 100) / 100) * 100;
+  for (let c = Math.ceil(minP / pStep) * pStep; c <= maxP * 1.001; c += pStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y2(c)}" y2="${y2(c)}"/><text x="${L - 6}" y="${y2(c) + 4}" text-anchor="end">$${c >= 100000 ? (c / 100000).toFixed(c % 100000 ? 1 : 0) + "k" : Math.round(c / 100)}</text>`;
+  // Time labels suited to the window: years, months or days.
+  const days = (t1 - t0) / DAY;
+  const d0 = new Date(t0 * 1000);
+  let marks = [];
+  if (days > 3 * 365) for (let yr = d0.getUTCFullYear() + 1; Date.UTC(yr, 0, 1) / 1000 <= t1; yr++) marks.push([Date.UTC(yr, 0, 1) / 1000, String(yr)]);
+  else if (days > 45) for (let m = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1)); m / 1000 <= t1; m.setUTCMonth(m.getUTCMonth() + 1)) marks.push([m / 1000, m.getUTCMonth() === 0 ? String(m.getUTCFullYear()) : m.toLocaleString("en-US", { month: "short", timeZone: "UTC" })]);
+  else { const step = days > 10 ? 7 : 1; for (let d = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate() + 1)); d / 1000 <= t1; d.setUTCDate(d.getUTCDate() + step)) marks.push([d / 1000, d.toISOString().slice(5, 10)]); }
+  let lastX = -1e9;
+  for (const [t, label] of marks) { const xx = x(t); if (xx - lastX < 36) continue; g += `<text x="${xx}" y="${H - 6}" text-anchor="middle">${label}</text>`; lastX = xx; }
   const line = (arr, fx, fy) => arr.map((p, i) => `${i ? "L" : "M"}${fx(p).toFixed(1)},${fy(p).toFixed(1)}`).join("");
   const btcLine = line(pts, (p) => x(p.t), (p) => y1(p.sats));
-  g += `<path class="area" d="${btcLine}L${x(t1)},${top1 + h1}L${x(t0)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
+  g += `<defs><clipPath id="hclip"><rect x="${L}" y="0" width="${W - L - R}" height="${H}"/></clipPath></defs><g clip-path="url(#hclip)">`;
+  g += `<path class="area" d="${btcLine}L${x(pts.at(-1).t)},${top1 + h1}L${x(pts[0].t)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
   if (priced.length > 1) g += `<path class="px" d="${line(priced, (p) => x(p.t), (p) => y2(p.price))}"/>`;
-  // Buys and sales on the price line, sized by amount. The dot sits at the
-  // price actually paid or received when the record has one.
-  const trades = (report.graph || []).filter((e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind));
-  const maxT = Math.max(...trades.map((e) => e.sats), 1);
+  // Buys and sales on the price line, sized by amount, at the price paid
+  // or received when the record has one.
+  const trades = (report.graph || []).filter((e) => (e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)) && e.t >= t0 - DAY && e.t <= t1 + DAY);
+  const maxT = Math.max(...(report.graph || []).filter((e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)).map((e) => e.sats), 1);
   const priceAt = (t) => { let i = 0; for (let k = 1; k < priced.length; k++) if (Math.abs(priced[k].t - t) < Math.abs(priced[i].t - t)) i = k; return priced[i]?.price || 0; };
+  const dotR = 1.5 + (days > 365 ? 5.5 : 9) * Math.min(1, W / 900); // smaller dots on narrow charts
   for (const e of trades) {
     const p = e.cents && e.sats ? Math.round(e.cents * 1e8 / e.sats) : priceAt(e.t);
     if (!p) continue;
     const buy = e.kind === "buy";
-    g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" cx="${x(e.t).toFixed(1)}" cy="${y2(Math.min(p, maxP)).toFixed(1)}" r="${(1.5 + 5.5 * Math.sqrt(e.sats / maxT)).toFixed(1)}"><title>${esc(`${buy ? "Bought" : KIND_NAMES[e.kind] || "Sold"} ${btc(e.sats)} BTC at ${usd(p)}\n${e.account}, ${day(e.t)}`)}</title></circle>`;
+    g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" cx="${x(e.t).toFixed(1)}" cy="${y2(Math.min(Math.max(p, minP), maxP)).toFixed(1)}" r="${(1.5 + (dotR - 1.5) * Math.sqrt(e.sats / maxT)).toFixed(1)}"><title>${esc(`${buy ? "Bought" : KIND_NAMES[e.kind] || "Sold"} ${btc(e.sats)} BTC at ${usd(p)}\n${e.account}, ${day(e.t)}`)}</title></circle>`;
   }
+  g += `</g>`;
   g += `<text class="title" x="${L}" y="${top1 - 6}">BTC held</text><text class="title" x="${L}" y="${top2 - 8}">BTC price (USD)</text>`;
   g += `<g id="history-cross" visibility="hidden"><line class="cross" y1="${top1}" y2="${top2 + h2}"/><circle class="pt-btc" r="4"/><circle class="pt-px" r="4"/></g>`;
   g += `<rect x="${L}" y="${top1}" width="${W - L - R}" height="${top2 + h2 - top1}" fill="transparent" id="history-hit"/>`;
   svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = g;
   const cross = $("#history-cross"), tip = $("#history-tip");
-  $("#history-hit").addEventListener("pointermove", (e) => {
+  const hit = $("#history-hit");
+  hit.addEventListener("pointermove", (e) => {
+    if (hist.drag) return;
     const rect = svg.getBoundingClientRect(), mx = e.clientX - rect.left;
     const t = t0 + ((mx - L) / (W - L - R)) * (t1 - t0);
     let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k;
@@ -365,7 +403,28 @@ function drawHistory() {
     const tx = xx + 12 + tip.offsetWidth > W ? xx - 12 - tip.offsetWidth : xx + 12;
     tip.style.left = tx + "px"; tip.style.top = top1 + "px";
   });
-  $("#history-hit").addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
+  // Wheel zooms around the pointer; dragging pans. Either leaves the presets.
+  hit.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect(), f = Math.min(Math.max((e.clientX - rect.left - L) / (W - L - R), 0), 1);
+    const at = t0 + f * (t1 - t0), k = Math.exp(e.deltaY * 0.0015);
+    let span = Math.min(Math.max((t1 - t0) * k, 2 * DAY), b - a);
+    hist.t0 = Math.max(a, at - f * span); hist.t1 = Math.min(b, hist.t0 + span); hist.t0 = Math.max(a, hist.t1 - span);
+    hist.preset = ""; $$("#history-range button").forEach((x) => x.classList.remove("on"));
+    drawHistory();
+  }, { passive: false });
+  hit.addEventListener("pointerdown", (e) => { hist.drag = { x: e.clientX, t0, t1 }; hit.setPointerCapture(e.pointerId); cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
+  hit.addEventListener("pointermove", (e) => {
+    if (!hist.drag) return;
+    const dt = -((e.clientX - hist.drag.x) / (W - L - R)) * (hist.drag.t1 - hist.drag.t0);
+    const span = hist.drag.t1 - hist.drag.t0;
+    hist.t0 = Math.min(Math.max(a, hist.drag.t0 + dt), b - span); hist.t1 = hist.t0 + span;
+    hist.preset = ""; $$("#history-range button").forEach((x) => x.classList.remove("on"));
+    drawHistory();
+  });
+  hit.addEventListener("pointerup", () => { hist.drag = null; });
+  hit.addEventListener("pointercancel", () => { hist.drag = null; });
 }
 window.addEventListener("resize", () => { if ($("#overview").classList.contains("on") && report) drawHistory(); });
 

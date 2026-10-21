@@ -54,6 +54,10 @@
     </section>
     <section class="ov-card" data-card="history">
       <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>BTC held over time</b><span class="small muted">with the BTC price below it. Orange dots are buys, purple dots sales, sized by amount.</span></div>
+      <div class="row small" id="history-range" role="group" aria-label="Time range">
+        <span class="seg"><button type="button" data-range="1">1D</button><button type="button" data-range="7">1W</button><button type="button" data-range="30">1M</button><button type="button" data-range="365">1Y</button><button type="button" data-range="1826">5Y</button><button type="button" data-range="all" class="on">All</button></span>
+        <span class="muted">Scroll to zoom, drag to pan</span>
+      </div>
       <div id="history-wrap"><svg id="history" role="img" aria-label="Total BTC held over time, and the BTC price in USD with buys and sales"></svg><div id="history-tip" class="chart-tip" hidden></div></div>
     </section>
     <section class="ov-card" data-card="summary">

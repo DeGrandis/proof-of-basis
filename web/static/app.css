@@ -251,10 +251,29 @@ div.vis-tooltip { position: absolute; visibility: hidden; padding: 6px 9px; whit
   header { padding: 8px 10px; }
   #search input { width: 150px; }
   .ov-card { padding: 10px; margin: 8px 0; }
-  .ov-head .small { display: none; }
-  #hero { flex-direction: column; gap: 2px; align-items: flex-start; }
+  .ov-head > span.small { display: none; }
+  .ov-grip { display: none; }
+  /* Brokerage-style top: the value and the chart, edge to edge, before any boxes */
+  .ov-card[data-card="now"], .ov-card[data-card="history"] { border: 0; background: none; padding: 4px 0; margin: 0; }
+  .ov-card[data-card="now"] .ov-head b { display: none; }
+  .ov-card[data-card="now"] .ov-head { justify-content: flex-end; margin: 0; }
+  .ov-card[data-card="history"] .ov-head { margin: 10px 0 2px; }
+  #hero { flex-direction: column; gap: 2px; align-items: flex-start; margin: 2px 0 10px; }
+  #hero .worth { font-size: clamp(30px, 11vw, 44px); line-height: 1.1; }
+  #history-range { justify-content: space-between; }
+  #history-range .seg { display: flex; flex: 1; } #history-range .seg button { flex: 1; text-align: center; padding: 6px 0; }
+  #history-range .muted { display: none; }
+  #history text { font-size: 10px; }
   .tiles { grid-template-columns: 1fr 1fr; gap: 8px; }
   .tile { padding: 8px 10px; } .tile .v { font-size: 16px; }
   .seg label { padding: 5px 9px; }
   th, td { padding: 6px 7px; font-size: 13px; }
+  #accounts-table th:nth-child(2), #accounts-table td:nth-child(2), #accounts-table th:nth-child(4), #accounts-table td:nth-child(4) { display: none; }
 }
+
+#history-range { margin: 2px 0 6px; gap: 6px 12px; }
+#history-range .seg button { border: 1px solid var(--line); background: none; color: var(--muted); padding: 3px 9px; font-size: 12px; cursor: pointer; }
+#history-range .seg button:first-child { border-radius: 6px 0 0 6px; } #history-range .seg button:last-child { border-radius: 0 6px 6px 0; }
+#history-range .seg button + button { border-left: 0; }
+#history-range .seg button.on { background: var(--bg); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+#history-hit { cursor: crosshair; touch-action: pan-y; }

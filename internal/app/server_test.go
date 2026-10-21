@@ -188,7 +188,7 @@ func TestHistoryAndFreshness(t *testing.T) {
 	}
 	var rep Report
 	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
-	if len(rep.History) < 300 {
+	if len(rep.History) < 2000 {
 		t.Fatalf("%d history points", len(rep.History))
 	}
 	if last := rep.History[len(rep.History)-1]; last.Sats != rep.Holdings {

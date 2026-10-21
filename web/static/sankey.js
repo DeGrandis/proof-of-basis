@@ -71,7 +71,7 @@ function drawSummary() {
   // back to the node when they had to move.
   const top = 26, gap = 6, groupGap = 30, nodeW = 14;
   const leftW = Math.max(190, Math.min(230, W * 0.26)), rightW = Math.max(250, Math.min(340, W * 0.36));
-  const H = Math.max(300, Math.max(srcs.length * 30, dsts.length * 42 + groups.length * groupGap) + 80);
+  const H = Math.round(1.2 * Math.max(300, Math.max(srcs.length * 30, dsts.length * 42 + groups.length * groupGap) + 80));
   const k = (H - top - 24 - gap * Math.max(srcs.length, dsts.length) - groupGap * groups.length) / total;
   const h = (s) => Math.max(1, s * k);
   const xA = leftW, xM = leftW + (W - leftW - rightW) / 2 - nodeW / 2, xC = W - rightW - nodeW;
