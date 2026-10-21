@@ -17,7 +17,7 @@ type signedRow struct {
 	note             string
 }
 
-var incomeWords = []string{"interest", "income", "staking", "earn", "yield", "bonus", "referral", "learning reward", "inflation reward"}
+var incomeWords = []string{"interest", "income", "staking", "earn", "yield", "bonus", "referral", "learning reward", "inflation reward", "strike credit"}
 var rewardWords = []string{"reward", "cashback", "cash back", "spin", "boost"}
 
 func hasAny(s string, words []string) bool {

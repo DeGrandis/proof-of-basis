@@ -77,6 +77,30 @@ func TestRiver(t *testing.T) {
 	}
 }
 
+// Strike's account report: different column names, same shape. Referral
+// and Strike Credit are BTC income valued at the day's price.
+func TestStrikeAccountReport(t *testing.T) {
+	ev := load(t, "strike-report.csv", "strike")
+	kinds := []Kind{FiatMove, Buy, Income, Income, Deposit, Withdrawal, Withdrawal, FiatMove}
+	if len(ev) != len(kinds) {
+		t.Fatalf("got %d events: %+v", len(ev), ev)
+	}
+	for i, k := range kinds {
+		if ev[i].Kind != k {
+			t.Errorf("row %d: kind %s want %s", i, ev[i].Kind, k)
+		}
+	}
+	if ev[1].Sats != 150_000 || ev[1].FiatCents != 100_00 || ev[1].FeeCents != 99 || ev[1].Ref != "syn-r-2" {
+		t.Errorf("buy %+v", ev[1])
+	}
+	if ev[2].Sats != 5_000 || ev[2].FiatCents != 335 { // 0.00005 BTC at $67,000
+		t.Errorf("referral %+v", ev[2])
+	}
+	if ev[5].FeeSats != 200 || ev[5].Address == "" {
+		t.Errorf("send %+v", ev[5])
+	}
+}
+
 func TestStrike(t *testing.T) {
 	ev := load(t, "strike.csv", "strike")
 	kinds := []Kind{FiatMove, Buy, Withdrawal, Sell, FiatMove}

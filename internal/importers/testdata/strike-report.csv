@@ -1,0 +1,9 @@
+ReferenceId,	Timestamp,	TransactionType,	FiatAmount,	FiatFee,	BitcoinAmount,	BitcoinFee,	BitcoinPrice,	CostBasisUsd,	Destination
+syn-r-1,2024-03-01 09:00:00,Deposit,500.00,0.00,,,,,
+syn-r-2,2024-03-02 10:00:00,Purchase,-100.00,0.99,0.00150000,,66000.00,100.00,
+syn-r-3,2024-03-03 11:00:00,Referral,,,0.00005000,,67000.00,3.35,
+syn-r-4,2024-03-04 12:00:00,Strike Credit,,,0.00002000,,67500.00,1.35,
+syn-r-5,2024-03-05 13:00:00,Receive,,,0.00100000,,68000.00,68.00,
+syn-r-6,2024-03-06 14:00:00,Send,,,-0.00050000,0.00000200,68500.00,,bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq
+syn-r-7,2024-03-07 15:00:00,Send,,,-0.00020000,0.00000010,69000.00,,lnbc200u1synthetic
+syn-r-8,2024-03-08 16:00:00,Withdrawal,-200.00,0.00,,,,,

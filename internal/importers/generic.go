@@ -179,24 +179,27 @@ func netReversals(rows []parsedRow, warns []Warning) ([]parsedRow, []Warning) {
 var outflowWords = []string{"withdraw", "send", "sent", "payment", "spend", "outgoing"}
 
 func init() {
-	// Strike "Annual Transactions" and "Account statement" exports.
-	// Types: Credit, Deposit, Withdrawal (USD); Purchase, Sell; Send,
-	// Receive, Bitcoin Withdrawal, Bitcoin Deposit (BTC). Strike reuses the
-	// Reference for a transaction and its reversal.
+	// Strike "Annual Transactions" / "Account statement" exports, and the
+	// "Account report" (ReferenceId, Timestamp, TransactionType, FiatAmount,
+	// FiatFee, BitcoinAmount, BitcoinFee, BitcoinPrice, CostBasisUsd,
+	// Destination). Types: Credit / Strike Credit, Deposit, Withdrawal (USD
+	// unless a BTC amount is given); Purchase, Sell; Send, Receive, Bitcoin
+	// Withdrawal, Bitcoin Deposit (BTC); Referral (BTC income). Strike reuses
+	// the reference for a transaction and its reversal.
 	Register(signedSpec{
 		id: "strike", name: "Strike",
-		signature: [][]string{{"Reference"}, {"Date & Time (UTC)"}, {"Transaction Type"}, {"Amount USD"},
-			{"Amount BTC"}, {"BTC Price"}, {"Cost Basis (USD)"}},
-		date:         []string{"Date & Time (UTC)"},
-		typ:          []string{"Transaction Type"},
-		btc:          []string{"Amount BTC"},
-		usd:          []string{"Amount USD"},
-		price:        []string{"BTC Price"},
-		feeUSD:       []string{"Fee USD"},
-		feeBTC:       []string{"Fee BTC"},
+		signature: [][]string{{"Reference", "ReferenceId"}, {"Date & Time (UTC)", "Timestamp"}, {"Transaction Type", "TransactionType"},
+			{"Amount USD", "FiatAmount"}, {"Amount BTC", "BitcoinAmount"}, {"BTC Price", "BitcoinPrice"}, {"Cost Basis (USD)", "CostBasisUsd"}},
+		date:         []string{"Date & Time (UTC)", "Timestamp"},
+		typ:          []string{"Transaction Type", "TransactionType"},
+		btc:          []string{"Amount BTC", "BitcoinAmount"},
+		usd:          []string{"Amount USD", "FiatAmount"},
+		price:        []string{"BTC Price", "BitcoinPrice"},
+		feeUSD:       []string{"Fee USD", "FiatFee"},
+		feeBTC:       []string{"Fee BTC", "BitcoinFee"},
 		txid:         []string{"Transaction Hash"},
 		addr:         []string{"Destination"},
-		ref:          []string{"Reference"},
+		ref:          []string{"Reference", "ReferenceId"},
 		note:         []string{"Description", "Note"},
 		outWords:     outflowWords,
 		feeInFiat:    true, // Amount USD is the cash that moved, fee included
