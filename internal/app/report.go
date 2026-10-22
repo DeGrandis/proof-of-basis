@@ -34,6 +34,11 @@ type AccountView struct {
 	ScannedAt string `json:"scannedAt,omitempty"`
 	Script    string `json:"script,omitempty"`
 	ID        int64  `json:"id"`
+	// Unlabeled items in Review don't move coins yet. PendingOut is BTC
+	// that has left this account on the platform's own books (and fees)
+	// but is still counted here; PendingIn arrived but isn't counted.
+	PendingOut int64 `json:"pendingOut,omitempty"`
+	PendingIn  int64 `json:"pendingIn,omitempty"`
 }
 
 type GraphEvent struct {
@@ -285,9 +290,18 @@ func (s *Server) buildReport() (*Report, error) {
 		basis[l.Account] += l.Basis
 		r.Holdings += l.Sats
 	}
+	pendOut, pendIn := map[string]int64{}, map[string]int64{}
+	for _, it := range tr.Unmatched {
+		if it.Dir == trace.Out {
+			pendOut[it.Account] += it.Sats + it.FeeSats
+		} else {
+			pendIn[it.Account] += it.Sats
+		}
+	}
 	seen := map[string]bool{}
 	for _, a := range accts {
-		v := AccountView{ID: a.ID, Name: a.Name, Kind: a.Kind, Sats: res.Balances[a.Name], Basis: basis[a.Name], ScannedAt: a.ScannedAt}
+		v := AccountView{ID: a.ID, Name: a.Name, Kind: a.Kind, Sats: res.Balances[a.Name], Basis: basis[a.Name], ScannedAt: a.ScannedAt,
+			PendingOut: pendOut[a.Name], PendingIn: pendIn[a.Name]}
 		if a.Kind == "wallet" {
 			b := a.Balance
 			v.ChainSats = &b

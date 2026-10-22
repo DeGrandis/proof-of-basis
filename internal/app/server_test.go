@@ -337,3 +337,48 @@ func TestPickedLots(t *testing.T) {
 		t.Errorf("picked %d sats in %s: %d %v", want, acct, w.Code, wi)
 	}
 }
+
+// Ways an exchange balance can drift from what the exchange shows, on
+// invented data. The traced balance only moves when a row is matched or
+// labeled, so unlabeled sends still count as held; the report says so.
+func TestExchangeBalanceDrift(t *testing.T) {
+	st, h := newTest(t)
+	acct, _ := st.ExchangeAccount("Strike", "strike")
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	st.AddImport(acct, "strike", "s.csv", "s", []importers.Event{
+		{Kind: importers.Buy, Time: at("2025-01-01"), Sats: 1_000_000, FiatCents: 500_00, UID: "s1"},
+		// A Lightning payment with its routing fee, not labeled yet.
+		{Kind: importers.Withdrawal, Time: at("2025-02-01"), Sats: 100_000, FeeSats: 10, Address: "lnbc1synthetic", UID: "s2"},
+		// An on-chain send to an address that isn't in any added wallet.
+		{Kind: importers.Withdrawal, Time: at("2025-03-01"), Sats: 200_000, FeeSats: 500, Address: "bc1qsynthetic", UID: "s3"},
+		// A sale: leaves right away.
+		{Kind: importers.Sell, Time: at("2025-04-01"), Sats: 50_000, FiatCents: 40_00, UID: "s4"},
+	}, nil)
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	var a AccountView
+	for _, x := range rep.Accounts {
+		if x.Name == "Strike" {
+			a = x
+		}
+	}
+	if a.Sats != 950_000 {
+		t.Errorf("traced balance %d: unlabeled sends should still be counted", a.Sats)
+	}
+	if a.PendingOut != 300_510 {
+		t.Errorf("pending out %d, want the two unlabeled sends plus fees", a.PendingOut)
+	}
+	if a.Sats-a.PendingOut != 649_490 { // what Strike itself shows
+		t.Errorf("after labels %d", a.Sats-a.PendingOut)
+	}
+	// Labeling the sends makes the balance match the exchange.
+	call(h, "POST", "/api/labels", `{"Key":"ex:2","Category":"spend"}`)
+	call(h, "POST", "/api/labels", `{"Key":"ex:3","Category":"self-transfer"}`)
+	var rep2 Report // a fresh value: omitted zero fields would otherwise keep old values
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep2)
+	for _, x := range rep2.Accounts {
+		if x.Name == "Strike" && (x.Sats != 649_490 || x.PendingOut != 0) {
+			t.Errorf("after labeling: %d pending %d", x.Sats, x.PendingOut)
+		}
+	}
+}

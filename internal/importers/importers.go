@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -109,6 +110,22 @@ func Import(r io.Reader, id string) (Handler, []Event, []Warning, error) {
 	return h, ev, warns, nil
 }
 
+// canonicalCell normalises a cell for hashing: numbers to a fixed form,
+// dates to Unix seconds, text trimmed.
+func canonicalCell(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if r, ok := parseDecimal(s); ok && strings.ContainsAny(s, "0123456789") && !strings.ContainsAny(s, ":/") {
+		return "n:" + r.FloatString(12)
+	}
+	if ts, err := ParseTime(s); err == nil {
+		return "t:" + strconv.FormatInt(ts.Unix(), 10)
+	}
+	return "s:" + s
+}
+
 func assignUIDs(platform string, t *Table, evs []Event) {
 	seen := map[string]int{}
 	for i := range evs {
@@ -120,9 +137,12 @@ func assignUIDs(platform string, t *Table, evs []Event) {
 		if e.Ref != "" {
 			base = platform + ":" + e.Ref
 		} else {
+			// Hash the row's meaning, not its text: "0.0059" and "0.00590000"
+			// are the same amount, and a date is the same instant however it
+			// is written, so a re-export with new formatting never duplicates.
 			h := sha256.New()
 			for _, col := range t.Header {
-				fmt.Fprintf(h, "%s\x1f", e.Raw[strings.TrimSpace(col)])
+				fmt.Fprintf(h, "%s\x1f", canonicalCell(e.Raw[strings.TrimSpace(col)]))
 			}
 			base = fmt.Sprintf("%s:row-%x", platform, h.Sum(nil)[:12])
 		}

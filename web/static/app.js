@@ -140,10 +140,15 @@ function renderOverview() {
   const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
   const cur = $("#whatif-account").value;
   $("#whatif-account").innerHTML = held.map((a) => `<option value="${esc(a.name)}"${a.name === cur ? " selected" : ""}>${esc(a.name)} (${btc(a.sats)} BTC)</option>`).join("") || `<option value="">No BTC held</option>`;
+  // Unlabeled items haven't moved coins yet, so an exchange's traced balance
+  // can sit above what the exchange shows by exactly the unlabeled sends.
+  const pend = (a) => (a.pendingOut || a.pendingIn)
+    ? `<span class="warn" title="Items in Review for this account haven't been counted yet. Once labeled, the balance here becomes ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))} BTC">${a.pendingOut ? `−${btc(a.pendingOut)}` : ""}${a.pendingOut && a.pendingIn ? " " : ""}${a.pendingIn ? `+${btc(a.pendingIn)}` : ""}</span><div class="small muted">→ ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}</div>`
+    : `<span class="muted">–</span>`;
   $("#accounts-table tbody").innerHTML = (r.accounts || []).map((a) => `<tr>
     <td>${esc(a.name)}</td><td>${esc(a.kind)}</td><td class="num">${btc(a.sats)}</td>
     <td class="num">${a.chainSats == null ? "" : btc(a.chainSats)}${a.chainSats != null && a.chainSats !== a.sats ? ' <span class="warn" title="Traced and on-chain balances differ: something is unlabeled or a scan is stale">!</span>' : ""}</td>
-    <td class="num">${usd(a.basis)}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No accounts yet.</td></tr>`;
+    <td class="num">${usd(a.basis)}</td><td class="num">${pend(a)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No accounts yet.</td></tr>`;
   const nLabel = r.unmatched?.length || 0;
   $("#warnings").innerHTML = (r.warnings || []).length || nLabel
     ? `<h2>Warnings</h2><div class="card small">${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";

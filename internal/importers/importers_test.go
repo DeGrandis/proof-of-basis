@@ -177,3 +177,27 @@ func TestUnknownFormat(t *testing.T) {
 		t.Error("expected error for non-CSV input")
 	}
 }
+
+// A re-export of the same River history with different number and date
+// formatting must produce the same row ids, or overlapping imports would
+// double count. (River has no reference column, so ids are content hashes.)
+func TestRowIDsSurviveReformatting(t *testing.T) {
+	a := "Date,Sent Amount,Sent Currency,Received Amount,Received Currency,Fee Amount,Fee Currency,Tag\n2023-01-05 10:00:00,100.00,USD,0.00590000,BTC,0.00,USD,Buy\n"
+	b := "Date,Sent Amount,Sent Currency,Received Amount,Received Currency,Fee Amount,Fee Currency,Tag\n2023-01-05T10:00:00Z,100,USD,0.0059,BTC,0,USD,Buy\n"
+	_, ea, _, err := Import(strings.NewReader(a), "river")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, eb, _, err := Import(strings.NewReader(b), "river")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ea) != 1 || len(eb) != 1 || ea[0].UID != eb[0].UID {
+		t.Errorf("ids differ: %q vs %q", ea[0].UID, eb[0].UID)
+	}
+	c := strings.Replace(b, "0.0059", "0.0060", 1)
+	_, ec, _, _ := Import(strings.NewReader(c), "river")
+	if ec[0].UID == eb[0].UID {
+		t.Error("a different amount got the same id")
+	}
+}
