@@ -29,14 +29,7 @@ func moreToolSpecs() []ollama.Tool {
 		return map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": desc}
 	}
 	return []ollama.Tool{
-		t("summarize_records", "Exact totals: count, BTC and USD of records grouped by year, month, account or kind. Use it for any \"how many\", \"how much in total\", \"which account has the most\" or per-year question instead of adding things up yourself.", obj(map[string]any{
-			"source":   str("what to total: records (default, every buy/sale/transfer/income/spend), review (items waiting for a label), sales (disposals with gains), income"),
-			"group_by": str("year, month, account or kind"),
-			"from":     str("first day, YYYY-MM-DD (optional)"),
-			"to":       str("last day, YYYY-MM-DD (optional)"),
-			"account":  str("only this account (optional)"),
-			"kind":     str("only this kind (optional, records only)"),
-		}, "group_by")),
+		analyzeToolSpec(),
 		t("calculate", "Exact arithmetic. Use it for any sum, difference, percentage or comparison of numbers instead of doing math yourself. Supports + - * / and parentheses.", obj(map[string]any{
 			"expression": str("for example (8672.03 - 1090.09) or -81.11 - (-76.10)"),
 		}, "expression")),
@@ -81,8 +74,14 @@ func moreToolSpecs() []ollama.Tool {
 // runMore handles the tools above; ok is false for an unknown name.
 func (tb *toolbox) runMore(name string, args map[string]any, lk *Lookup) (out string, ok bool, err error) {
 	switch name {
-	case "summarize_records":
-		out, lk.Summary, err = tb.summarize(args)
+	case "analyze_records", "summarize_records":
+		if name == "summarize_records" && argStr(args, "stat") == "" {
+			args["stat"] = "summary"
+			if argStr(args, "source") == "" {
+				args["source"] = "records"
+			}
+		}
+		out, lk.Summary, err = tb.analyze(args)
 	case "calculate":
 		var v float64
 		expr := argStr(args, "expression")
@@ -125,138 +124,6 @@ func (tb *toolbox) runMore(name string, args map[string]any, lk *Lookup) (out st
 }
 
 func round6(v float64) float64 { return math.Round(v*1e6) / 1e6 }
-
-// --- totals ---
-
-func (tb *toolbox) summarize(a map[string]any) (string, string, error) {
-	src, by := strings.ToLower(argStr(a, "source")), strings.ToLower(argStr(a, "group_by"))
-	if src == "" {
-		src = "records"
-	}
-	from, hasFrom := parseDay(argStr(a, "from"))
-	to, hasTo := parseDay(argStr(a, "to"))
-	acct, kind := strings.ToLower(argStr(a, "account")), strings.ToLower(argStr(a, "kind"))
-	type row struct {
-		t    time.Time
-		acct string
-		kind string
-		sats int64
-		usd  int64
-		gain int64
-	}
-	var rows []row
-	switch src {
-	case "records":
-		for _, g := range tb.rep.Graph {
-			rows = append(rows, row{time.Unix(g.Time, 0).UTC(), g.Account, g.Kind, g.Sats, g.Cents, 0})
-		}
-	case "review":
-		for _, it := range tb.rep.Unmatched {
-			rows = append(rows, row{it.Time.UTC(), it.Account, string(it.Dir), it.Sats, it.Value, 0})
-		}
-	case "sales":
-		for _, d := range tb.rep.Disposals {
-			k := "short-term"
-			if d.LongTerm {
-				k = "long-term"
-			}
-			rows = append(rows, row{d.Disposed.UTC(), d.Account, k, d.Sats, d.Proceeds, d.Gain()})
-		}
-	case "income":
-		for _, r := range tb.rep.Income {
-			rows = append(rows, row{r.Time.UTC(), "", r.Kind, r.Sats, r.Cents, 0})
-		}
-	default:
-		return "", "", errors.New("source must be records, review, sales or income")
-	}
-	key := func(r row) string {
-		switch by {
-		case "year":
-			return strconv.Itoa(r.t.Year())
-		case "month":
-			return r.t.Format("2006-01")
-		case "account":
-			if r.acct == "" {
-				return "(none)"
-			}
-			return r.acct
-		case "kind":
-			if src == "records" {
-				return kindName(r.kind)
-			}
-			return r.kind
-		}
-		return ""
-	}
-	if key(row{}) == "" && by != "account" {
-		return "", "", errors.New("group_by must be year, month, account or kind")
-	}
-	type agg struct {
-		n               int
-		sats, usd, gain int64
-	}
-	groups := map[string]*agg{}
-	var total agg
-	for _, r := range rows {
-		if hasFrom && r.t.Before(from) || hasTo && r.t.After(to.Add(24*time.Hour-time.Second)) {
-			continue
-		}
-		if acct != "" && !strings.EqualFold(r.acct, acct) {
-			continue
-		}
-		if kind != "" && src == "records" && !kindMatches(kind, r.kind) {
-			continue
-		}
-		k := key(r)
-		g := groups[k]
-		if g == nil {
-			g = &agg{}
-			groups[k] = g
-		}
-		g.n++
-		g.sats += r.sats
-		g.usd += r.usd
-		g.gain += r.gain
-		total.n++
-		total.sats += r.sats
-		total.usd += r.usd
-		total.gain += r.gain
-	}
-	keys := make([]string, 0, len(groups))
-	for k := range groups {
-		keys = append(keys, k)
-	}
-	if by == "year" || by == "month" {
-		sort.Strings(keys)
-	} else {
-		sort.Slice(keys, func(i, j int) bool { return groups[keys[i]].n > groups[keys[j]].n })
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s grouped by %s (%d groups):\n", src, by, len(keys))
-	line := func(name string, g agg) {
-		fmt.Fprintf(&b, "- %s: %d records, %s", name, g.n, btcStr(g.sats))
-		if g.usd != 0 {
-			label := "USD value"
-			if src == "sales" {
-				label = "proceeds"
-			}
-			fmt.Fprintf(&b, ", %s %s", label, usdStr(g.usd))
-		}
-		if src == "sales" {
-			fmt.Fprintf(&b, ", gain %s", usdStr(g.gain))
-		}
-		b.WriteString("\n")
-	}
-	for i, k := range keys {
-		if i >= 60 {
-			fmt.Fprintf(&b, "(%d more groups)\n", len(keys)-60)
-			break
-		}
-		line(k, *groups[k])
-	}
-	line("TOTAL", total)
-	return b.String(), fmt.Sprintf("Totaled %s by %s", src, by), nil
-}
 
 // --- exact math ---
 

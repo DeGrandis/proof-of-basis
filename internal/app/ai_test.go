@@ -311,9 +311,14 @@ func TestMoreTools(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"summarize_records", map[string]any{"source": "review", "group_by": "account"}, "TOTAL"},
-		{"summarize_records", map[string]any{"group_by": "year", "kind": "buy"}, "TOTAL"},
-		{"summarize_records", map[string]any{"source": "sales", "group_by": "year"}, "gain"},
+		{"analyze_records", map[string]any{"source": "review", "measure": "account", "stat": "count"}, "Hot wallet"},
+		{"analyze_records", map[string]any{"group_by": "year", "measure": "price", "stat": "mean"}, "ALL"},
+		{"analyze_records", map[string]any{"source": "sales", "measure": "days_held", "stat": "median"}, "days"},
+		{"analyze_records", map[string]any{"measure": "usd", "stat": "mode"}, "most common"},
+		{"analyze_records", map[string]any{"measure": "weekday", "stat": "count"}, "day"},
+		{"analyze_records", map[string]any{"source": "lots", "measure": "gain", "stat": "top", "top_n": float64(3)}, "["},
+		{"analyze_records", map[string]any{"measure": "usd", "stat": "histogram"}, " to "},
+		{"summarize_records", map[string]any{"group_by": "year"}, "ALL"},
 		{"calculate", map[string]any{"expression": "2 * (3 + 4)"}, "= 14"},
 		{"holdings_on", map[string]any{"date": "2023-12-31"}, "By account"},
 		{"lots_turning_long_term", map[string]any{"within_days": float64(400)}, "long-term"},
@@ -341,16 +346,16 @@ func TestMoreTools(t *testing.T) {
 	if gain("highest_cost") == gain("lowest_cost") {
 		t.Log("strategies gave the same result (single lot?)")
 	}
-	if lk, _ := tb.run("summarize_records", map[string]any{"group_by": "planet"}); lk.Error == "" {
-		t.Error("bad group_by accepted")
+	if lk, _ := tb.run("analyze_records", map[string]any{"stat": "vibes"}); lk.Error == "" {
+		t.Error("bad stat accepted")
 	}
 	if lk, _ := tb.run("what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "random"}); lk.Error == "" {
 		t.Error("bad strategy accepted")
 	}
-	// The review count by account must match the report exactly.
-	_, out := tb.run("summarize_records", map[string]any{"source": "review", "group_by": "account"})
-	if !strings.Contains(out, fmt.Sprintf("TOTAL: %d records", len(rep.Unmatched))) {
-		t.Errorf("review total wrong: %s", out)
+	// The review count must match the report exactly.
+	_, out := tb.run("analyze_records", map[string]any{"source": "review", "measure": "btc", "stat": "count"})
+	if !strings.Contains(out, fmt.Sprintf("count: %d", len(rep.Unmatched))) {
+		t.Errorf("review count wrong: %s", out)
 	}
 }
 
@@ -399,5 +404,55 @@ func TestSellEverything(t *testing.T) {
 	lk, out = tb.run("what_if_sale", map[string]any{"account": "Cold storage (wallet)", "all": true})
 	if lk.Error != "" || !strings.Contains(out, "Estimated extra tax") {
 		t.Errorf("sell whole account: %q %s", lk.Error, out)
+	}
+}
+
+func TestAnalyzeMath(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, _ := srv.buildReport()
+	tb := &toolbox{s: srv, rep: rep}
+	// Work the answers out independently from the report.
+	var usds []float64
+	counts := map[int64]int{}
+	var sum int64
+	for _, g := range rep.Graph {
+		if g.Kind == "buy" || g.Kind == "purchase" {
+			if g.Cents != 0 {
+				usds = append(usds, float64(g.Cents)/100)
+				counts[g.Cents]++
+				sum += g.Cents
+			}
+		}
+	}
+	_, out := tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "stat": "summary"})
+	if !strings.Contains(out, fmt.Sprintf("count %d, sum %s", len(usds), usdStr(sum))) {
+		t.Errorf("summary: %s (want count %d sum %s)", out, len(usds), usdStr(sum))
+	}
+	var best int64
+	for c, n := range counts {
+		if n > counts[best] || n == counts[best] && c < best {
+			best = c
+		}
+	}
+	_, out = tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "stat": "mode"})
+	if counts[best] > 1 && !strings.Contains(out, "most common: "+usdStr(best)) {
+		t.Errorf("mode: %s (want %s x%d)", out, usdStr(best), counts[best])
+	}
+	if counts[best] > 1 && !strings.Contains(out, fmt.Sprintf("%d of %d", counts[best], len(usds))) {
+		t.Errorf("mode count: %s", out)
+	}
+	// Percentiles and the median agree.
+	_, med := tb.run("analyze_records", map[string]any{"measure": "usd", "stat": "median"})
+	_, pct := tb.run("analyze_records", map[string]any{"measure": "usd", "stat": "percentiles"})
+	m := strings.TrimSpace(strings.TrimPrefix(strings.Split(med, "\n")[1], "median:"))
+	if !strings.Contains(pct, "median "+m) {
+		t.Errorf("median %q not in percentiles %s", m, pct)
+	}
+	if v, _ := calc("1"); v != 1 {
+		t.Fatal()
 	}
 }
