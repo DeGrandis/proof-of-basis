@@ -70,7 +70,7 @@
     </section>
     <section class="ov-card" data-card="accounts">
       <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Accounts</b></div>
-      <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num">BTC (traced)</th><th class="num">BTC (on chain)</th><th class="num">Cost basis</th><th class="num">Awaiting labels</th></tr></thead><tbody></tbody></table></div>
+      <div class="scroll"><table id="accounts-table"><thead><tr><th>Account</th><th>Type</th><th class="num"><span class="unit-name">BTC</span> (traced)</th><th class="num"><span class="unit-name">BTC</span> (on chain)</th><th class="num">Cost basis</th><th class="num">Awaiting labels</th></tr></thead><tbody></tbody></table></div>
       <div id="warnings"></div>
     </section>
     <section class="ov-card" data-card="whatif">
@@ -165,7 +165,7 @@
   <section id="review" class="tab">
     <h2>Needs a label</h2>
     <p class="small muted">These moved BTC in or out of your tracked accounts and could not be matched to another of your accounts. Say what each one was.</p>
-    <div class="scroll"><table id="review-table"><thead><tr><th><button class="sort" data-sort="date">Date</button></th><th><button class="sort" data-sort="account">Account</button></th><th><button class="sort" data-sort="type">Type</button></th><th class="num"><button class="sort" data-sort="amount">BTC</button></th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll"><table id="review-table"><thead><tr><th><button class="sort" data-sort="date">Date</button></th><th><button class="sort" data-sort="account">Account</button></th><th><button class="sort" data-sort="type">Type</button></th><th class="num"><button class="sort" data-sort="amount"><span class="unit-name">BTC</span></button></th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
     <h2>Matched transfers</h2>
     <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th>How</th></tr></thead><tbody></tbody></table></div>
   </section>
@@ -210,12 +210,19 @@
     <p class="small muted">An estimate using the rates in Settings, not tax advice. Loss carryforwards and the $3,000 ordinary-income offset are not applied yet.</p>
     <h2>Protected purchases</h2>
     <p class="small muted">Coins from these are sold last: your method skips them until nothing else is left in that account. Protect a purchase from its details in Flow.</p>
-    <div class="scroll"><table id="protected-table"><thead><tr><th>Acquired</th><th>Account</th><th class="num">BTC</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll"><table id="protected-table"><thead><tr><th>Acquired</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th></th></tr></thead><tbody></tbody></table></div>
     <h2>Disposals</h2>
-    <div class="scroll"><table id="disposals-table"><thead><tr><th>Sold</th><th>Acquired</th><th>Account</th><th class="num">BTC</th><th class="num">Proceeds</th><th class="num">Basis</th><th class="num">Gain</th><th>Term</th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll"><table id="disposals-table"><thead><tr><th>Sold</th><th>Acquired</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">Proceeds</th><th class="num">Basis</th><th class="num">Gain</th><th>Term</th></tr></thead><tbody></tbody></table></div>
   </section>
 
   <section id="settings" class="tab">
+    <h2>Display</h2>
+    <form id="display-form" class="card grid">
+      <label>Dollar amounts <select name="cents"><option value="yes">With cents ($1,234.56)</option><option value="no">Whole dollars ($1,234)</option></select></label>
+      <label>Bitcoin amounts <select name="unit"><option value="btc">BTC (0.00123456 BTC)</option><option value="sats">Sats (123,456 sats)</option><option value="bitcoin">Bitcoin sign (₿123,456)</option></select></label>
+      <div class="wide small muted" id="display-sample"></div>
+      <div class="wide small muted">Whole dollars drop the cents rather than rounding. The bitcoin sign counts sats, written like dollars. These stay in this browser and apply right away.</div>
+    </form>
     <h2>Your node</h2>
     <form id="settings-form" class="card grid">
       <label>Fulcrum host <input name="fulcrumHost" placeholder="192.168.1.10 or umbrel.local"></label>

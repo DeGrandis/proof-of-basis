@@ -4,8 +4,37 @@
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const btc = (sats) => (sats < 0 ? "-" : "") + (Math.abs(sats) / 1e8).toFixed(8);
-const usd = (cents) => (cents < 0 ? "-$" : "$") + (Math.abs(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Display preferences, kept in this browser: dollars with or without cents
+// (cents are dropped, never rounded), and bitcoin as BTC, sats or the
+// bitcoin sign (sats written like dollars: ₿123,456).
+const prefs = (() => {
+  const p = { cents: true, unit: "btc" };
+  try { const s = JSON.parse(localStorage.getItem("displayPrefs") || "{}"); if (s.cents === false) p.cents = false; if (["btc", "sats", "bitcoin"].includes(s.unit)) p.unit = s.unit; } catch {}
+  return p;
+})();
+const UNIT_NAME = { btc: "BTC", sats: "Sats", bitcoin: "₿" };
+const groupInt = (n) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+// btc(): the number alone, for columns headed with the unit.
+const btc = (sats) => {
+  const neg = sats < 0 ? "-" : "", a = Math.abs(sats);
+  if (prefs.unit === "btc") return neg + (a / 1e8).toFixed(8);
+  return neg + (prefs.unit === "bitcoin" ? "₿" : "") + groupInt(a);
+};
+// amt(): the number with its unit, for prose.
+const amt = (sats) => prefs.unit === "btc" ? btc(sats) + " BTC" : prefs.unit === "sats" ? btc(sats) + (Math.abs(sats) === 1 ? " sat" : " sats") : btc(sats);
+// Short axis labels: 0.25, 25M, ₿25M.
+const axisAmt = (sats) => {
+  if (prefs.unit === "btc") return String(+(sats / 1e8).toFixed(4));
+  const k = sats >= 1e6 ? +(sats / 1e6).toFixed(2) + "M" : sats >= 1e3 ? +(sats / 1e3).toFixed(1) + "k" : String(sats);
+  return (prefs.unit === "bitcoin" ? "₿" : "") + k;
+};
+const usd = (cents) => {
+  const a = Math.abs(cents);
+  if (prefs.cents) return (cents < 0 ? "-$" : "$") + (a / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const whole = Math.trunc(a / 100); // drop the cents, don't round
+  return (cents < 0 && whole ? "-$" : "$") + groupInt(whole);
+};
+function setUnitLabels() { $$(".unit-name").forEach((el) => (el.textContent = UNIT_NAME[prefs.unit])); }
 const signed = (cents) => `<span class="${cents < 0 ? "neg" : cents > 0 ? "pos" : ""}">${usd(cents)}</span>`;
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; // theme color, for canvas drawing
 const day = (t) => new Date(typeof t === "number" ? t * 1000 : t).toISOString().slice(0, 10);
@@ -123,6 +152,8 @@ $("#year-select").addEventListener("change", (e) => {
   renderOverview();
 });
 
+let heroBTC = (() => { try { return localStorage.getItem("heroFirst") === "btc"; } catch { return false; } })();
+
 function renderOverview() {
   const r = report;
   const thisYear = new Date().getFullYear();
@@ -132,23 +163,33 @@ function renderOverview() {
   $("#year-select").innerHTML = years.map((y) => `<option value="${y}"${y === yr ? " selected" : ""}>${y}${y === thisYear ? " (this year)" : ""}</option>`).join("");
   const ys = (r.years || []).find((y) => y.year === yr);
   const worth = r.price ? Math.round(r.holdingsSats * r.price / 1e8) : 0;
+  // The swap button puts dollars or bitcoin first; the choice is remembered.
+  const swapTip = heroBTC ? "Show dollars first" : "Show bitcoin first";
+  const swap = `<button type="button" id="hero-swap" class="hero-swap" title="${swapTip}" aria-label="${swapTip}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v14m0 0-3-3m3 3 3-3M17 20V6m0 0-3 3m3-3 3 3"/></svg></button>`;
+  const big = (v, label) => `<div class="worth-row"><div class="worth">${v}</div>${r.price ? swap : ""}</div><div class="label">${label}</div>`;
+  const priceLine = `${usd(r.price)} per BTC <span class="muted">(${esc(r.priceDay)})</span>`;
   $("#hero").innerHTML = r.price
-    ? `<div class="worth">${usd(worth)}</div><div class="label">Portfolio value</div>
-       <div class="held">${btc(r.holdingsSats)} BTC · ${usd(r.price)} per BTC <span class="muted">(${esc(r.priceDay)})</span></div>
-       <div class="gain ${r.unrealized < 0 ? "neg" : "pos"}">${r.unrealized >= 0 ? "+" : "-"}${usd(Math.abs(r.unrealized))} unrealized</div>`
-    : `<div class="worth">${btc(r.holdingsSats)} BTC</div><div class="label">Bitcoin held</div><div class="held">No price yet: press Update prices in Settings</div>`;
+    ? (heroBTC ? big(amt(r.holdingsSats), "Bitcoin held") + `<div class="held">${usd(worth)} · ${priceLine}</div>`
+               : big(usd(worth), "Portfolio value") + `<div class="held">${amt(r.holdingsSats)} · ${priceLine}</div>`)
+      + `<div class="gain ${r.unrealized < 0 ? "neg" : "pos"}">${r.unrealized >= 0 ? "+" : "-"}${usd(Math.abs(r.unrealized))} unrealized</div>`
+    : big(amt(r.holdingsSats), "Bitcoin held") + `<div class="held">No price yet: press Update prices in Settings</div>`;
+  $("#hero-swap")?.addEventListener("click", () => {
+    heroBTC = !heroBTC;
+    try { localStorage.setItem("heroFirst", heroBTC ? "btc" : "usd"); } catch {}
+    renderOverview();
+  });
   const tiles = [
-    [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
-    [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
+    [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : usd(0)],
+    [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : usd(0)],
   ];
   $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile${/tax/.test(k) ? " tax" : ""}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
   const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
   const cur = $("#whatif-account").value;
-  $("#whatif-account").innerHTML = held.map((a) => `<option value="${esc(a.name)}"${a.name === cur ? " selected" : ""}>${esc(a.name)} (${btc(a.sats)} BTC)</option>`).join("") || `<option value="">No BTC held</option>`;
+  $("#whatif-account").innerHTML = held.map((a) => `<option value="${esc(a.name)}"${a.name === cur ? " selected" : ""}>${esc(a.name)} (${amt(a.sats)})</option>`).join("") || `<option value="">No BTC held</option>`;
   // Unlabeled items haven't moved coins yet, so an exchange's traced balance
   // can sit above what the exchange shows by exactly the unlabeled sends.
   const pend = (a) => (a.pendingOut || a.pendingIn)
-    ? `<span class="warn" title="Items in Review for this account haven't been counted yet. Once labeled, the balance here becomes ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))} BTC">${a.pendingOut ? `−${btc(a.pendingOut)}` : ""}${a.pendingOut && a.pendingIn ? " " : ""}${a.pendingIn ? `+${btc(a.pendingIn)}` : ""}</span><div class="small muted">→ ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}</div>`
+    ? `<span class="warn" title="Items in Review for this account haven't been counted yet. Once labeled, the balance here becomes ${amt(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}">${a.pendingOut ? `−${btc(a.pendingOut)}` : ""}${a.pendingOut && a.pendingIn ? " " : ""}${a.pendingIn ? `+${btc(a.pendingIn)}` : ""}</span><div class="small muted">→ ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}</div>`
     : `<span class="muted">–</span>`;
   $("#accounts-table tbody").innerHTML = (r.accounts || []).map((a) => `<tr>
     <td>${esc(a.name)}</td><td>${esc(a.kind)}</td><td class="num">${btc(a.sats)}</td>
@@ -176,13 +217,13 @@ $("#whatif-form").addEventListener("submit", async (e) => {
     const g = (s) => s.proceeds - s.basis;
     const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
     out.innerHTML = `<div class="whatif-grid">
-      ${tile("Selling", `${btc(r.sats)} BTC`, `for ${usd(r.proceeds)} at ${usd(r.price)}`)}
-      ${tile("Short-term gain", signed(g(r.short)), r.short.sats ? `${btc(r.short.sats)} BTC held a year or less` : "none")}
-      ${tile("Long-term gain", signed(g(r.long)), r.long.sats ? `${btc(r.long.sats)} BTC held over a year` : "none")}
+      ${tile("Selling", `${amt(r.sats)}`, `for ${usd(r.proceeds)} at ${usd(r.price)}`)}
+      ${tile("Short-term gain", signed(g(r.short)), r.short.sats ? `${amt(r.short.sats)} held a year or less` : "none")}
+      ${tile("Long-term gain", signed(g(r.long)), r.long.sats ? `${amt(r.long.sats)} held over a year` : "none")}
       ${tile("Extra tax this year", usd(Math.max(r.extraTax, 0)), r.extraTax < 0 ? `lowers this year's estimate by ${usd(-r.extraTax)}` : `at your rates, after this year's other results`)}
     </div>
     <p class="small muted">Lots picked by ${esc(r.method.toUpperCase())}, skipping protected purchases unless nothing else is left. Price from ${esc(r.priceDay)}. An estimate, not tax advice.</p>`
-      + (r.missingSats ? `<p class="warn small">${btc(r.missingSats)} BTC of this has no known purchase; its basis is counted as zero.</p>` : "")
+      + (r.missingSats ? `<p class="warn small">${amt(r.missingSats)} of this has no known purchase; its basis is counted as zero.</p>` : "")
       + (r.warnings || []).map((w) => `<p class="warn small">${esc(w)}</p>`).join("");
   } catch (err) { out.innerHTML = `<p class="warn">${esc(err.message)}</p>`; }
 });
@@ -228,7 +269,7 @@ function renderLightning() {
   const rows = lnLedger();
   const line = (r) => `<tr><td>${day(r.e.t)}</td><td>${r.g ? `<a href="${pageLink(r.g)}">${esc(r.what)}</a>` : esc(r.what)}</td>
     <td class="num in">${r.delta > 0 ? btc(r.delta) : ""}</td><td class="num out">${r.delta < 0 ? btc(-r.delta) : ""}</td><td class="num">${btc(r.balance)}</td><td class="small">${r.counts}</td></tr>`;
-  const head = `<div class="bal"><div><div class="small muted">Balance</div><div class="big">${btc(ln.balanceSats)} BTC</div></div>${worth ? `<div><div class="small muted">Worth</div><div class="big">${worth}</div></div>` : ""}
+  const head = `<div class="bal"><div><div class="small muted">Balance</div><div class="big">${amt(ln.balanceSats)}</div></div>${worth ? `<div><div class="small muted">Worth</div><div class="big">${worth}</div></div>` : ""}
     <div class="small muted">${ln.alias ? esc(ln.alias) + " · " : ""}${ln.synced ? `synced ${esc(ln.synced.replace("T", " ").slice(0, 16))} UTC` : "not synced yet"}</div></div>`;
   $("#node-card-title").textContent = ln.account;
   nodeCard.innerHTML = `<div class="node-card">${head}
@@ -240,8 +281,8 @@ function renderLightning() {
   const routed = sum(rows.filter((r) => r.e.tag === "routed"), (r) => r.delta), feesPaid = sum(rows.filter((r) => r.e.tag.endsWith("fee") && r.e.tag !== "lease_fee"), (r) => -r.delta);
   const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
   $("#ln-head").innerHTML = `<div class="card node-card"><div class="row"><b>${esc(ln.account)}</b></div>${head}<div class="tiles">
-    ${tile("Paid out", `${btc(-sum(pay, (r) => r.delta))} BTC`, `${pay.length} payments`)}${tile("Received", `${btc(sum(recv, (r) => r.delta))} BTC`, `${recv.length} payments`)}
-    ${tile("Routing fees earned", `${btc(routed)} BTC`, "counted as income")}${tile("Fees paid", `${btc(feesPaid)} BTC`, "routing and on-chain")}</div></div>`;
+    ${tile("Paid out", `${amt(-sum(pay, (r) => r.delta))}`, `${pay.length} payments`)}${tile("Received", `${amt(sum(recv, (r) => r.delta))}`, `${recv.length} payments`)}
+    ${tile("Routing fees earned", `${amt(routed)}`, "counted as income")}${tile("Fees paid", `${amt(feesPaid)}`, "routing and on-chain")}</div></div>`;
   const f = $("#ln-filter").value;
   const shown = rows.filter((r) => !f || (f === "out" && r.e.tag === "invoice" && r.delta < 0) || (f === "in" && r.e.tag === "invoice" && r.delta > 0)
     || (f === "chain" && (r.e.tag === "deposit" || r.e.tag === "withdrawal")) || (f === "fee" && (r.e.tag.endsWith("fee") || r.e.tag === "routed")));
@@ -402,7 +443,7 @@ function drawHistory() {
   const nice = (m) => { const e = Math.pow(10, Math.floor(Math.log10(m)) - 1); return [1, 2, 2.5, 5, 10, 20, 25, 50, 100].map((k) => k * e).find((s) => m / s <= 5); };
   let g = "";
   const sStep = nice(maxS / 1e8) * 1e8;
-  for (let s = 0; s <= maxS * 1.001; s += sStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y1(s)}" y2="${y1(s)}"/><text x="${L - 8}" y="${y1(s) + 4}" text-anchor="end">${+(s / 1e8).toFixed(4)}</text>`;
+  for (let s = 0; s <= maxS * 1.001; s += sStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y1(s)}" y2="${y1(s)}"/><text x="${L - 8}" y="${y1(s) + 4}" text-anchor="end">${axisAmt(s)}</text>`;
   const pStep = nice(Math.max(maxP - minP, 100) / 100) * 100;
   for (let c = Math.ceil(minP / pStep) * pStep; c <= maxP * 1.001; c += pStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y2(c)}" y2="${y2(c)}"/><text x="${L - 8}" y="${y2(c) + 4}" text-anchor="end">$${c >= 100000 ? (c / 100000).toFixed(c % 100000 ? 1 : 0) + "k" : Math.round(c / 100)}</text>`;
   // Time labels suited to the window: years, months or days.
@@ -451,7 +492,7 @@ function drawHistory() {
     g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" data-dot="${i}" cx="${cx.toFixed(1)}" cy="${cyP.toFixed(1)}" r="${r.toFixed(1)}"/>`;
   });
   g += `</g>`;
-  g += `<text class="title" x="${L}" y="${top1 - 8}">BTC held</text><text class="title" x="${L}" y="${top2 - 10}">BTC price (USD)</text>`;
+  g += `<text class="title" x="${L}" y="${top1 - 8}">${prefs.unit === "btc" ? "BTC" : prefs.unit === "sats" ? "Sats" : "Bitcoin (₿)"} held</text><text class="title" x="${L}" y="${top2 - 10}">BTC price (USD)</text>`;
   g += `<g id="history-cross" visibility="hidden"><line class="cross" y1="${top1}" y2="${top2 + h2}"/><circle class="pt-btc" r="4"/><circle class="pt-px" r="4"/></g>`;
   g += `<rect x="${L}" y="${top1}" width="${PW}" height="${top2 + h2 - top1}" fill="transparent" id="history-hit"/>`;
   // The scrubber: the whole history as a faint area, with the visible
@@ -497,8 +538,8 @@ function drawHistory() {
       const ev = best.e, buy = ev.kind === "buy", now = report.price || priceAt(b);
       $("line", cross).setAttribute("x1", best.cx); $("line", cross).setAttribute("x2", best.cx);
       cb.setAttribute("cx", best.cx); cb.setAttribute("cy", best.cyH); cp.setAttribute("cx", best.cx); cp.setAttribute("cy", best.cyP);
-      tip.innerHTML = `<div class="tip-row"><b>${buy ? "Bought" : esc(KIND_NAMES[ev.kind] || "Sold")} ${btc(ev.sats)} BTC at ${usd(best.p)}</b>${now ? pctPill(pct(best.p, now)) : ""}</div>
-        <div class="tip-line">${ev.cents ? `${buy ? "Cost" : "Proceeds"} ${usd(ev.cents)} · ` : ""}${esc(ev.account)}${now ? ` · ${usd(now)} today` : ""}</div><div class="tip-cap">${day(ev.t)} · ${btc(nearest(ev.t).sats)} BTC held after</div>`;
+      tip.innerHTML = `<div class="tip-row"><b>${buy ? "Bought" : esc(KIND_NAMES[ev.kind] || "Sold")} ${amt(ev.sats)} at ${usd(best.p)}</b>${now ? pctPill(pct(best.p, now)) : ""}</div>
+        <div class="tip-line">${ev.cents ? `${buy ? "Cost" : "Proceeds"} ${usd(ev.cents)} · ` : ""}${esc(ev.account)}${now ? ` · ${usd(now)} today` : ""}</div><div class="tip-cap">${day(ev.t)} · ${amt(nearest(ev.t).sats)} held after</div>`;
       placeTip(best.cx, best.cyP);
       return;
     }
@@ -508,7 +549,7 @@ function drawHistory() {
     cb.setAttribute("cx", xx); cb.setAttribute("cy", y1(p.sats));
     cp.setAttribute("cx", xx); cp.setAttribute("cy", p.price ? y2(p.price) : -20);
     const change = p.price && firstPriced ? pct(firstPriced.price, p.price) : pct(first.sats, p.sats);
-    tip.innerHTML = `<div class="tip-row"><b>${btc(p.sats)} BTC</b>${pctPill(change)}</div>
+    tip.innerHTML = `<div class="tip-row"><b>${amt(p.sats)}</b>${pctPill(change)}</div>
       <div class="tip-line">${p.price ? `${usd(p.price)} per BTC · worth ${usd(Math.round(p.sats * p.price / 1e8))}` : "No price for this day"}</div>
       <div class="tip-cap">${day(p.t)} · ${p.price && firstPriced ? "price" : "holdings"} since ${day((p.price && firstPriced ? firstPriced : first).t)}</div>`;
     placeTip(xx, y1(p.sats));
@@ -553,7 +594,7 @@ $("#wallets-table").addEventListener("click", async (e) => {
     e.target.textContent = "Scanning…";
     try {
       const r = await post(`/api/wallets/${scan}/scan`, {});
-      toast(`Found ${r.txs} transactions, balance ${btc(r.balance)} BTC`);
+      toast(`Found ${r.txs} transactions, balance ${amt(r.balance)}`);
     } catch (err) { toast(err.message); }
     refresh();
   }
@@ -771,7 +812,7 @@ function renderReview() {
     const net = it.Network || "unknown";
     return `<tr data-key="${esc(it.Key)}" data-dir="${esc(it.Dir)}" data-value="${it.Value || 0}">
       <td>${day(it.Time)}</td><td>${esc(it.Account)}</td><td><span class="row">${netBadge(net)}<span class="small">${NET_ICON[net]?.[0] || "Not stated"} · ${it.Dir === "out" ? "Out" : "In"}</span></span></td>
-      <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${btc(it.FeeSats)} fee</div>` : ""}${it.Value ? `<div class="small muted">≈ ${usd(it.Value)}</div>` : ""}</td>
+      <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${amt(it.FeeSats)} fee</div>` : ""}${it.Value ? `<div class="small muted">≈ ${usd(it.Value)}</div>` : ""}</td>
       <td class="row"><select class="cat"><option value="">Choose…</option>${cats.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
         <span class="extra"></span><button class="save" hidden>Save</button></td>
       <td class="small">${detail}</td></tr>`;
@@ -785,7 +826,7 @@ $("#review-table").addEventListener("change", (e) => {
   extra.innerHTML = "";
   if (cat === "self") {
     const opp = (report.unmatched || []).filter((i) => i.Dir !== tr.dataset.dir);
-    extra.innerHTML = `<select class="cp">${opp.map((i) => `<option value="${esc(i.Key)}">${day(i.Time)} ${esc(i.Account)} ${btc(i.Sats)}</option>`).join("")}</select>`;
+    extra.innerHTML = `<select class="cp">${opp.map((i) => `<option value="${esc(i.Key)}">${day(i.Time)} ${esc(i.Account)} ${amt(i.Sats)}</option>`).join("")}</select>`;
   } else if (cat === "self-transfer") {
     extra.innerHTML = `<span class="small muted">${tr.dataset.dir === "out" ? "Keeps its basis and purchase dates while it's away." : "Brings back coins you sent out as a self transfer, with their original basis and dates."}</span>`;
   } else if (MARKET_VALUE[cat]) {
@@ -837,7 +878,7 @@ function renderTaxes() {
   for (const d of report.disposals || []) { const yr = new Date(d.Disposed).getUTCFullYear(); sales[yr] = (sales[yr] || 0) + 1; }
   $("#years-table tbody").innerHTML = (report.years || []).map((y) => `<tr><td>${y.year}</td>
     <td class="num">${signed(y.shortProceeds - y.shortBasis)}</td><td class="num">${signed(y.longProceeds - y.longBasis)}</td>
-    <td class="num">${usd(y.income)}</td><td class="num">${usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${btc(y.missingBasisSats)} BTC sold with no known basis">!</span>` : ""}</td>
+    <td class="num">${usd(y.income)}</td><td class="num">${usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${amt(y.missingBasisSats)} sold with no known basis">!</span>` : ""}</td>
     <td>${sales[y.year] ? `<a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a> <span class="small muted">${sales[y.year]} sales</span>` : `<span class="small muted" title="Form 8949 lists sales and spends. This year only has income, which is reported elsewhere.">No sales to report</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
   $("#disposals-table tbody").innerHTML = (report.disposals || []).map((d) => `<tr>
     <td>${day(d.Disposed)}</td><td>${d.Missing ? '<span class="warn">unknown</span>' : day(d.Acquired)}</td><td>${esc(d.Account)}</td>
@@ -1067,13 +1108,13 @@ function drawTimeline() {
       const [cls, glyph] = ledgerIcon(p);
       const e = p.e;
       const what = e.kind === "transfer" ? (p.dir === "in" ? `Moved in from ${e.account}` : `Moved out to ${e.to}`) : KIND_NAMES[e.label || e.kind] || e.kind;
-      out += `<text class="lg-icon ${cls}" data-key="${esc(e.key)}" x="${xOf(pp, W)}" y="${yOf(p.bal) + 4}" text-anchor="middle"><title>${esc(`${what}: ${btc(e.sats)} BTC\n${day(e.t)}\nBalance after: ${btc(p.bal)} BTC`)}</title>${glyph}</text>`;
+      out += `<text class="lg-icon ${cls}" data-key="${esc(e.key)}" x="${xOf(pp, W)}" y="${yOf(p.bal) + 4}" text-anchor="middle"><title>${esc(`${what}: ${amt(e.sats)}\n${day(e.t)}\nBalance after: ${amt(p.bal)}`)}</title>${glyph}</text>`;
     }
     nowBal[acct] = pts.length ? pts.at(-1).bal : 0;
   }
   // Lane names and the current balance stay put while the timeline pans.
   labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${top + laneH / 2}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
-    + `<text class="lane-bal" x="16" y="${top + laneH / 2 + 14}">${btc(nowBal[l] || 0)}</text>`).join("");
+    + `<text class="lane-bal" x="16" y="${top + laneH / 2 + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
   out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
@@ -1172,11 +1213,11 @@ function buildDetail(key) {
   const related = new Set([key]);
   const byKey = Object.fromEntries((report.graph || []).map((g) => [g.key, g]));
   const via = (hops) => { hops.forEach((h) => related.add(h.key)); return hops; };
-  const rows = [["When", when(e.t)], ["Account", esc(e.account) + (e.to ? ` → ${esc(e.to)}` : "")], ["Amount", `${btc(e.sats)} BTC`]];
+  const rows = [["When", when(e.t)], ["Account", esc(e.account) + (e.to ? ` → ${esc(e.to)}` : "")], ["Amount", `${amt(e.sats)}`]];
   if (e.cents) rows.push([e.kind === "sell" || e.kind === "sold" ? "Proceeds" : e.kind === "buy" ? "Cost" : "Value", usd(e.cents) + (e.sats ? ` <span class="muted small">(${usd(Math.round(e.cents * 1e8 / e.sats))}/BTC)</span>` : "")]);
   else if (e.value) rows.push(["Market value", usd(e.value) + ` <span class="muted small">at that day's price</span>`]);
   if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
-  if (e.feeSats) rows.push(["Network fee", `${btc(e.feeSats)} BTC`]);
+  if (e.feeSats) rows.push(["Network fee", `${amt(e.feeSats)}`]);
   if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);
   if (e.method) rows.push(["Matched by", esc(e.method)]);
   if (e.txid) rows.push(["Transaction", `<a class="mono small" href="#tx/${esc(e.txid)}">${esc(e.txid)}</a>`]);
@@ -1187,28 +1228,28 @@ function buildDetail(key) {
   const sameTx = e.txid ? (report.graph || []).filter((g) => g.txid === e.txid && g.key !== key) : [];
   if (sameTx.length) {
     trace += `<b>Same transaction</b>` + sameTx.map((g) => { related.add(g.key);
-      return `<div>${pickKey(g.key)}${esc(KIND_NAMES[g.kind] || g.kind)}</button> ${btc(g.sats)} BTC ${esc(g.account)}${g.to ? ` → ${esc(g.to)}` : ""}</div>`; }).join("");
+      return `<div>${pickKey(g.key)}${esc(KIND_NAMES[g.kind] || g.kind)}</button> ${amt(g.sats)} ${esc(g.account)}${g.to ? ` → ${esc(g.to)}` : ""}</div>`; }).join("");
   }
   const fromLots = disposals.filter((d) => d.OpID === key);
   const fromGifts = removals.filter((d) => d.OpID === key);
   if (fromLots.length || fromGifts.length) {
     trace += `<b>Came from</b>` + [...fromLots, ...fromGifts].map((d) => {
       related.add(d.OriginID);
-      if (d.Missing) return `<div class="warn">${btc(d.Sats)} BTC with no known purchase</div>`;
+      if (d.Missing) return `<div class="warn">${amt(d.Sats)} with no known purchase</div>`;
       const gain = d.Proceeds != null ? `, gain ${signed(d.Proceeds - d.Basis)} (${d.LongTerm ? "long" : "short"} term)` : "";
       const o = byKey[d.OriginID], hops = o ? via(route(o.account, o.t, e.account, e.t)) : [];
-      return `<div>${btc(d.Sats)} BTC ${pickKey(d.OriginID)}acquired ${day(d.Acquired)}</button>${o ? ` on ${esc(o.account)}` : ""}, basis ${usd(d.Basis)}${gain}${routeText(o?.account, hops)}</div>`;
+      return `<div>${amt(d.Sats)} ${pickKey(d.OriginID)}acquired ${day(d.Acquired)}</button>${o ? ` on ${esc(o.account)}` : ""}, basis ${usd(d.Basis)}${gain}${routeText(o?.account, hops)}</div>`;
     }).join("");
   }
   const sold = disposals.filter((d) => d.OriginID === key), gone = removals.filter((d) => d.OriginID === key), held = open.filter((l) => l.OriginID === key);
   if (sold.length || gone.length || held.length) {
     trace += `<b>Where these coins went</b>`
       + sold.map((d) => { related.add(d.OpID); const hops = via(route(e.account, e.t, d.Account, tsec(d.Disposed)));
-        return `<div>${btc(d.Sats)} BTC ${pickKey(d.OpID)}sold ${day(d.Disposed)}</button> from ${esc(d.Account)}, gain ${signed(d.Proceeds - d.Basis)}${routeText(e.account, hops)}</div>`; }).join("")
+        return `<div>${amt(d.Sats)} ${pickKey(d.OpID)}sold ${day(d.Disposed)}</button> from ${esc(d.Account)}, gain ${signed(d.Proceeds - d.Basis)}${routeText(e.account, hops)}</div>`; }).join("")
       + gone.map((d) => { related.add(d.OpID); const hops = via(route(e.account, e.t, d.Account, tsec(d.Removed)));
-        return `<div>${btc(d.Sats)} BTC ${pickKey(d.OpID)}left ${day(d.Removed)}</button> from ${esc(d.Account)} (gift, donation or loss)${routeText(e.account, hops)}</div>`; }).join("")
+        return `<div>${amt(d.Sats)} ${pickKey(d.OpID)}left ${day(d.Removed)}</button> from ${esc(d.Account)} (gift, donation or loss)${routeText(e.account, hops)}</div>`; }).join("")
       + held.map((l) => { const hops = l.Account ? via(route(e.account, e.t, l.Account, Infinity)) : [];
-        return `<div>${btc(l.Sats)} BTC still held in ${l.Account ? esc(l.Account) : "the pre-2025 pool"}, basis ${usd(l.Basis)}${routeText(e.account, hops)}</div>`; }).join("");
+        return `<div>${amt(l.Sats)} still held in ${l.Account ? esc(l.Account) : "the pre-2025 pool"}, basis ${usd(l.Basis)}${routeText(e.account, hops)}</div>`; }).join("");
   }
   if (e.kind === "transfer") trace += `<b>Moved between your accounts</b><div>${esc(e.account)} → ${esc(e.to)}. Not taxable; cost basis and purchase dates move with the coins${e.feeSats ? ". The network fee is added to basis or treated as a small sale, per Settings" : ""}.</div>`;
   if (e.kind === "consolidation") trace += `<b>Coins merged inside ${esc(e.account)}</b><div>Not taxable. Only the network fee left the wallet, handled per Settings.</div>`;
@@ -1225,7 +1266,7 @@ function selectEvent(key, zoom) {
   if (!d) { const was = !box.hidden; box.hidden = true; document.body.classList.remove("picked"); selected = null; relatedKeys = new Set(); if (was) setTimeout(drawGraph, 220); else highlight(null); return; }
   const { e, rows, trace, related, sides, byKey } = d;
   selected = key;
-  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${btc(e.sats)} BTC <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
+  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${amt(e.sats)} <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
     <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
     <div id="txflow-wrap"><svg id="txflow" class="txf" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
   box.insertAdjacentHTML("beforeend", actionsFor(e));
@@ -1322,12 +1363,12 @@ function drawTxFlow(e, { L, R }, svg = $("#txflow")) {
     const y1 = yc; yc += x.h;
     g += `<path class="band f-${esc(x.kind)}" d="M${cx + 14},${y1} C${(cx + xR) / 2},${y1} ${(cx + xR) / 2},${x.y} ${xR},${x.y} L${xR},${x.y + x.h} C${(cx + xR) / 2},${x.y + x.h} ${(cx + xR) / 2},${y1 + x.h} ${cx + 14},${y1 + x.h}Z"/>`;
   }
-  const node = (x, nx, anchor, tx) => `<g class="node${x.key ? " link-node" : ""}"${x.key ? ` data-flowkey="${esc(x.key)}"` : ""}><title>${esc(x.label)} ${btc(x.sats)} BTC${x.sub ? ", " + esc(x.sub) : ""}</title>
+  const node = (x, nx, anchor, tx) => `<g class="node${x.key ? " link-node" : ""}"${x.key ? ` data-flowkey="${esc(x.key)}"` : ""}><title>${esc(x.label)} ${amt(x.sats)}${x.sub ? ", " + esc(x.sub) : ""}</title>
     <rect class="f-${esc(x.kind)}" x="${nx}" y="${x.y}" width="${nodeW}" height="${x.h}" rx="2"/>
-    <text x="${tx}" y="${x.y + x.h / 2 - 1}" text-anchor="${anchor}">${esc(x.label)} · ${btc(x.sats)}</text>
+    <text x="${tx}" y="${x.y + x.h / 2 - 1}" text-anchor="${anchor}">${esc(x.label)} · ${amt(x.sats)}</text>
     <text class="sub" x="${tx}" y="${x.y + x.h / 2 + 12}" text-anchor="${anchor}">${esc(x.sub || "")}</text></g>`;
   g += lp.map((x) => node(x, xL, "end", xL - 6)).join("") + rp.map((x) => node(x, xR, "start", xR + nodeW + 6)).join("");
-  g += `<rect class="center" x="${cx}" y="${cy0}" width="14" height="${cH}" rx="3"><title>${esc(KIND_NAMES[e.kind] || e.kind)} ${btc(e.sats)} BTC</title></rect>
+  g += `<rect class="center" x="${cx}" y="${cy0}" width="14" height="${cH}" rx="3"><title>${esc(KIND_NAMES[e.kind] || e.kind)} ${amt(e.sats)}</title></rect>
     <text x="${cx + 7}" y="${cy0 + cH + 16}" text-anchor="middle" class="sub">${esc(KIND_NAMES[e.kind] || e.kind)} · ${day(e.t)}</text>`;
   svg.setAttribute("width", W); svg.setAttribute("height", H + 10); svg.setAttribute("viewBox", `0 0 ${W} ${H + 10}`);
   svg.innerHTML = g;
@@ -1418,25 +1459,25 @@ async function txPage(arg) {
   let h = `<h2>${txid ? `Transaction <span class="mono">${esc(txid)}</span>` : "Record"}</h2>`;
   if (tx) {
     const facts = [["When", tx.t ? when(tx.t) : "unconfirmed or unknown"], ["Block", tx.height > 0 ? tx.height.toLocaleString("en-US") : "not confirmed"],
-      ["Network fee", tx.feeSats ? `${btc(tx.feeSats)} BTC` : "unknown (some inputs aren't yours)"],
+      ["Network fee", tx.feeSats ? `${amt(tx.feeSats)}` : "unknown (some inputs aren't yours)"],
       ["Shape", `${tx.inputs.length} input${tx.inputs.length === 1 ? "" : "s"} → ${tx.outputs.length} output${tx.outputs.length === 1 ? "" : "s"}`],
       ["Source", tx.source === "wallets" ? "your wallets' scans" : tx.source === "fulcrum" ? "your Fulcrum server (not in your wallets)" : "your imported records only"]];
     h += `<div class="card"><dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>${tx.note ? `<p class="small warn">${esc(tx.note)}</p>` : ""}
       ${recs.length ? `<a href="#graph" data-flowpick="${esc(recs[0].key)}">Show in Flow</a>` : ""}</div>`;
     if (tx.inputs.length || tx.outputs.length) {
-      h += `<div class="io"><div><h3>Inputs</h3><div class="scroll"><table><thead><tr><th>From</th><th>Address</th><th class="num">BTC</th></tr></thead><tbody>${tx.inputs.map((i) => `<tr>
+      h += `<div class="io"><div><h3>Inputs</h3><div class="scroll"><table><thead><tr><th>From</th><th>Address</th><th class="num">${UNIT_NAME[prefs.unit]}</th></tr></thead><tbody>${tx.inputs.map((i) => `<tr>
           <td><a class="mono small" href="#tx/${esc(i.prevTxid)}">${esc(shortTx(i.prevTxid))}:${i.prevVout}</a></td><td class="addr">${i.address ? `<a href="#addr/${encodeURIComponent(i.address)}">${esc(i.address)}</a>` : ""}</td>
           <td class="num">${i.sats ? btc(i.sats) : "?"}<div class="small">${owner(i.wallet)}</div></td></tr>`).join("")}</tbody></table></div></div>
-        <div><h3>Outputs</h3><div class="scroll"><table><thead><tr><th>#</th><th>Address</th><th class="num">BTC</th></tr></thead><tbody>${tx.outputs.map((o) => `<tr>
+        <div><h3>Outputs</h3><div class="scroll"><table><thead><tr><th>#</th><th>Address</th><th class="num">${UNIT_NAME[prefs.unit]}</th></tr></thead><tbody>${tx.outputs.map((o) => `<tr>
           <td>${o.vout}</td><td class="addr">${o.address ? `<a href="#addr/${encodeURIComponent(o.address)}">${esc(o.address)}</a>` : "(non-standard)"}</td>
           <td class="num">${btc(o.sats)}<div class="small">${owner(o.wallet)}</div></td></tr>`).join("")}</tbody></table></div></div></div>`;
     }
-    if (tx.exchange.length) h += `<p class="small muted">Exchange records with this txid: ${tx.exchange.map((x) => `${esc(x.account)} ${esc(x.kind)} ${btc(x.sats)} BTC on ${day(x.t)}`).join("; ")}.</p>`;
+    if (tx.exchange.length) h += `<p class="small muted">Exchange records with this txid: ${tx.exchange.map((x) => `${esc(x.account)} ${esc(x.kind)} ${amt(x.sats)} on ${day(x.t)}`).join("; ")}.</p>`;
   }
   h += `<h2>Your records${txid ? " for it" : ""}</h2>`;
   h += recs.length ? recs.map((r) => {
     const d = buildDetail(r.key);
-    return `<div class="card rec"><h3><span class="kind ${esc(r.kind)}">${esc(KIND_NAMES[r.kind] || r.kind)}</span> ${btc(r.sats)} BTC · ${esc(r.account)}${r.to ? ` → ${esc(r.to)}` : ""}</h3>
+    return `<div class="card rec"><h3><span class="kind ${esc(r.kind)}">${esc(KIND_NAMES[r.kind] || r.kind)}</span> ${amt(r.sats)} · ${esc(r.account)}${r.to ? ` → ${esc(r.to)}` : ""}</h3>
       <div class="detail-cols"><dl>${d.rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${d.trace}</div></div>
       <svg class="txflow txf" data-key="${esc(r.key)}" role="img" aria-label="Where these coins came from and went"></svg>${actionsFor(r)}</div>`;
   }).join("") : `<p class="muted">None of your records refer to this transaction.</p>`;
@@ -1451,8 +1492,8 @@ async function addressPage(addr) {
     <h3>Transactions</h3><div class="scroll"><table><thead><tr><th>Transaction</th><th>Block</th><th></th></tr></thead><tbody>
       ${(a.txs || []).map((t) => `<tr><td><a class="mono small" href="#tx/${esc(t.txid)}">${esc(t.txid)}</a></td><td>${t.height > 0 ? t.height.toLocaleString("en-US") : "unconfirmed"}</td><td class="small muted">${t.local ? "in your wallets" : "from Fulcrum"}</td></tr>`).join("")
         || `<tr><td colspan="3" class="muted">None found.</td></tr>`}</tbody></table></div>
-    ${recs.length ? `<h3>Your records with this address</h3>${recs.map((r) => `<div><a href="${pageLink(r)}">${esc(KIND_NAMES[r.kind] || r.kind)} ${btc(r.sats)} BTC, ${esc(r.account)}, ${day(r.t)}</a></div>`).join("")}` : ""}
-    ${(a.exchange || []).length ? `<h3>Exchange records with this address</h3>${a.exchange.map((x) => `<div>${esc(x.account)} ${esc(x.kind)} ${btc(x.sats)} BTC on ${day(x.t)}</div>`).join("")}` : ""}`;
+    ${recs.length ? `<h3>Your records with this address</h3>${recs.map((r) => `<div><a href="${pageLink(r)}">${esc(KIND_NAMES[r.kind] || r.kind)} ${amt(r.sats)}, ${esc(r.account)}, ${day(r.t)}</a></div>`).join("")}` : ""}
+    ${(a.exchange || []).length ? `<h3>Exchange records with this address</h3>${a.exchange.map((x) => `<div>${esc(x.account)} ${esc(x.kind)} ${amt(x.sats)} on ${day(x.t)}</div>`).join("")}` : ""}`;
 }
 document.addEventListener("click", (e) => {
   const k = e.target.closest("[data-flowpick]")?.dataset.flowpick;
@@ -1616,3 +1657,21 @@ show(location.hash.slice(1) || "overview");
 loadSettings();
 refresh();
 checkFulcrum();
+
+// Display settings apply at once and stay in this browser.
+(() => {
+  const f = $("#display-form");
+  if (!f) return;
+  f.cents.value = prefs.cents ? "yes" : "no";
+  f.unit.value = prefs.unit;
+  const sample = () => { $("#display-sample").textContent = `Looks like: ${usd(123456789)} · ${amt(12345678)}`; };
+  sample(); setUnitLabels();
+  f.addEventListener("submit", (e) => e.preventDefault());
+  f.addEventListener("change", () => {
+    prefs.cents = f.cents.value === "yes";
+    prefs.unit = f.unit.value;
+    try { localStorage.setItem("displayPrefs", JSON.stringify(prefs)); } catch {}
+    sample(); setUnitLabels();
+    if (report) refresh();
+  });
+})();

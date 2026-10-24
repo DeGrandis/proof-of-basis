@@ -104,20 +104,20 @@ function drawSummary() {
   let ym = yM;
   for (const s of srcs) {
     const p = pA.get(s), w = p.h;
-    g += band(xA + nodeW, p.y, xM, ym, w, cls(s), `${exchanges.has(s) ? "Bought on " + s : s}: ${btc(srcT.get(s).sats)} BTC, cost ${usd(srcT.get(s).basis)}`);
+    g += band(xA + nodeW, p.y, xM, ym, w, cls(s), `${exchanges.has(s) ? "Bought on " + s : s}: ${amt(srcT.get(s).sats)}, cost ${usd(srcT.get(s).basis)}`);
     ym += w;
   }
   ym = yM;
   for (const d of dsts) {
     const p = pC.get(d), w = p.h, t = dstT.get(d);
-    g += band(xM + nodeW, ym, xC, p.y, w, cls(d), `${d}: ${btc(t.sats)} BTC`);
+    g += band(xM + nodeW, ym, xC, p.y, w, cls(d), `${d}: ${amt(t.sats)}`);
     ym += w;
   }
   const leader = (x1, y1, x2, y2) => Math.abs(y1 - y2) > 3 ? `<line class="sk-leader" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>` : "";
   for (const s of srcs) {
     const p = pA.get(s), t = srcT.get(s), ly = lA.get(s);
     g += `<rect class="sk-node ${cls(s)}" x="${xA}" y="${p.y}" width="${nodeW}" height="${p.h}" rx="1"/>` + leader(xA - 2, p.y + p.h / 2, xA - 8, ly)
-      + `<text class="sk-label" x="${xA - 10}" y="${ly}" text-anchor="end">${esc(s)}</text><text class="sk-amt" x="${xA - 10}" y="${ly + 13}" text-anchor="end">${btc(t.sats)} BTC · cost ${usd(t.basis)}</text>`;
+      + `<text class="sk-label" x="${xA - 10}" y="${ly}" text-anchor="end">${esc(s)}</text><text class="sk-amt" x="${xA - 10}" y="${ly + 13}" text-anchor="end">${amt(t.sats)} · cost ${usd(t.basis)}</text>`;
   }
   g += `<rect class="sk-node acct" x="${xM}" y="${yM}" width="${nodeW}" height="${hM}" rx="1"/><text class="sk-label strong" x="${xM + nodeW / 2}" y="${yM - 6}" text-anchor="middle">${summaryAll ? "All your bitcoin" : `What left in ${year}`}</text>`;
   for (const [grp, list] of groups) {
@@ -130,7 +130,7 @@ function drawSummary() {
     const money = taxable.has(d) ? `${usd(t.usd)} proceeds, gain ${usd(t.usd - t.basis)}` : d === "Still held" || d === "In wallets not added here" ? `worth ${usd(t.usd)} today` : `cost ${usd(t.basis)}`;
     g += `<rect class="sk-node ${cls(d)}" x="${xC}" y="${p.y}" width="${nodeW}" height="${p.h}" rx="1"/>` + leader(xC + nodeW + 2, p.y + p.h / 2, xC + nodeW + 8, ly - 4)
       + `<text class="sk-label" x="${xC + nodeW + 10}" y="${ly - 4}">${esc(d)}</text>`
-      + `<text class="sk-amt" x="${xC + nodeW + 10}" y="${ly + 9}">${btc(t.sats)} BTC</text><text class="sk-amt" x="${xC + nodeW + 10}" y="${ly + 21}">${money}</text>`;
+      + `<text class="sk-amt" x="${xC + nodeW + 10}" y="${ly + 9}">${amt(t.sats)}</text><text class="sk-amt" x="${xC + nodeW + 10}" y="${ly + 21}">${money}</text>`;
   }
   svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = g;

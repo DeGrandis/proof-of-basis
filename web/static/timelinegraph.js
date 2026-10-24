@@ -101,7 +101,7 @@ function timelineGraphData(year, transfersOnly) {
     nodes.push(n);
     return n.id;
   };
-  const tip = (e, what) => `${what}: ${btc(e.sats)} BTC\n${e.account}${e.to ? " → " + e.to : ""}\n${day(e.t)}`;
+  const tip = (e, what) => `${what}: ${amt(e.sats)}\n${e.account}${e.to ? " → " + e.to : ""}\n${day(e.t)}`;
   const width = (s) => k * (1.5 + 5 * Math.sqrt(s / maxSats));
   for (const e of evs) {
     const isEx = (a) => kindOf[a] === "exchange";
@@ -161,7 +161,7 @@ function timelineGraphData(year, transfersOnly) {
     const wallet = kindOf[n.acct] !== "exchange";
     if (n.shape !== "square") n.size = k * (wallet ? 6 + 26 * Math.sqrt(n.bal / maxBal) : 3 + 10 * Math.sqrt(n.bal / maxBal));
     else n.size = 9 * k;
-    n.title = n.mergeTip || `${n.acct}\nheld ${btc(n.bal)} BTC after ${day(n.t)}`;
+    n.title = n.mergeTip || `${n.acct}\nheld ${amt(n.bal)} after ${day(n.t)}`;
   }
   for (const ed of edges) if (ed.ribbon) {
     const a = states.get(ed.from), b = states.get(ed.to);
