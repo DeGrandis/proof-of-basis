@@ -366,3 +366,38 @@ func TestKindMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestSellEverything(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, _ := srv.buildReport()
+	tb := &toolbox{s: srv, rep: rep}
+	lk, out := tb.run("what_if_sell_everything", nil)
+	if lk.Error != "" || !strings.Contains(out, "Total proceeds") || !strings.Contains(out, "By account") {
+		t.Fatalf("sell everything: %q %s", lk.Error, out)
+	}
+	// The total matches the sum of the holdings in tracked accounts.
+	var held int64
+	for _, a := range rep.Accounts {
+		held += a.Sats
+	}
+	if !strings.Contains(out, btcStr(held)) {
+		t.Errorf("total %s not in: %s", btcStr(held), out)
+	}
+	// Names as a model writes them, and selling a whole account.
+	for _, n := range []string{"Cold storage (wallet)", "cold storage", "Vault (multisig) (wallet)", "Cold"} {
+		if _, err := tb.resolveAccount(n); err != nil {
+			t.Errorf("%q: %v", n, err)
+		}
+	}
+	if _, err := tb.resolveAccount("Nowhere"); err == nil || !strings.Contains(err.Error(), "Cold storage") {
+		t.Errorf("unknown account error should list names: %v", err)
+	}
+	lk, out = tb.run("what_if_sale", map[string]any{"account": "Cold storage (wallet)", "all": true})
+	if lk.Error != "" || !strings.Contains(out, "Estimated extra tax") {
+		t.Errorf("sell whole account: %q %s", lk.Error, out)
+	}
+}

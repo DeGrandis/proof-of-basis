@@ -26,7 +26,7 @@ import (
 // and never logged.
 
 const (
-	maxToolRounds  = 6
+	maxToolRounds  = 8
 	historyTurns   = 12   // earlier messages sent along with a new question
 	historyChars   = 4000 // per earlier message
 	toolRowCap     = 40
@@ -326,6 +326,12 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	var thinkTime time.Duration
 	var thinkStart time.Time
 	for round := 0; ; round++ {
+		// Out of lookups: one last turn without tools so there is always
+		// an answer, never a plan that stops mid-sentence.
+		if round == maxToolRounds {
+			req.Tools = nil
+			msgs = append(msgs, ollama.Message{Role: "system", Content: "You have used all your lookups for this question. Answer the user now from the results above. If something is still missing, say what and suggest a narrower question."})
+		}
 		req.Messages = msgs
 		var text strings.Builder
 		reply, err := c.Chat(r.Context(), req, func(d string) {
@@ -465,6 +471,9 @@ Rules:
 - Don't narrate that you are about to look something up; just call the tool, then answer.
 - For totals, counts or "which has the most", call summarize_records. For any arithmetic (sums, differences, comparing gains or losses), call calculate rather than working it out yourself. Remember a loss is a negative gain: -$76 is larger than -$81.
 - To explain where coins came from or went, call trace_coins.
+- For "what if I sold everything / all my bitcoin", call what_if_sell_everything once; it covers every account together. To sell a whole account, call what_if_sale with all=true.
+- Use account names exactly as listed under Accounts (for example "Cold storage", not "Cold storage (wallet)").
+- Never write a plan or a heading and stop. Call the tools you need first, then write one complete answer.
 - You can propose changes with label_items, link_transfer and protect_lot, but only when the user asks you to change something or agrees to your suggestion. Each proposal appears as a card the user must Apply; never say a change is done unless the tool result says it was applied. Look the items up first so the ids and categories are right.
 - Short-term means held one year or less; long-term means more than a year (US rules).
 
@@ -487,7 +496,7 @@ Rules:
 
 	b.WriteString("## Accounts\n")
 	for _, a := range rep.Accounts {
-		fmt.Fprintf(&b, "- %s (%s): %s, cost basis %s", a.Name, a.Kind, btcStr(a.Sats), usdStr(a.Basis))
+		fmt.Fprintf(&b, "- %s: %s holding %s, cost basis %s", a.Name, map[string]string{"wallet": "a wallet", "exchange": "an exchange account"}[a.Kind], btcStr(a.Sats), usdStr(a.Basis))
 		if a.ChainSats != nil && *a.ChainSats != a.Sats {
 			fmt.Fprintf(&b, "; on-chain balance %s", btcStr(*a.ChainSats))
 		}
@@ -841,11 +850,13 @@ func baseToolSpecs() []ollama.Tool {
 		t("price_on", "The BTC price in USD on a day.", obj(map[string]any{
 			"date": str("YYYY-MM-DD"),
 		}, "date")),
-		t("what_if_sale", "Estimate selling bitcoin today from one account: proceeds, cost basis used, gain, short vs long term, and the extra tax for this year. Give btc or usd.", obj(map[string]any{
+		t("what_if_sale", "Estimate selling bitcoin today from one account: proceeds, cost basis used, gain, short vs long term, and the extra tax for this year. Give btc, usd, or all=true for the whole account.", obj(map[string]any{
 			"account": str("account to sell from"),
 			"btc":     num("amount in BTC"),
 			"usd":     num("amount in USD"),
+			"all":     map[string]any{"type": "boolean", "description": "sell everything in this account"},
 		}, "account")),
+		t("what_if_sell_everything", "Estimate selling ALL bitcoin in every account today, together: total proceeds, cost basis, short- and long-term gain, the extra tax for this year, and a breakdown by account.", obj(map[string]any{})),
 	}
 }
 
@@ -903,6 +914,8 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 		out, lk.Summary, err = tb.price(argStr(args, "date"))
 	case "what_if_sale":
 		out, lk.Summary, err = tb.whatIf(args)
+	case "what_if_sell_everything":
+		out, lk.Summary, err = tb.sellEverything()
 	default:
 		var ok bool
 		if out, ok, err = tb.runMore(name, args, &lk); !ok {
@@ -1081,6 +1094,9 @@ func (tb *toolbox) taxYear(y int) (string, string, error) {
 }
 
 func (tb *toolbox) account(name string) (string, string, error) {
+	if n, err := tb.resolveAccount(name); err == nil {
+		name = n
+	}
 	var a *AccountView
 	for i := range tb.rep.Accounts {
 		if strings.EqualFold(tb.rep.Accounts[i].Name, name) {
@@ -1165,7 +1181,22 @@ func (tb *toolbox) price(day string) (string, string, error) {
 }
 
 func (tb *toolbox) whatIf(a map[string]any) (string, string, error) {
-	in := map[string]any{"account": argStr(a, "account"), "btc": argNum(a, "btc"), "usd": argNum(a, "usd")}
+	acct, err := tb.resolveAccount(argStr(a, "account"))
+	if err != nil {
+		return "", "", err
+	}
+	in := map[string]any{"account": acct, "btc": argNum(a, "btc"), "usd": argNum(a, "usd")}
+	if all, _ := a["all"].(bool); all || argNum(a, "btc") == 0 && argNum(a, "usd") == 0 && a["strategy"] == nil && a["lots"] == nil {
+		for _, x := range tb.rep.Accounts {
+			if x.Name == acct {
+				if x.Sats <= 0 {
+					return fmt.Sprintf("%s holds no bitcoin, so there's nothing to sell.", acct), "Estimated a sale from " + acct, nil
+				}
+				in["btc"], in["usd"] = float64(x.Sats)/1e8, 0.0
+			}
+		}
+	}
+	a["account"] = acct
 	if s, _ := a["strategy"].(string); s != "" {
 		in["strategy"] = s
 	}

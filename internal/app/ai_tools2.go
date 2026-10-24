@@ -14,6 +14,7 @@ import (
 
 	"btctax/internal/lots"
 	"btctax/internal/ollama"
+	"btctax/internal/trace"
 )
 
 // More read-only tools for the assistant: totals, lot timing, matching
@@ -960,4 +961,144 @@ func (tb *toolbox) whatIfPicks(a map[string]any) (string, string, error) {
 		how = strings.ReplaceAll(s, "_", " ") + " first"
 	}
 	return out, "Estimated a sale from " + argStr(a, "account") + " (" + how + ")", nil
+}
+
+// resolveAccount matches an account name the way a model writes it:
+// any case, with a type tacked on ("Cold storage (wallet)"), or a unique
+// start of the name.
+func (tb *toolbox) resolveAccount(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	var names []string
+	for _, a := range tb.rep.Accounts {
+		names = append(names, a.Name)
+	}
+	try := func(n string) (string, bool) {
+		for _, x := range names {
+			if strings.EqualFold(x, n) {
+				return x, true
+			}
+		}
+		return "", false
+	}
+	for n := name; n != ""; {
+		if x, ok := try(n); ok {
+			return x, nil
+		}
+		i := strings.LastIndex(n, " (")
+		if i < 0 || !strings.HasSuffix(n, ")") {
+			break
+		}
+		n = strings.TrimSpace(n[:i])
+	}
+	var hits []string
+	for _, x := range names {
+		if name != "" && strings.HasPrefix(strings.ToLower(x), strings.ToLower(name)) {
+			hits = append(hits, x)
+		}
+	}
+	if len(hits) == 1 {
+		return hits[0], nil
+	}
+	return "", fmt.Errorf("no account called %q; the accounts are: %s", name, strings.Join(names, ", "))
+}
+
+// sellEverything estimates selling every coin in every tracked account
+// today, all at once, so the year's tax is worked out on the total.
+func (tb *toolbox) sellEverything() (string, string, error) {
+	p, err := tb.s.pipeline()
+	if err != nil {
+		return "", "", err
+	}
+	day, price, ok := p.prices.latest()
+	if !ok || price <= 0 {
+		return "", "", errors.New("no BTC price yet: update prices in Settings")
+	}
+	base, err := lots.Run(p.tr.Ops, p.cfg)
+	if err != nil {
+		return "", "", err
+	}
+	now := time.Now().UTC()
+	ops := append([]lots.Op(nil), p.tr.Ops...)
+	var accts []string
+	for a, sats := range base.Balances {
+		if sats > 0 && a != trace.UntrackedAccount {
+			accts = append(accts, a)
+		}
+	}
+	if len(accts) == 0 {
+		return "No bitcoin is held in any tracked account, so there's nothing to sell.", "Estimated selling everything", nil
+	}
+	sort.Strings(accts)
+	for _, a := range accts {
+		sats := base.Balances[a]
+		ops = append(ops, lots.Op{ID: "sellall:" + a, Kind: lots.Dispose, Time: now, Account: a, Sats: sats, Cents: lots.MulDiv(price, sats, 100_000_000)})
+	}
+	res, err := lots.Run(ops, p.cfg)
+	if err != nil {
+		return "", "", err
+	}
+	var yst, ylt int64 // the rest of this year, for the extra tax
+	for _, d := range base.Disposals {
+		if d.Disposed.Year() == now.Year() {
+			if d.LongTerm {
+				ylt += d.Gain()
+			} else {
+				yst += d.Gain()
+			}
+		}
+	}
+	for _, inc := range p.tr.Income {
+		if inc.Time.Year() == now.Year() {
+			yst += inc.Cents
+		}
+	}
+	type side struct{ sats, proceeds, basis int64 }
+	per := map[string]*[2]side{}
+	var short, long side
+	var missing int64
+	for _, d := range res.Disposals {
+		a, ok := strings.CutPrefix(d.OpID, "sellall:")
+		if !ok {
+			continue
+		}
+		if per[a] == nil {
+			per[a] = &[2]side{}
+		}
+		i, t := 0, &short
+		if d.LongTerm {
+			i, t = 1, &long
+		}
+		for _, x := range []*side{&per[a][i], t} {
+			x.sats += d.Sats
+			x.proceeds += d.Proceeds
+			x.basis += d.Basis
+		}
+		if d.Missing {
+			missing += d.Sats
+		}
+	}
+	sbp, lbp := rateBP(p.set, "rateShort"), rateBP(p.set, "rateLong")
+	before := yearTax(yst, ylt, sbp, lbp)
+	after := yearTax(yst+short.proceeds-short.basis, ylt+long.proceeds-long.basis, sbp, lbp)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Selling everything today (%s) at %s per BTC (%s): %s from %d accounts.\n", now.Format("2006-01-02"), usdStr(price), day, btcStr(short.sats+long.sats), len(accts))
+	fmt.Fprintf(&b, "Total proceeds %s, cost basis %s, total gain %s.\n", usdStr(short.proceeds+long.proceeds), usdStr(short.basis+long.basis), usdStr(short.proceeds+long.proceeds-short.basis-long.basis))
+	fmt.Fprintf(&b, "Short-term (held a year or less): %s, gain %s. Long-term: %s, gain %s.\n", btcStr(short.sats), usdStr(short.proceeds-short.basis), btcStr(long.sats), usdStr(long.proceeds-long.basis))
+	fmt.Fprintf(&b, "Estimated tax for %d goes from %s to %s, so selling everything adds %s (at the rates in Settings: short-term %s%%, long-term %s%%).\n", now.Year(), usdStr(before), usdStr(after), usdStr(after-before), p.set["rateShort"], p.set["rateLong"])
+	if missing > 0 {
+		fmt.Fprintf(&b, "%s would have no known cost basis (counted as all gain).\n", btcStr(missing))
+	}
+	if u := base.Balances[trace.UntrackedAccount]; u > 0 {
+		fmt.Fprintf(&b, "Not included: %s in wallets not added to the app.\n", btcStr(u))
+	}
+	b.WriteString("By account:\n")
+	for _, a := range accts {
+		x := per[a]
+		if x == nil {
+			continue
+		}
+		fmt.Fprintf(&b, "- %s: %s, proceeds %s, gain %s (short-term %s, long-term %s)\n", a, btcStr(x[0].sats+x[1].sats), usdStr(x[0].proceeds+x[1].proceeds),
+			usdStr(x[0].proceeds+x[1].proceeds-x[0].basis-x[1].basis), usdStr(x[0].proceeds-x[0].basis), usdStr(x[1].proceeds-x[1].basis))
+	}
+	return b.String(), "Estimated selling everything", nil
 }
