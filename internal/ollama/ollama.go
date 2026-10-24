@@ -214,9 +214,11 @@ type ChatRequest struct {
 	KeepAlive string         `json:"keep_alive,omitempty"`
 }
 
-// Chat streams one reply. onDelta gets each piece of text as it arrives.
-// The full assistant message, with any tool calls, is returned at the end.
-func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta func(string)) (Message, error) {
+// Chat streams one reply. onDelta gets each piece of the answer as it
+// arrives, onThink each piece of the model's reasoning (thinking models
+// with Think set). The full assistant message, with any tool calls, is
+// returned at the end.
+func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta, onThink func(string)) (Message, error) {
 	req.Stream = true
 	b, err := json.Marshal(req)
 	if err != nil {
@@ -236,7 +238,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta func(string)
 		return Message{}, apiError(resp)
 	}
 	out := Message{Role: "assistant"}
-	var text strings.Builder
+	var text, think strings.Builder
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 64*1024), 8*1024*1024)
 	for sc.Scan() {
@@ -255,6 +257,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta func(string)
 		if chunk.Error != "" {
 			return out, fmt.Errorf("Ollama: %s", chunk.Error)
 		}
+		if chunk.Message.Thinking != "" {
+			think.WriteString(chunk.Message.Thinking)
+			if onThink != nil {
+				onThink(chunk.Message.Thinking)
+			}
+		}
 		if chunk.Message.Content != "" {
 			text.WriteString(chunk.Message.Content)
 			if onDelta != nil {
@@ -270,6 +278,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta func(string)
 		return out, friendly(err)
 	}
 	out.Content = text.String()
+	out.Thinking = think.String()
 	return out, nil
 }
 

@@ -196,11 +196,15 @@ type Lookup struct {
 }
 
 type msgData struct {
-	Page    *PageContext `json:"page,omitempty"`
-	Lookups []Lookup     `json:"lookups,omitempty"`
-	Model   string       `json:"model,omitempty"`
-	Error   string       `json:"error,omitempty"`
+	Page      *PageContext `json:"page,omitempty"`
+	Lookups   []Lookup     `json:"lookups,omitempty"`
+	Model     string       `json:"model,omitempty"`
+	Error     string       `json:"error,omitempty"`
+	Thinking  string       `json:"thinking,omitempty"`  // the model's reasoning, when it thought first
+	ThinkSecs float64      `json:"thinkSecs,omitempty"` // how long it reasoned
 }
+
+const maxSavedThinking = 20000 // characters of reasoning kept with a saved answer
 
 // stream writes newline-delimited JSON events to the browser.
 type stream struct {
@@ -306,22 +310,44 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	if caps.Tools {
 		req.Tools = toolSpecs()
 	}
+	// Thinking models reason before answering when the setting is on
+	// (the default); the reasoning streams to a collapsible section.
+	thinking := caps.Thinking && s.st.Setting("aiThink", "true") == "true"
 	if caps.Thinking {
-		no := false
-		req.Think = &no // quicker answers; the reasoning isn't shown anyway
+		req.Think = &thinking
 	}
 
 	tools := &toolbox{s: s, rep: rep}
 	var lookups []Lookup
-	var answer strings.Builder
+	var answer, reasoning strings.Builder
 	var failMsg string
+	var thinkTime time.Duration
+	var thinkStart time.Time
 	for round := 0; ; round++ {
 		req.Messages = msgs
 		var text strings.Builder
 		reply, err := c.Chat(r.Context(), req, func(d string) {
+			if !thinkStart.IsZero() {
+				thinkTime += time.Since(thinkStart)
+				thinkStart = time.Time{}
+			}
 			text.WriteString(d)
 			out.send(map[string]any{"type": "delta", "text": d})
+		}, func(d string) {
+			if thinkStart.IsZero() {
+				thinkStart = time.Now()
+				if reasoning.Len() > 0 {
+					reasoning.WriteString("\n\n")
+					out.send(map[string]any{"type": "thinking", "text": "\n\n"})
+				}
+			}
+			reasoning.WriteString(d)
+			out.send(map[string]any{"type": "thinking", "text": d})
 		})
+		if !thinkStart.IsZero() { // reasoned, then called a tool or stopped
+			thinkTime += time.Since(thinkStart)
+			thinkStart = time.Time{}
+		}
 		if err != nil {
 			if errors.Is(r.Context().Err(), context.Canceled) {
 				failMsg = "stopped"
@@ -353,7 +379,12 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		text = "(The model didn't answer. Try asking again, or pick a larger model in Settings.)"
 		out.send(map[string]any{"type": "delta", "text": text})
 	}
-	ad, _ := json.Marshal(msgData{Lookups: lookups, Model: model, Error: failMsg})
+	md := msgData{Lookups: lookups, Model: model, Error: failMsg}
+	if reasoning.Len() > 0 {
+		md.Thinking = clip(strings.TrimSpace(reasoning.String()), maxSavedThinking)
+		md.ThinkSecs = float64(thinkTime.Round(100*time.Millisecond)) / float64(time.Second)
+	}
+	ad, _ := json.Marshal(md)
 	// Save even if the browser went away mid-answer.
 	mid, _ := s.st.AddChatMessage(id, store.ChatMessage{Role: "assistant", Content: text, Data: string(ad)}, model, time.Now())
 	out.send(map[string]any{"type": "done", "id": mid})

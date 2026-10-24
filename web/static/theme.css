@@ -484,3 +484,11 @@ a.ai-chip:hover { border-color: var(--line-2); color: var(--text); }
   .ai-list { inset: 61px 0 0; }
   .ai-input textarea { font-size: 16px; } /* stops iOS zooming in on focus */
 }
+.ai-think { margin-bottom: 8px; font-size: var(--fs-sm); color: var(--muted); }
+.ai-think summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; list-style: none; padding: 2px 0; }
+.ai-think summary::-webkit-details-marker { display: none; }
+.ai-think summary::before { content: "›"; display: inline-block; transition: transform .15s ease; font-size: 14px; }
+.ai-think[open] summary::before { transform: rotate(90deg); }
+.ai-think.live summary { color: var(--text-2); }
+.ai-think.live summary::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: ai-dot 1.2s infinite ease-in-out; }
+.ai-think-body { margin-top: 6px; padding: 8px 12px; border-left: 2px solid var(--line-2); max-height: 220px; overflow-y: auto; line-height: 1.5; overflow-wrap: anywhere; }

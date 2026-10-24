@@ -49,6 +49,9 @@ func (f *fakeOllama) handler(t *testing.T) http.Handler {
 				return
 			}
 			_ = n
+			if in["think"] == true {
+				w.Write([]byte(`{"message":{"role":"assistant","content":"","thinking":"Let me check the numbers."},"done":false}` + "\n"))
+			}
 			for _, part := range []string{"Here ", "is ", "the answer."} {
 				w.Write([]byte(`{"message":{"role":"assistant","content":"` + part + `"},"done":false}` + "\n"))
 			}
@@ -117,10 +120,12 @@ func TestAssistantChatWithTools(t *testing.T) {
 		t.Fatalf("send: %d %s", w.Code, w.Body.String())
 	}
 	evs := readStream(t, w.Body.String())
-	var text strings.Builder
+	var text, thought strings.Builder
 	sawTool := false
 	for _, e := range evs {
 		switch e["type"] {
+		case "thinking":
+			thought.WriteString(e["text"].(string))
 		case "delta":
 			text.WriteString(e["text"].(string))
 		case "tool":
@@ -129,6 +134,9 @@ func TestAssistantChatWithTools(t *testing.T) {
 		case "error":
 			t.Fatalf("stream error: %v", e)
 		}
+	}
+	if !strings.Contains(thought.String(), "Let me check the numbers.") {
+		t.Errorf("reasoning not streamed: %q", thought.String())
 	}
 	if !sawTool || !strings.Contains(text.String(), "Here is the answer.") || evs[len(evs)-1]["type"] != "done" {
 		t.Fatalf("stream: tool=%v text=%q events=%v", sawTool, text.String(), evs)
@@ -144,7 +152,7 @@ func TestAssistantChatWithTools(t *testing.T) {
 			t.Errorf("system prompt lacks %q", want)
 		}
 	}
-	if len(first["tools"].([]any)) < 5 || first["think"] != false || first["options"].(map[string]any)["num_ctx"].(float64) != 16384 {
+	if len(first["tools"].([]any)) < 5 || first["think"] != true || first["options"].(map[string]any)["num_ctx"].(float64) != 16384 {
 		t.Errorf("request shape: tools=%d think=%v options=%v", len(first["tools"].([]any)), first["think"], first["options"])
 	}
 	msgs := second["messages"].([]any)
@@ -166,7 +174,7 @@ func TestAssistantChatWithTools(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &got)
 	if got.Chat.Title != "Why was my 2024 tax that much?" || len(got.Messages) != 2 || got.Messages[1].Role != "assistant" ||
-		!strings.Contains(got.Messages[1].Data, "get_tax_year") {
+		!strings.Contains(got.Messages[1].Data, "get_tax_year") || !strings.Contains(got.Messages[1].Data, "Let me check the numbers.") {
 		t.Fatalf("saved chat: %s", w.Body.String())
 	}
 	// A follow-up carries the earlier turns.
@@ -176,6 +184,18 @@ func TestAssistantChatWithTools(t *testing.T) {
 	fo.mu.Unlock()
 	if n := len(third["messages"].([]any)); n != 4 { // system, user, assistant, user
 		t.Errorf("follow-up sent %d messages", n)
+	}
+	// Thinking can be turned off.
+	call(h, "POST", "/api/settings", `{"aiThink":"false"}`)
+	call(h, "POST", "/api/ai/chats/"+id+"/send", `{"content":"once more","page":{"hash":"overview"}}`)
+	fo.mu.Lock()
+	last := fo.reqs[len(fo.reqs)-1]
+	fo.mu.Unlock()
+	if last["think"] != false {
+		t.Errorf("think with the setting off: %v", last["think"])
+	}
+	if w := call(h, "POST", "/api/settings", `{"aiThink":"maybe"}`); w.Code != 400 {
+		t.Errorf("bad aiThink accepted: %d", w.Code)
 	}
 	// Rename, list, delete; a wipe removes chats too.
 	if w := call(h, "POST", "/api/ai/chats/"+id+"/rename", `{"title":"Taxes"}`); w.Code != 200 {

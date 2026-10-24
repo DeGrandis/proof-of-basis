@@ -74,6 +74,7 @@ var defaults = map[string]string{
 	"aiUrl":        "",
 	"aiModel":      "",
 	"aiCtx":        "16384",
+	"aiThink":      "true",
 }
 
 func (s *Server) settings() map[string]string {
@@ -225,6 +226,11 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			in[k] = v
+		case "aiThink":
+			if v != "true" && v != "false" {
+				fail(w, 400, errors.New("aiThink must be true or false"))
+				return
+			}
 		case "aiCtx":
 			if n, err := strconv.Atoi(v); err != nil || n < 2048 || n > 262144 {
 				fail(w, 400, errors.New("context size must be between 2048 and 262144 tokens"))
