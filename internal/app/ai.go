@@ -488,7 +488,7 @@ func (s *Server) pageSlice(rep *Report, pc PageContext) string {
 	var b strings.Builder
 	page, arg := pageName(pc.Hash)
 	names := map[string]string{"overview": "Overview", "wallets": "Wallets", "imports": "Imports", "review": "Review",
-		"lightning": "Lightning", "graph": "Flow", "taxes": "Taxes", "settings": "Settings", "tx": "a transaction page", "addr": "an address page"}
+		"lightning": "Lightning", "graph": "Flow", "taxes": "Taxes", "settings": "Settings", "tx": "transaction", "addr": "address"}
 	name := names[page]
 	if name == "" {
 		name = page
