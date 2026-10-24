@@ -251,6 +251,14 @@
       <div class="wide small muted" id="ln-cert-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save and sync</button><button type="button" id="ln-forget" class="link">Disconnect and forget the rune</button></div>
     </form>
+    <h2>Security</h2>
+    <form id="security-form" class="card grid">
+      <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password <input name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Repeat new password <input name="next2" type="password" autocomplete="new-password" required></label>
+      <div class="wide row"><button type="submit" class="primary">Change password</button><button type="button" id="logout-btn">Sign out</button><button type="button" id="logout-all-btn">Sign out everywhere</button></div>
+      <div class="wide small muted">Changing the password signs out every other device. Forgot it? On the server, run <code>docker compose exec btctax /btctax reset-password</code> and set a new one on the next visit. Over plain http on your network the password isn't encrypted in transit; use HTTPS (for example a reverse proxy or Tailscale) to reach this app from outside your home.</div>
+    </form>
     <h2>Backup and restore</h2>
     <div class="card grid">
       <form id="backup-form" class="wide grid">

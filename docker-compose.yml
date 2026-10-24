@@ -7,9 +7,12 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "8080:8080"             # reachable from your LAN; set BTCTAX_PASSWORD below
+      - "8080:8080"             # reachable from your LAN; the app asks for a password
     environment:
-      # BTCTAX_PASSWORD: change-me   # require a password (recommended on a LAN)
+      # The first visit sets the login password. Or set it here; it then
+      # replaces the stored password each time the app starts:
+      # BTCTAX_PASSWORD: change-me
+      # Forgot it? docker compose exec btctax /btctax reset-password
       BTCTAX_ADDR: 0.0.0.0:8080
     volumes:
       - btctax-data:/data

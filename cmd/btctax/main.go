@@ -35,6 +35,10 @@ func main() {
 		seedDemo(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
+		resetPassword(os.Args[2:])
+		return
+	}
 	addr := flag.String("addr", env("BTCTAX_ADDR", "127.0.0.1:8080"), "listen address")
 	data := flag.String("data", env("BTCTAX_DATA", "./data"), "data directory")
 	flag.Parse()
@@ -48,7 +52,10 @@ func main() {
 	}
 	defer st.Close()
 
-	srv := app.New(st, web.Static(), os.Getenv("BTCTAX_PASSWORD"))
+	srv := app.New(st, web.Static())
+	if err := srv.ApplyEnvPassword(os.Getenv("BTCTAX_PASSWORD")); err != nil {
+		log.Fatal(err)
+	}
 	hs := &http.Server{
 		Addr:              *addr,
 		Handler:           app.LogRequests(srv.Handler()),
@@ -129,4 +136,24 @@ func sourceIDs() string {
 		ids = append(ids, s.ID())
 	}
 	return strings.Join(ids, ", ")
+}
+
+// resetPassword clears the login password and signs out every session.
+// The next visit to the app asks for a new password. Nothing else changes.
+func resetPassword(args []string) {
+	fs := flag.NewFlagSet("reset-password", flag.ExitOnError)
+	data := fs.String("data", env("BTCTAX_DATA", "./data"), "data directory")
+	fs.Parse(args)
+	st, err := store.Open(filepath.Join(*data, "btctax.db"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SetPasswordHash(""); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Password cleared and everyone signed out. Open the app to set a new password.")
+	if os.Getenv("BTCTAX_PASSWORD") != "" {
+		fmt.Println("Note: BTCTAX_PASSWORD is set, so the app will use it again the next time it starts.")
+	}
 }

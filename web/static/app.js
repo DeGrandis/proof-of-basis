@@ -43,6 +43,7 @@ let report = null;
 
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
+  if (r.status === 401 && !path.startsWith("/api/auth/")) { location.href = "/login"; throw new Error("Please log in"); } // session ended
   const body = r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text();
   if (!r.ok) throw new Error(body?.error || r.statusText);
   return body;
@@ -1675,3 +1676,24 @@ checkFulcrum();
     if (report) refresh();
   });
 })();
+
+// Security: change the password, sign out here or everywhere.
+$("#security-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  if (f.next.value !== f.next2.value) { toast("The new passwords don't match."); return; }
+  try {
+    await post("/api/auth/password", { current: f.current.value, new: f.next.value });
+    f.reset();
+    toast("Password changed. Other devices have been signed out.");
+  } catch (err) { toast(err.message); }
+});
+$("#logout-btn").addEventListener("click", async () => {
+  try { await post("/api/auth/logout", {}); } catch {}
+  location.href = "/login";
+});
+$("#logout-all-btn").addEventListener("click", async () => {
+  if (!confirm("Sign out on every device, including this one?")) return;
+  try { await post("/api/auth/logout-all", {}); } catch {}
+  location.href = "/login";
+});

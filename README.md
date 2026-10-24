@@ -22,7 +22,34 @@ anything that could not be matched), **Taxes**.
 
 Environment: `BTCTAX_ADDR` (default `127.0.0.1:8080`, the image uses
 `0.0.0.0:8080`), `BTCTAX_DATA` (default `./data`), `BTCTAX_PASSWORD`
-(optional HTTP basic auth).
+(optional; see below).
+
+### Login
+
+The app always asks for a password. On the first visit it asks you to set
+one; after that you log in, and the browser stays logged in for 30 days
+after you last used it. Settings has **Change password**, **Sign out** and
+**Sign out everywhere**. The password is stored only as a salted
+PBKDF2-SHA256 hash, sessions are random tokens in an HttpOnly cookie, and
+repeated wrong passwords lock out that address for a while.
+
+Set the password yourself before anyone else on your network can by
+opening the app right after starting it, or by setting `BTCTAX_PASSWORD`:
+when set, it becomes the password each time the app starts.
+
+Forgot it? On the server:
+
+```
+docker compose exec btctax /btctax reset-password
+```
+
+That clears the password and signs everyone out; the next visit sets a new
+one. Your data is untouched. (Or set `BTCTAX_PASSWORD` and restart.)
+
+Over plain `http://` the password crosses your network unencrypted when
+you log in. To use the app away from home, put it behind HTTPS, for
+example a reverse proxy or Tailscale; the session cookie is marked secure
+automatically when it is served over HTTPS.
 
 ## What it does
 

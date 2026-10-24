@@ -394,3 +394,14 @@ details summary { cursor: pointer; color: var(--text-2); }
 .hero-swap { flex: none; width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; border: 1px solid var(--line); background: var(--bg); color: var(--text-2); cursor: pointer; }
 .hero-swap:hover { color: var(--text); border-color: var(--text-2); }
 .hero-swap svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Login page */
+.login-page { background: var(--bg); }
+.login-brand { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text); font-family: var(--font-display); font-size: 22px; font-weight: 600; margin-bottom: var(--s-4); }
+.login-brand svg { width: 30px; height: 30px; fill: none; stroke: var(--accent-ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.login-brand svg .mark { fill: var(--accent); stroke: none; }
+.login-box form { border: 1px solid var(--line); border-radius: var(--r-lg, 20px); background: var(--bg); padding: var(--s-5, 24px); }
+.login-box h2 { font-family: var(--font-display); font-size: 20px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.login-box button.primary { border-radius: var(--pill); }
+.login-error { color: var(--neg); }
+.login-box { padding: 0; margin: 0; }
