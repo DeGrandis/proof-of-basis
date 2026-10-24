@@ -4,7 +4,6 @@ package app
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -31,11 +30,12 @@ import (
 )
 
 type Server struct {
-	st       *store.Store
-	static   fs.FS
-	password string
-	scanMu   sync.Mutex
-	bundled  map[string]int64
+	st      *store.Store
+	static  fs.FS
+	scanMu  sync.Mutex
+	authMu  sync.Mutex
+	limit   limiter
+	bundled map[string]int64
 
 	statusMu sync.Mutex
 	status   fulcrumStatus
@@ -51,8 +51,8 @@ type fulcrumStatus struct {
 	host    string
 }
 
-func New(st *store.Store, static fs.FS, password string) *Server {
-	return &Server{st: st, static: static, password: password, bundled: prices.Bundled()}
+func New(st *store.Store, static fs.FS) *Server {
+	return &Server{st: st, static: static, bundled: prices.Bundled()}
 }
 
 var defaults = map[string]string{
@@ -112,25 +112,24 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/backup", s.postBackup)
 	mux.HandleFunc("POST /api/restore", s.postRestore)
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
+	mux.HandleFunc("GET /api/auth/status", s.authStatus)
+	mux.HandleFunc("POST /api/auth/setup", s.authSetup)
+	mux.HandleFunc("POST /api/auth/login", s.authLogin)
+	mux.HandleFunc("POST /api/auth/logout", s.authLogout)
+	mux.HandleFunc("POST /api/auth/logout-all", s.authLogoutAll)
+	mux.HandleFunc("POST /api/auth/password", s.authPassword)
 	mux.Handle("GET /", http.FileServerFS(s.static))
-	return s.secure(mux)
+	return s.secure(s.requireLogin(mux))
 }
 
-// secure adds a strict CSP (no third-party anything) and optional password.
+// secure adds a strict CSP (no third-party anything) and refuses
+// cross-site writes. Login is checked inside it, by requireLogin.
 func (s *Server) secure(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Cache-Control", "no-store")
-		if s.password != "" {
-			_, pw, ok := r.BasicAuth()
-			if !ok || subtle.ConstantTimeCompare([]byte(pw), []byte(s.password)) != 1 {
-				w.Header().Set("WWW-Authenticate", `Basic realm="btctax"`)
-				http.Error(w, "unauthorised", http.StatusUnauthorized)
-				return
-			}
-		}
 		// Reject cross-site writes (CSRF) from other pages in the browser.
 		if r.Method != http.MethodGet && r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 			http.Error(w, "cross-site request refused", http.StatusForbidden)

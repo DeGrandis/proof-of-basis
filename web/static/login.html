@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>BTC Tax · Log in</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+<script src="login.js" defer></script>
+</head>
+<body class="login-page">
+<main class="login-box">
+  <h1>BTC Tax</h1>
+  <form id="login-form" class="card" hidden>
+    <h2>Log in</h2>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required autofocus></label>
+    <button type="submit" class="primary">Log in</button>
+    <p class="small muted">Forgot it? On the server, run <code>docker compose exec btctax /btctax reset-password</code>, then come back here to set a new one.</p>
+  </form>
+  <form id="setup-form" class="card" hidden>
+    <h2>Set a password</h2>
+    <p class="small muted">This app holds your financial history, so it asks for a password before showing anything. You'll stay logged in on this device for 30 days after you last use it.</p>
+    <label>Password <input name="password" type="password" autocomplete="new-password" minlength="8" required autofocus></label>
+    <label>Repeat it <input name="password2" type="password" autocomplete="new-password" required></label>
+    <button type="submit" class="primary">Set password and continue</button>
+    <p class="small muted">Use at least 8 characters. A few random words make a good one.</p>
+  </form>
+  <p id="login-error" class="login-error" role="alert" hidden></p>
+</main>
+</body>
+</html>

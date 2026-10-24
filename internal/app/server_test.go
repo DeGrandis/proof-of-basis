@@ -28,7 +28,18 @@ func newTest(t *testing.T) (*store.Store, http.Handler) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return st, New(st, fstest.MapFS{}, "").Handler()
+	// Most tests exercise the API, so they run as a logged-in browser.
+	if err := st.SetPasswordHash("test-only"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddSession(tokenHash("test-token"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h := New(st, fstest.MapFS{}).Handler()
+	return st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-token"})
+		h.ServeHTTP(w, r)
+	})
 }
 
 func call(h http.Handler, method, path, body string) *httptest.ResponseRecorder {
