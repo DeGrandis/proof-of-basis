@@ -195,6 +195,14 @@ type Lookup struct {
 	Link    string         `json:"link,omitempty"`
 	Error   string         `json:"error,omitempty"`
 	Chart   *Chart         `json:"chart,omitempty"`
+	File    *FileRef       `json:"file,omitempty"`
+}
+
+// FileRef is a file the assistant made, shown as a download under the answer.
+type FileRef struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Rows int    `json:"rows"`
 }
 
 type msgData struct {

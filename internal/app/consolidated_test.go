@@ -124,10 +124,10 @@ func TestConsolidatedTools(t *testing.T) {
 
 	// Export: a CSV with every matching row, behind a login-protected link.
 	lk, out := tb.run("analyze_records", map[string]any{"source": "buys", "stat": "count", "export": true})
-	if !strings.HasPrefix(lk.Link, "/api/ai/export/") || !strings.Contains(out, "CSV") {
+	if lk.File == nil || !strings.HasPrefix(lk.File.URL, "/api/ai/export/") || !strings.HasSuffix(lk.File.Name, ".csv") || !strings.Contains(out, "CSV") {
 		t.Fatalf("export: %+v %s", lk, out)
 	}
-	code, body := do("GET", lk.Link, "")
+	code, body := do("GET", lk.File.URL, "")
 	buys := 0
 	for _, g := range rep.Graph {
 		if (g.Kind == "buy" || g.Kind == "purchase") && g.Cents != 0 {

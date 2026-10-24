@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS chat_messages_chat ON chat_messages(chat_id, id);
+CREATE TABLE IF NOT EXISTS ai_exports (
+  token TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  data BLOB NOT NULL,
+  created INTEGER NOT NULL
+);
 `
 
 type Chat struct {
@@ -130,4 +136,16 @@ func (s *Store) DeleteChat(id int64) error {
 func (s *Store) DeleteChats() error {
 	_, err := s.db.Exec(`DELETE FROM chats`)
 	return err
+}
+
+// Files the assistant made (CSV exports), kept so a saved chat's download
+// still works later. Not in backups; a wipe removes them.
+func (s *Store) AddExport(token, name string, data []byte, now time.Time) error {
+	_, err := s.db.Exec(`INSERT INTO ai_exports(token, name, data, created) VALUES(?,?,?,?)`, token, name, data, now.Unix())
+	return err
+}
+
+func (s *Store) Export(token string) (name string, data []byte, err error) {
+	err = s.db.QueryRow(`SELECT name, data FROM ai_exports WHERE token=?`, token).Scan(&name, &data)
+	return name, data, err
 }

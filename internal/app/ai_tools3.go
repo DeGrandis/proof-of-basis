@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"btctax/internal/lots"
@@ -614,45 +613,27 @@ func (tb *toolbox) undo(a map[string]any, lk *Lookup) (string, string, error) {
 	return fmt.Sprintf("NOT UNDONE YET. The user now sees activity #%d (%s) with an Undo button and must press it. Say exactly that: press Undo on the card to undo it.", target.ID, target.Summary), "Offered to undo: " + target.Summary, nil
 }
 
-// --- CSV exports, kept in memory for an hour ---
-
-type exportFile struct {
-	name    string
-	data    []byte
-	created time.Time
-}
-
-var exports = struct {
-	sync.Mutex
-	m map[string]exportFile
-}{m: map[string]exportFile{}}
+// --- CSV exports ---
 
 func (s *Server) addExport(name string, data []byte) string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	tok := hex.EncodeToString(b)
-	exports.Lock()
-	defer exports.Unlock()
-	for k, v := range exports.m {
-		if time.Since(v.created) > time.Hour {
-			delete(exports.m, k)
-		}
+	if err := s.st.AddExport(tok, name, data, time.Now()); err != nil {
+		return ""
 	}
-	exports.m[tok] = exportFile{name, data, time.Now()}
 	return tok
 }
 
 func (s *Server) getExport(w http.ResponseWriter, r *http.Request) {
-	exports.Lock()
-	f, ok := exports.m[r.PathValue("token")]
-	exports.Unlock()
-	if !ok || time.Since(f.created) > time.Hour {
-		http.Error(w, "this download has expired; ask the assistant again", http.StatusNotFound)
+	name, data, err := s.st.Export(r.PathValue("token"))
+	if err != nil {
+		http.Error(w, "this file isn't available any more; ask the assistant again", http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+f.name+`"`)
-	w.Write(f.data)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Write(data)
 }
 
 // --- bulk labels by description ---

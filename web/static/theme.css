@@ -532,3 +532,12 @@ a.ai-chip:hover { border-color: var(--line-2); color: var(--text); }
 .ai-chart-title { font-size: 12px; font-weight: 600; fill: var(--text-2); }
 .ai-chart-label { font-size: 10px; fill: var(--muted); }
 .ai-chip.download::before { background: var(--text-2); }
+.ai-files:empty, .ai-live-charts:empty { display: none; }
+.ai-file { display: flex; align-items: center; gap: 12px; margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text); text-decoration: none; background: var(--bg); }
+.ai-file:hover { border-color: var(--text-2); background: var(--panel-2); }
+.ai-file-icon { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+.ai-file-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ai-file-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ai-file-meta b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-file-meta small { color: var(--muted); font-size: var(--fs-xs); }
+.ai-file-dl { flex: none; font-size: var(--fs-sm); font-weight: 600; padding: 6px 12px; border-radius: var(--pill); background: var(--ink); color: var(--on-ink); }

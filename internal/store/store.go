@@ -479,7 +479,7 @@ func (s *Store) Wipe() error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, t := range []string{"actions", "chat_messages", "chats", "labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings"} {
+	for _, t := range []string{"ai_exports", "actions", "chat_messages", "chats", "labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings"} {
 		if _, err := tx.Exec(`DELETE FROM ` + t); err != nil {
 			return err
 		}

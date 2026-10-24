@@ -133,9 +133,7 @@ function aiChips(lookups) {
   return `<div class="ai-chips">${aiChipItems(lookups)}</div>`;
 }
 function aiChipItems(lookups) {
-  return `${lookups.map((l) => l.link && l.link.startsWith("/api/ai/export/")
-    ? `<a class="ai-chip download" href="${esc(l.link)}" download title="Download (available for an hour)">${esc(l.summary)}</a>`
-    : l.link
+  return `${lookups.filter((l) => !l.file).map((l) => l.link
     ? `<a class="ai-chip${l.error ? " bad" : ""}" href="${esc(l.link)}" title="${esc(l.error || "Open the page this came from")}">${esc(l.summary)}</a>`
     : `<span class="ai-chip${l.error ? " bad" : ""}" title="${esc(l.error || "")}">${esc(l.summary)}</span>`).join("")}`;
 }
@@ -164,12 +162,20 @@ function aiChartHTML(c) {
   return `<div class="ai-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.title)}">${g}</svg></div>`;
 }
 const aiCharts = (lookups) => (lookups || []).map((l) => aiChartHTML(l.chart)).join("");
+// Files the assistant made: a card with an icon, the name and Download.
+const FILE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>`;
+function aiFileHTML(f) {
+  if (!f) return "";
+  const kind = (f.name.split(".").pop() || "file").toUpperCase();
+  return `<a class="ai-file" href="${esc(f.url)}" download="${esc(f.name)}"><span class="ai-file-icon">${FILE_ICON}</span><span class="ai-file-meta"><b>${esc(f.name)}</b><small>${kind} · ${f.rows.toLocaleString("en-US")} row${f.rows === 1 ? "" : "s"}</small></span><span class="ai-file-dl">Download</span></a>`;
+}
+const aiFiles = (lookups) => (lookups || []).map((l) => aiFileHTML(l.file)).join("");
 
 function aiMsgHTML(m) {
   let data = {};
   try { data = m.data ? JSON.parse(m.data) : {}; } catch {}
   if (m.role === "user") return `<div class="ai-msg user"><div class="ai-bubble">${esc(m.content).replace(/\n/g, "<br>")}</div></div>`;
-  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${aiCharts(data.lookups)}${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
+  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${aiFiles(data.lookups)}${aiCharts(data.lookups)}${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
 }
 
 // Change cards in saved chats show their current state (applied, undone…).
@@ -297,7 +303,7 @@ async function aiSend() {
   $("#ai-list").hidden = true;
   if ($(".ai-empty")) $("#ai-msgs").innerHTML = "";
   if ($("#ai-title").textContent === "New chat") $("#ai-title").textContent = text.replace(/\s+/g, " ").slice(0, 60);
-  $("#ai-msgs").insertAdjacentHTML("beforeend", aiMsgHTML({ role: "user", content: text }) + `<div class="ai-msg bot live"><div class="ai-think-slot"></div><div class="ai-chips"></div><div class="ai-acts"></div><div class="ai-text"><span class="ai-dots"><i></i><i></i><i></i></span></div></div>`);
+  $("#ai-msgs").insertAdjacentHTML("beforeend", aiMsgHTML({ role: "user", content: text }) + `<div class="ai-msg bot live"><div class="ai-think-slot"></div><div class="ai-chips"></div><div class="ai-acts"></div><div class="ai-text"><span class="ai-dots"><i></i><i></i><i></i></span></div><div class="ai-files"></div><div class="ai-live-charts"></div></div>`);
   const live = $("#ai-msgs .ai-msg.live"), textBox = $(".ai-text", live), chipBox = $(".ai-chips", live), thinkSlot = $(".ai-think-slot", live);
   q.value = ""; q.style.height = "auto";
   aiScroll(true);
@@ -334,7 +340,12 @@ async function aiSend() {
         if (ev.type === "thinking") { if (!thinkAt) thinkAt = Date.now(); thought += ev.text; drawThink(); aiScroll(); }
         else if (ev.type === "delta") { endThink(); answer += ev.text; draw(); }
         else if (ev.type === "action") { actions.push(ev.action.id); $(".ai-acts", live).insertAdjacentHTML("beforeend", actionHTML(ev.action, true)); aiScroll(); }
-        else if (ev.type === "tool") { endThink(); lookups.push(ev.lookup); chipBox.innerHTML = aiChipItems(lookups); aiScroll(); }
+        else if (ev.type === "tool") {
+          endThink(); lookups.push(ev.lookup); chipBox.innerHTML = aiChipItems(lookups);
+          if (ev.lookup.file) $(".ai-files", live).insertAdjacentHTML("beforeend", aiFileHTML(ev.lookup.file));
+          if (ev.lookup.chart) $(".ai-live-charts", live).insertAdjacentHTML("beforeend", aiChartHTML(ev.lookup.chart));
+          aiScroll();
+        }
         else if (ev.type === "error") error = ev.error;
       }
     }

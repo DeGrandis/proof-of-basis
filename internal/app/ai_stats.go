@@ -357,10 +357,37 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 				yield(it.r, it.v)
 			}
 		})
+		// Name the file after what's in it.
+		parts := []string{"btctax", src}
+		if acct != "" {
+			parts = append(parts, acct)
+		}
+		if kind != "" {
+			parts = append(parts, kind)
+		}
+		if hasFrom || hasTo {
+			f, t := argStr(a, "from"), argStr(a, "to")
+			if f == "" {
+				f = "start"
+			}
+			if t == "" {
+				t = time.Now().Format("2006-01-02")
+			}
+			parts = append(parts, f+"-to-"+t)
+		}
+		name = strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+				return r
+			}
+			if r == ' ' {
+				return '-'
+			}
+			return -1
+		}, strings.Join(parts, "-")) + ".csv"
 		tok := tb.s.addExport(name, csvData)
-		lk.Link = "/api/ai/export/" + tok
-		summary = fmt.Sprintf("Download CSV (%d rows)", len(all))
-		fmt.Fprintf(&b, "A CSV download of all %d rows is ready for the user as a button under your answer.\n", len(all))
+		lk.File = &FileRef{Name: name, URL: "/api/ai/export/" + tok, Rows: len(all)}
+		summary = fmt.Sprintf("Made %s", name)
+		fmt.Fprintf(&b, "A CSV file of all %d rows (%s) is shown to the user as a download under your answer.\n", len(all), name)
 	}
 	step := argNum(a, "round_to")
 	topN := int(argNum(a, "top_n"))
