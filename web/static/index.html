@@ -13,6 +13,7 @@
 <script src="sankey.js" defer></script>
 <script src="vendor/vis-network.min.js" defer></script>
 <script src="timelinegraph.js" defer></script>
+<script src="activity.js" defer></script>
 <script src="ai.js" defer></script>
 </head>
 <body>
@@ -36,6 +37,7 @@
     <button data-tab="lightning" aria-label="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
     <button data-tab="graph" aria-label="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
     <button data-tab="taxes" aria-label="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
+    <button data-tab="activity" aria-label="Activity"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg><span class="lbl">Activity</span></button>
     <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
   </nav>
 <div id="page">
@@ -216,6 +218,12 @@
     <div class="scroll"><table id="disposals-table"><thead><tr><th>Sold</th><th>Acquired</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">Proceeds</th><th class="num">Basis</th><th class="num">Gain</th><th>Term</th></tr></thead><tbody></tbody></table></div>
   </section>
 
+  <section id="activity" class="tab">
+    <h2>Changes</h2>
+    <p class="small muted">Every change to your data, by you or the assistant. Undo puts things back the way they were; Redo makes the change again.</p>
+    <div class="seg act-filter" id="activity-filter" role="group" aria-label="Show changes by"><button type="button" data-actor="">Everyone</button><button type="button" data-actor="user">You</button><button type="button" data-actor="assistant">Assistant</button></div>
+    <div id="activity-list"></div>
+  </section>
   <section id="settings" class="tab">
     <h2>Display</h2>
     <form id="display-form" class="card grid">
@@ -266,6 +274,7 @@
       <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
       <label>Think before answering <select name="aiThink"><option value="true">On: more careful, a little slower</option><option value="false">Off: answers start sooner</option></select><span id="ai-think-note" class="small muted" hidden>This model doesn't reason first, so this has no effect.</span></label>
       <label>Memory for each question <select name="aiCtx"><option value="8192">Small (8k tokens)</option><option value="16384">Medium (16k tokens)</option><option value="32768">Large (32k tokens)</option><option value="65536">Very large (64k tokens)</option></select></label>
+      <label class="check inline wide"><input type="checkbox" name="aiAutoApply"> Apply the assistant's changes without asking me first (you can still undo them in Activity)</label>
       <div class="wide small muted" id="ai-settings-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="ai-test">Test connection</button><button type="button" id="ai-off" class="link">Turn off</button></div>
       <div class="wide small muted">Adds a chat button to every page that answers questions about your data, using a model on your own <a href="https://ollama.com" rel="noreferrer noopener" target="_blank">Ollama</a> server. Your data goes only to that address, never anywhere else. Pick a model that can use tools (for example qwen3:8b or llama3.1:8b) so it can look things up. If Ollama runs on this same computer, use http://host.docker.internal:11434, since inside Docker "localhost" is the app itself. More memory lets it consider more at once but needs more RAM on the Ollama machine. Chats are saved here, included in backups and removed by Wipe.</div>

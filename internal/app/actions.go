@@ -217,6 +217,9 @@ func (s *Server) viewActions(list []store.Action) []actionView {
 		json.Unmarshal(a.Changes, &cs)
 		v := actionView{Action: a}
 		v.Action.Changes = nil
+		if a.Actor == "assistant" && a.Status != "pending" && a.Status != "dismissed" {
+			v.Summary = pastTense(a.Summary)
+		}
 		for _, c := range cs {
 			v.Lines = append(v.Lines, describeChange(rep, c, a.Status == "pending"))
 		}
@@ -662,3 +665,13 @@ type statusWriter struct {
 }
 
 func (w *statusWriter) WriteHeader(c int) { w.code = c; w.ResponseWriter.WriteHeader(c) }
+
+// pastTense turns a proposal's wording into what was done.
+func pastTense(s string) string {
+	for _, p := range [][2]string{{"Stop protecting ", "Stopped protecting "}, {"Protect ", "Protected "}, {"Label ", "Labeled "}, {"Link ", "Linked "}} {
+		if strings.HasPrefix(s, p[0]) {
+			return p[1] + strings.TrimPrefix(s, p[0])
+		}
+	}
+	return s
+}

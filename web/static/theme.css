@@ -494,3 +494,33 @@ a.ai-chip:hover { border-color: var(--line-2); color: var(--text); }
 .ai-think-body { margin-top: 6px; padding: 8px 12px; border-left: 2px solid var(--line-2); max-height: 220px; overflow-y: auto; line-height: 1.5; overflow-wrap: anywhere; }
 #ai-settings select:disabled { opacity: .5; cursor: not-allowed; }
 #ai-think-note { margin-top: 4px; }
+
+/* ---------- Activity ---------- */
+.act-filter { display: inline-flex; gap: 0; border: 1px solid var(--line); border-radius: var(--pill); padding: 3px; margin: 4px 0 var(--s-4); }
+.act-filter button { border: 0; background: none; color: var(--text-2); padding: 6px 14px; border-radius: var(--pill); cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+.act-filter button.on { background: var(--ink); color: var(--on-ink); }
+.act-day { font-size: var(--fs-xs); letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); margin: var(--s-5) 0 var(--s-2); font-weight: 600; }
+.act { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.act-who { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); color: var(--text-2); }
+.act.by-ai .act-who { background: var(--accent); color: var(--accent-ink); }
+.act-who svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.act.by-ai .act-who svg path { fill: currentColor; }
+.act-body { flex: 1; min-width: 0; }
+.act-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.act-top b { font-weight: 600; }
+.act-status { font-size: var(--fs-xs); padding: 1px 8px; border-radius: var(--pill); background: var(--panel-2); color: var(--muted); }
+.act.pending .act-status { background: var(--accent-soft); color: var(--text); }
+.act.undone .act-top b, .act.dismissed .act-top b { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-2); }
+.act-meta { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.act-lines { margin: 6px 0 0; padding-left: 18px; font-size: var(--fs-sm); color: var(--text-2); }
+.act-lines li { margin: 2px 0; overflow-wrap: anywhere; }
+.act-lines.clip li:nth-child(n+4) { display: none; }
+.act-more { font-size: var(--fs-sm); margin-top: 2px; }
+.act-buttons { display: flex; gap: 8px; margin-top: 8px; }
+.act-buttons button { padding: 6px 14px; border-radius: var(--pill); font-size: var(--fs-sm); }
+.act-empty { padding: var(--s-5) 0; }
+/* the same thing as a card in the chat */
+.ai-acts:empty { display: none; }
+.act.compact { border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; margin: 0 0 8px; background: var(--bg); }
+.act.compact.pending { border-color: var(--text-2); }
+.act.compact.loading { display: none; }

@@ -148,7 +148,15 @@ function aiMsgHTML(m) {
   let data = {};
   try { data = m.data ? JSON.parse(m.data) : {}; } catch {}
   if (m.role === "user") return `<div class="ai-msg user"><div class="ai-bubble">${esc(m.content).replace(/\n/g, "<br>")}</div></div>`;
-  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}<div class="ai-text">${aiMd(m.content)}</div>${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
+  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
+}
+
+// Change cards in saved chats show their current state (applied, undone…).
+async function aiHydrateActions() {
+  for (const el of $$("#ai-msgs .act.loading")) {
+    try { const a = await api(`/api/actions/${el.dataset.action}`); el.outerHTML = actionHTML(a, true); }
+    catch { el.remove(); }
+  }
 }
 
 function aiEmpty() {
@@ -170,7 +178,7 @@ async function aiLoadChat(id) {
     if (seq !== aiLoadSeq) return;
     $("#ai-title").textContent = d.chat.title;
     if (!d.messages.length) aiEmpty();
-    else { $("#ai-msgs").innerHTML = d.messages.map(aiMsgHTML).join(""); aiScroll(true); }
+    else { $("#ai-msgs").innerHTML = d.messages.map(aiMsgHTML).join(""); aiScroll(true); aiHydrateActions(); }
   } catch {
     if (seq !== aiLoadSeq) return;
     ai.chat = null; $("#ai-title").textContent = "New chat"; aiEmpty();
@@ -268,13 +276,13 @@ async function aiSend() {
   $("#ai-list").hidden = true;
   if ($(".ai-empty")) $("#ai-msgs").innerHTML = "";
   if ($("#ai-title").textContent === "New chat") $("#ai-title").textContent = text.replace(/\s+/g, " ").slice(0, 60);
-  $("#ai-msgs").insertAdjacentHTML("beforeend", aiMsgHTML({ role: "user", content: text }) + `<div class="ai-msg bot live"><div class="ai-think-slot"></div><div class="ai-chips"></div><div class="ai-text"><span class="ai-dots"><i></i><i></i><i></i></span></div></div>`);
+  $("#ai-msgs").insertAdjacentHTML("beforeend", aiMsgHTML({ role: "user", content: text }) + `<div class="ai-msg bot live"><div class="ai-think-slot"></div><div class="ai-chips"></div><div class="ai-acts"></div><div class="ai-text"><span class="ai-dots"><i></i><i></i><i></i></span></div></div>`);
   const live = $("#ai-msgs .ai-msg.live"), textBox = $(".ai-text", live), chipBox = $(".ai-chips", live), thinkSlot = $(".ai-think-slot", live);
   q.value = ""; q.style.height = "auto";
   aiScroll(true);
   ai.busy = new AbortController();
   $("#ai-send").innerHTML = AI_ICONS.stop; $("#ai-send").title = "Stop"; $("#ai-send").setAttribute("aria-label", "Stop");
-  let answer = "", lookups = [], error = "", thought = "", thinkMs = 0, thinkAt = 0;
+  let answer = "", lookups = [], error = "", thought = "", thinkMs = 0, thinkAt = 0; const actions = [];
   const drawThink = () => {
     const open = $("details", thinkSlot)?.open;
     thinkSlot.innerHTML = aiThinkHTML(thought, thinkMs / 1000, !!thinkAt);
@@ -304,6 +312,7 @@ async function aiSend() {
         let ev; try { ev = JSON.parse(line); } catch { continue; }
         if (ev.type === "thinking") { if (!thinkAt) thinkAt = Date.now(); thought += ev.text; drawThink(); aiScroll(); }
         else if (ev.type === "delta") { endThink(); answer += ev.text; draw(); }
+        else if (ev.type === "action") { actions.push(ev.action.id); $(".ai-acts", live).insertAdjacentHTML("beforeend", actionHTML(ev.action, true)); aiScroll(); }
         else if (ev.type === "tool") { endThink(); lookups.push(ev.lookup); chipBox.innerHTML = aiChipItems(lookups); aiScroll(); }
         else if (ev.type === "error") error = ev.error;
       }
@@ -316,7 +325,8 @@ async function aiSend() {
   }
   live.classList.remove("live");
   endThink();
-  live.outerHTML = aiMsgHTML({ role: "assistant", content: answer || (error ? "" : "(No answer.)"), data: JSON.stringify({ lookups, error, thinking: thought.trim(), thinkSecs: thinkMs / 1000 }) });
+  live.outerHTML = aiMsgHTML({ role: "assistant", content: answer || (error ? "" : "(No answer.)"), data: JSON.stringify({ lookups, error, thinking: thought.trim(), thinkSecs: thinkMs / 1000, actions }) });
+  aiHydrateActions();
   aiScroll();
 }
 
@@ -369,7 +379,7 @@ async function aiStatus() {
     } catch (e) { line.textContent = e.message; line.classList.add("warn"); return false; }
   };
   api("/api/settings").then((s) => {
-    f.aiUrl.value = s.aiUrl || ""; f.dataset.model = s.aiModel || ""; f.aiCtx.value = s.aiCtx || "16384"; f.aiThink.value = s.aiThink || "true";
+    f.aiUrl.value = s.aiUrl || ""; f.dataset.model = s.aiModel || ""; f.aiCtx.value = s.aiCtx || "16384"; f.aiThink.value = s.aiThink || "true"; f.aiAutoApply.checked = s.aiAutoApply === "true";
     if (s.aiModel) fillModels([], s.aiModel);
     if (s.aiUrl) test();
   }).catch(() => {});
@@ -378,7 +388,7 @@ async function aiStatus() {
     e.preventDefault();
     if (!f.aiModel.value) { line.textContent = "Test the connection, then pick a model."; line.classList.add("warn"); return; }
     try {
-      await post("/api/settings", { aiUrl: f.aiUrl.value.trim(), aiModel: f.aiModel.value, aiCtx: f.aiCtx.value, aiThink: f.aiThink.value });
+      await post("/api/settings", { aiUrl: f.aiUrl.value.trim(), aiModel: f.aiModel.value, aiCtx: f.aiCtx.value, aiThink: f.aiThink.value, aiAutoApply: f.aiAutoApply.checked ? "true" : "false" });
       f.dataset.model = f.aiModel.value;
       toast("Assistant saved. Look for the button in the corner.");
       aiStatus();
