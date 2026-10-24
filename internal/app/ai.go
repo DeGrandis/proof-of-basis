@@ -202,6 +202,7 @@ type msgData struct {
 	Model     string       `json:"model,omitempty"`
 	Error     string       `json:"error,omitempty"`
 	Thinking  string       `json:"thinking,omitempty"`  // the model's reasoning, when it thought first
+	Actions   []int64      `json:"actions,omitempty"`   // changes the assistant proposed or made
 	ThinkSecs float64      `json:"thinkSecs,omitempty"` // how long it reasoned
 }
 
@@ -318,7 +319,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		req.Think = &thinking
 	}
 
-	tools := &toolbox{s: s, rep: rep}
+	tools := &toolbox{s: s, rep: rep, chatID: id}
 	var lookups []Lookup
 	var answer, reasoning strings.Builder
 	var failMsg string
@@ -365,9 +366,15 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		}
 		msgs = append(msgs, reply)
 		for _, tc := range reply.ToolCalls {
+			had := len(tools.actions)
 			lk, result := tools.run(tc.Function.Name, tc.Function.Arguments)
 			lookups = append(lookups, lk)
 			out.send(map[string]any{"type": "tool", "lookup": lk})
+			for _, aid := range tools.actions[had:] {
+				if a, err := s.st.Action(aid); err == nil {
+					out.send(map[string]any{"type": "action", "action": s.viewActions([]store.Action{a})[0]})
+				}
+			}
 			msgs = append(msgs, ollama.Message{Role: "tool", ToolName: tc.Function.Name, Content: result})
 		}
 		if answer.Len() > 0 {
@@ -380,7 +387,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		text = "(The model didn't answer. Try asking again, or pick a larger model in Settings.)"
 		out.send(map[string]any{"type": "delta", "text": text})
 	}
-	md := msgData{Lookups: lookups, Model: model, Error: failMsg}
+	md := msgData{Lookups: lookups, Model: model, Error: failMsg, Actions: tools.actions}
 	if reasoning.Len() > 0 {
 		md.Thinking = clip(strings.TrimSpace(reasoning.String()), maxSavedThinking)
 		md.ThinkSecs = float64(thinkTime.Round(100*time.Millisecond)) / float64(time.Second)
@@ -458,6 +465,7 @@ Rules:
 - Don't narrate that you are about to look something up; just call the tool, then answer.
 - For totals, counts or "which has the most", call summarize_records. For any arithmetic (sums, differences, comparing gains or losses), call calculate rather than working it out yourself. Remember a loss is a negative gain: -$76 is larger than -$81.
 - To explain where coins came from or went, call trace_coins.
+- You can propose changes with label_items, link_transfer and protect_lot, but only when the user asks you to change something or agrees to your suggestion. Each proposal appears as a card the user must Apply; never say a change is done unless the tool result says it was applied. Look the items up first so the ids and categories are right.
 - Short-term means held one year or less; long-term means more than a year (US rules).
 
 `, now.Format("2006-01-02"))
@@ -783,8 +791,10 @@ func urlUnescape(s string) (string, error) {
 // Tools: read-only lookups over the same report the UI shows.
 
 type toolbox struct {
-	s   *Server
-	rep *Report
+	s       *Server
+	rep     *Report
+	chatID  int64
+	actions []int64 // changes proposed or applied during this answer
 }
 
 func obj(props map[string]any, required ...string) map[string]any {
@@ -799,7 +809,7 @@ func str(desc string) map[string]any { return map[string]any{"type": "string", "
 func num(desc string) map[string]any { return map[string]any{"type": "number", "description": desc} }
 
 func toolSpecs() []ollama.Tool {
-	return append(baseToolSpecs(), moreToolSpecs()...)
+	return append(append(baseToolSpecs(), moreToolSpecs()...), actionToolSpecs()...)
 }
 
 func baseToolSpecs() []ollama.Tool {
@@ -896,7 +906,9 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 	default:
 		var ok bool
 		if out, ok, err = tb.runMore(name, args, &lk); !ok {
-			err = fmt.Errorf("there is no tool called %q", name)
+			if out, ok, err = tb.propose(name, args, &lk); !ok {
+				err = fmt.Errorf("there is no tool called %q", name)
+			}
 		}
 	}
 	if err != nil {

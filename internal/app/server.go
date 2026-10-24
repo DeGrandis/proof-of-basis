@@ -75,6 +75,7 @@ var defaults = map[string]string{
 	"aiModel":      "",
 	"aiCtx":        "16384",
 	"aiThink":      "true",
+	"aiAutoApply":  "false",
 }
 
 func (s *Server) settings() map[string]string {
@@ -93,7 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/fulcrum/status", s.fulcrumStatus)
 	mux.HandleFunc("POST /api/wallets/preview", s.previewWallet)
 	mux.HandleFunc("POST /api/wallets", s.addWallet)
-	mux.HandleFunc("POST /api/wallets/{id}/scan", s.scanWallet)
+	mux.HandleFunc("POST /api/wallets/{id}/scan", s.noted("scan", "Scanned a wallet on your node", s.scanWallet))
 	mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
 	mux.HandleFunc("GET /api/handlers", s.listHandlers)
 	mux.HandleFunc("GET /api/imports", s.listImports)
@@ -103,19 +104,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/report", s.getReport)
 	mux.HandleFunc("POST /api/labels", s.postLabel)
 	mux.HandleFunc("DELETE /api/labels/{key}", s.deleteLabel)
-	mux.HandleFunc("POST /api/prices", s.postPrices)
+	mux.HandleFunc("POST /api/prices", s.noted("prices", "Imported a price history file", s.postPrices))
 	mux.HandleFunc("GET /api/prices", s.priceInfo)
-	mux.HandleFunc("POST /api/prices/fetch", s.fetchPrices)
+	mux.HandleFunc("POST /api/prices/fetch", s.noted("prices", "Updated BTC prices", s.fetchPrices))
 	mux.HandleFunc("GET /api/export/8949.csv", s.export8949)
 	mux.HandleFunc("POST /api/wipe", s.wipe)
 	mux.HandleFunc("POST /api/whatif", s.whatIf)
 	mux.HandleFunc("POST /api/protect", s.protect)
 	mux.HandleFunc("GET /api/tx/{txid}", s.getTx)
 	mux.HandleFunc("GET /api/address/{addr}", s.getAddress)
-	mux.HandleFunc("POST /api/recheck", s.startRecheck)
-	mux.HandleFunc("POST /api/lightning/sync", s.syncLightning)
+	mux.HandleFunc("POST /api/recheck", s.noted("recheck", "Rechecked wallets for links", s.startRecheck))
+	mux.HandleFunc("POST /api/lightning/sync", s.noted("lightning", "Synced the Lightning node", s.syncLightning))
 	mux.HandleFunc("POST /api/backup", s.postBackup)
-	mux.HandleFunc("POST /api/restore", s.postRestore)
+	mux.HandleFunc("POST /api/restore", s.noted("restore", "Restored from a backup (replaced all data; can't be undone here)", s.postRestore))
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
 	mux.HandleFunc("GET /api/ai/status", s.aiStatus)
 	mux.HandleFunc("POST /api/ai/models", s.aiModels)
@@ -126,6 +127,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/ai/chats/{id}/rename", s.aiRenameChat)
 	mux.HandleFunc("DELETE /api/ai/chats/{id}", s.aiDeleteChat)
 	mux.HandleFunc("POST /api/ai/chats/{id}/send", s.aiSend)
+	mux.HandleFunc("GET /api/actions", s.listActions)
+	mux.HandleFunc("GET /api/actions/{id}", s.getAction)
+	mux.HandleFunc("POST /api/actions/{id}/undo", s.undoAction)
+	mux.HandleFunc("POST /api/actions/{id}/redo", s.redoAction)
+	mux.HandleFunc("POST /api/actions/{id}/apply", s.applyAction)
+	mux.HandleFunc("POST /api/actions/{id}/dismiss", s.dismissAction)
 	mux.HandleFunc("GET /api/auth/status", s.authStatus)
 	mux.HandleFunc("POST /api/auth/setup", s.authSetup)
 	mux.HandleFunc("POST /api/auth/login", s.authLogin)
@@ -181,6 +188,23 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
+	// Log what this changes (never the rune itself).
+	logKeys := []string{"clnUrl", "clnCert", "fulcrumCert"}
+	for k := range in {
+		logKeys = append(logKeys, k)
+	}
+	sort.Strings(logKeys)
+	pre, err := s.snapshot(settingChanges(logKeys))
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	if rn := strings.TrimSpace(in["clnRune"]); rn != "" {
+		defer s.note("lightning", "Saved a Lightning rune (not shown here)")
+	}
+	if _, ok := in["clnForget"]; ok {
+		defer s.note("lightning", "Disconnected the Lightning node and forgot its rune")
+	}
 	if rn, ok := in["clnRune"]; ok {
 		delete(in, "clnRune")
 		if rn = strings.TrimSpace(rn); rn != "" {
@@ -226,7 +250,7 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			in[k] = v
-		case "aiThink":
+		case "aiThink", "aiAutoApply":
 			if v != "true" && v != "false" {
 				fail(w, 400, errors.New("aiThink must be true or false"))
 				return
@@ -255,6 +279,7 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.finish("user", "settings", "Changed settings", 0, pre)
 	writeJSON(w, s.settings())
 }
 
@@ -455,6 +480,7 @@ func (s *Server) addWallet(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
+	s.logAdded("wallet", "Added wallet "+in.Name, accountSets(id))
 	writeJSON(w, map[string]any{"id": id})
 }
 
@@ -507,21 +533,16 @@ func (s *Server) protect(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, errors.New("key is required"))
 		return
 	}
-	set := s.protected()
-	if in.On {
-		set[in.Key] = true
-	} else {
-		delete(set, in.Key)
-	}
-	ids := make([]string, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	if err := s.st.SetSetting("protected", strings.Join(ids, "\n")); err != nil {
+	summary := map[bool]string{true: "Protected a purchase", false: "Stopped protecting a purchase"}[in.On]
+	if _, err := s.record("user", "protect", summary, 0, []change{{Kind: "protect", Key: in.Key}}, func() error { return s.setProtected(in.Key, in.On) }); err != nil {
 		fail(w, 500, err)
 		return
 	}
+	ids := make([]string, 0)
+	for id := range s.protected() {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
 	writeJSON(w, map[string]any{"protected": ids})
 }
 
@@ -773,7 +794,12 @@ func (s *Server) scanWallet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err := s.st.DeleteAccount(id); err != nil {
+	name := fmt.Sprint(id)
+	if a, err := s.st.Account(id); err == nil {
+		name = a.Name
+	}
+	if _, err := s.record("user", "account", "Deleted account "+name, 0, []change{{Kind: "rows", Key: "Deleted account " + name + " with its imports and scans", Sets: accountSets(id)}},
+		func() error { return s.st.DeleteAccount(id) }); err != nil {
 		fail(w, 500, err)
 		return
 	}
@@ -853,6 +879,7 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = h.Name()
 	}
+	_, existed := s.st.AccountByName(name)
 	acctID, err := s.st.ExchangeAccount(name, h.ID())
 	if err != nil {
 		fail(w, 400, err)
@@ -867,12 +894,26 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
+	sets := importSets(id)
+	if !existed {
+		sets = append([]store.RowSet{{Table: "accounts", Col: "id", Val: acctID}}, sets...)
+	}
+	s.logAdded("import", fmt.Sprintf("Imported %s into %s (%d records)", hdr.Filename, name, len(evs)-skipped), sets)
 	writeJSON(w, map[string]any{"id": id, "handler": h.ID(), "account": name, "events": len(evs) - skipped, "alreadyImported": skipped, "warnings": warns})
 }
 
 func (s *Server) deleteImport(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err := s.st.DeleteImport(id); err != nil {
+	what := "an import"
+	if ims, err := s.st.Imports(); err == nil {
+		for _, im := range ims {
+			if im.ID == id {
+				what = im.Filename + " from " + im.Account
+			}
+		}
+	}
+	if _, err := s.record("user", "import", "Deleted import "+what, 0, []change{{Kind: "rows", Key: "Deleted import " + what + " and its records", Sets: importSets(id)}},
+		func() error { return s.st.DeleteImport(id) }); err != nil {
 		fail(w, 500, err)
 		return
 	}
@@ -898,7 +939,7 @@ func (s *Server) postLabel(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, errors.New("key and category are required"))
 		return
 	}
-	if err := s.st.SetLabel(l); err != nil {
+	if _, err := s.record("user", "label", "Labeled a record", 0, []change{{Kind: "label", Key: l.Key}}, func() error { return s.st.SetLabel(l) }); err != nil {
 		fail(w, 500, err)
 		return
 	}
@@ -906,7 +947,8 @@ func (s *Server) postLabel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
-	if err := s.st.DeleteLabel(r.PathValue("key")); err != nil {
+	key := r.PathValue("key")
+	if _, err := s.record("user", "label", "Removed a label", 0, []change{{Kind: "label", Key: key}}, func() error { return s.st.DeleteLabel(key) }); err != nil {
 		fail(w, 500, err)
 		return
 	}

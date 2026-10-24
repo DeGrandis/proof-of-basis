@@ -74,7 +74,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema + authSchema + chatSchema); err != nil {
+	if _, err := db.Exec(schema + authSchema + chatSchema + actionSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -479,7 +479,7 @@ func (s *Store) Wipe() error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, t := range []string{"chat_messages", "chats", "labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings"} {
+	for _, t := range []string{"actions", "chat_messages", "chats", "labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings"} {
 		if _, err := tx.Exec(`DELETE FROM ` + t); err != nil {
 			return err
 		}
