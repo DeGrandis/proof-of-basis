@@ -492,3 +492,5 @@ a.ai-chip:hover { border-color: var(--line-2); color: var(--text); }
 .ai-think.live summary { color: var(--text-2); }
 .ai-think.live summary::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: ai-dot 1.2s infinite ease-in-out; }
 .ai-think-body { margin-top: 6px; padding: 8px 12px; border-left: 2px solid var(--line-2); max-height: 220px; overflow-y: auto; line-height: 1.5; overflow-wrap: anywhere; }
+#ai-settings select:disabled { opacity: .5; cursor: not-allowed; }
+#ai-think-note { margin-top: 4px; }

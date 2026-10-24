@@ -264,7 +264,7 @@
     <form id="ai-settings" class="card grid">
       <label class="wide">Ollama server address <input name="aiUrl" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false"></label>
       <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
-      <label>Think before answering <select name="aiThink"><option value="true">On: more careful, a little slower</option><option value="false">Off: answers start sooner</option></select></label>
+      <label>Think before answering <select name="aiThink"><option value="true">On: more careful, a little slower</option><option value="false">Off: answers start sooner</option></select><span id="ai-think-note" class="small muted" hidden>This model doesn't reason first, so this has no effect.</span></label>
       <label>Memory for each question <select name="aiCtx"><option value="8192">Small (8k tokens)</option><option value="16384">Medium (16k tokens)</option><option value="32768">Large (32k tokens)</option><option value="65536">Very large (64k tokens)</option></select></label>
       <div class="wide small muted" id="ai-settings-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="ai-test">Test connection</button><button type="button" id="ai-off" class="link">Turn off</button></div>

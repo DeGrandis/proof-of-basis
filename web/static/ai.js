@@ -338,11 +338,22 @@ async function aiStatus() {
   const f = $("#ai-settings");
   if (!f) return;
   const line = $("#ai-settings-line");
+  let known = []; // models from the last test, with what they can do
+  // The thinking switch only matters for models that can reason first.
+  const syncThink = () => {
+    const m = known.find((x) => x.name === f.aiModel.value);
+    const cant = !!m && !m.thinking;
+    f.aiThink.disabled = cant;
+    $("#ai-think-note").hidden = !cant;
+  };
+  f.aiModel.addEventListener("change", syncThink);
   const fillModels = (models, current) => {
+    known = models;
     const sel = f.aiModel;
     const size = (b) => b ? ` · ${(b / 1e9).toFixed(1)} GB` : "";
     sel.innerHTML = `<option value="">Pick a model</option>` + models.map((m) => `<option value="${esc(m.name)}"${m.tools ? "" : " disabled"}${m.name === current ? " selected" : ""}>${esc(m.name)}${size(m.size)}${m.tools ? "" : " (can't use tools)"}</option>`).join("");
     if (current && !models.some((m) => m.name === current)) sel.insertAdjacentHTML("beforeend", `<option value="${esc(current)}" selected>${esc(current)} (not found)</option>`);
+    syncThink();
   };
   const test = async () => {
     const url = f.aiUrl.value.trim();
@@ -375,7 +386,7 @@ async function aiStatus() {
   });
   $("#ai-off").addEventListener("click", async () => {
     try { await post("/api/settings", { aiUrl: "", aiModel: "" }); } catch (err) { toast(err.message); return; }
-    f.aiUrl.value = ""; f.aiModel.innerHTML = `<option value="">Test the connection first</option>`; f.dataset.model = "";
+    f.aiUrl.value = ""; f.aiModel.innerHTML = `<option value="">Test the connection first</option>`; f.dataset.model = ""; known = []; syncThink();
     line.textContent = "The assistant is off. Saved chats are kept."; line.classList.remove("warn");
     aiStatus();
   });
