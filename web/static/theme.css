@@ -7,9 +7,9 @@
 /* ---------- Tokens ---------- */
 :root {
   /* paper and ink */
-  --bg: #f4f3ee;
-  --panel: #f4f3ee;              /* flat: panels are the page */
-  --panel-2: #efeee8;          /* sunken fields, hover */
+  --bg: #ffffff;
+  --panel: #ffffff;              /* flat: panels are the page */
+  --panel-2: #f4f4f2;          /* sunken fields, hover */
   --text: #111110;
   --text-2: #3d3c38;           /* secondary copy */
   --muted: #76746d;
@@ -129,12 +129,12 @@ html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: var(--fs)/1.5 var(--font); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
 /* Glass, only on the fixed bars and the floating tips: the page itself is
    flat, everything else sits directly on it. */
-.glass, #top, #tabs, .chart-tip, div.vis-tooltip {
+.glass, #tabs, .chart-tip, div.vis-tooltip {
   background: var(--glass-fill-2); border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-hi), var(--glass-shadow);
 }
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass, #top, #tabs, .chart-tip, div.vis-tooltip { -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-color: var(--glass-border); }
+  .glass, #tabs, .chart-tip, div.vis-tooltip { -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-color: var(--glass-border); }
 }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: -.01em; margin: 0; }
 h2 { font-size: var(--fs-lg); margin: var(--s-6) 0 var(--s-3); }
@@ -160,8 +160,8 @@ code { font-family: var(--mono); font-size: var(--fs-xs); background: var(--pane
 #top {
   position: sticky; top: 0; z-index: 20; height: var(--nav-h);
   display: flex; align-items: center; gap: var(--s-3); padding: 0 var(--s-5);
-  background: var(--glass-fill-2); border: 0; border-bottom: 1px solid var(--glass-border); border-radius: 0;
-  box-shadow: var(--glass-hi), 0 8px 30px -14px rgba(0, 0, 0, .12);
+  background: var(--bg); border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 /* The nav sits outside the header (a blurred header would trap a fixed
    child); on wide screens it floats centred over the header's row. */
@@ -175,7 +175,7 @@ code { font-family: var(--mono); font-size: var(--fs-xs); background: var(--pane
 @media (max-width: 1280px) { #fulcrum-line { display: none; } }
 @media (min-width: 761px) and (max-width: 1100px) { .fulcrum-status .lbl { display: none; } .fulcrum-status { width: 40px; padding: 0; justify-content: center; } #search input { width: 170px; } }
 #tabs button {
-  position: relative; width: 42px; height: 42px; border-radius: var(--pill); border: 1px solid var(--glass-border); background: var(--glass-fill-2); box-shadow: var(--glass-hi);
+  position: relative; width: 42px; height: 42px; border-radius: var(--pill); border: 1px solid var(--line); background: var(--bg); box-shadow: none;
   color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
   transition: background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
 }
