@@ -22,7 +22,7 @@ let TG_PALETTE = [], TG = {};
 function tgColors() {
   TG_PALETTE = [3, 2, 4, 3, 5, 2, 4].map((i) => cssVar(`--series-${i}`)); // greys only: ink is for buys
   TG = { withdraw: cssVar("--series-3"), self: cssVar("--series-3"), deposit: cssVar("--series-3"), outside: cssVar("--series-2"), sale: cssVar("--chart-down"),
-    income: cssVar("--series-3"), merge: cssVar("--series-4"), unmatched: cssVar("--neg"), buy: cssVar("--chart-up"), hot: cssVar("--chart-hot"), panel: cssVar("--panel") };
+    income: cssVar("--series-3"), merge: cssVar("--series-4"), unmatched: cssVar("--neg"), buy: cssVar("--chart-up"), hot: cssVar("--chart-hot"), panel: cssVar("--bg") };
 }
 
 function tgLegend() {
@@ -227,7 +227,7 @@ function drawTimelineGraph() {
       const p = network.canvasToDOM({ x: 0, y });
       if (p.y < 8 || p.y > $("#tg").clientHeight - 4) continue;
       const w = ctx.measureText(name).width;
-      ctx.fillStyle = cssVar("--panel"); ctx.globalAlpha = 0.85; ctx.fillRect(4, p.y - 18, w + 16, 16);
+      ctx.fillStyle = cssVar("--bg"); ctx.globalAlpha = 0.85; ctx.fillRect(4, p.y - 18, w + 16, 16);
       ctx.globalAlpha = 1; ctx.fillStyle = data.color[name]; ctx.fillRect(6, p.y - 13, 6, 6);
       ctx.fillStyle = cssVar("--text"); ctx.fillText(name, 16, p.y - 6);
     }
@@ -240,7 +240,7 @@ function drawTimelineGraph() {
     settled = true;
     network.setOptions({ physics: false });
     network.fit();
-    $("#tg-status").textContent = `${data.nodes.length} nodes. Scroll to zoom, drag to pan; hover to follow a chain.`;
+    $("#tg-status").textContent = "";
   };
   network.once("stabilizationIterationsDone", settle);
   // With only account ribbons (Transfers only) nothing floats, so there is

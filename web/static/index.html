@@ -53,15 +53,14 @@
       <div class="tiles" id="tiles"></div>
     </section>
     <section class="ov-card" data-card="history">
-      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>BTC held over time</b><span class="small muted">with the BTC price below it.</span><span class="spacer"></span><span class="chart-key"><span><i class="k-buy"></i>Buys</span><span><i class="k-sell"></i>Sales</span><span class="muted">sized by amount</span></span></div>
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>BTC held over time</b></div>
       <div class="row small" id="history-range" role="group" aria-label="Time range">
         <span class="seg"><button type="button" data-range="1">1D</button><button type="button" data-range="7">1W</button><button type="button" data-range="30">1M</button><button type="button" data-range="365">1Y</button><button type="button" data-range="1826">5Y</button><button type="button" data-range="all" class="on">All</button></span>
-        <span class="muted">Scroll to zoom, drag to pan</span>
       </div>
       <div id="history-wrap"><svg id="history" role="img" aria-label="Total BTC held over time, and the BTC price in USD with buys and sales"></svg><div id="history-tip" class="chart-tip" hidden></div></div>
     </section>
     <section class="ov-card" data-card="summary">
-      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Where your bitcoin went</b><span class="small muted">Every coin, from how it arrived to how it left or where it still sits.</span><span class="spacer"></span>
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Where your bitcoin went</b><span class="spacer"></span>
         <div class="seg" id="summary-scope" role="radiogroup" aria-label="Summary period"><label><input type="radio" name="sumscope" value="year" checked> Tax year <span id="summary-year"></span></label><label><input type="radio" name="sumscope" value="all"> All time</label></div></div>
       <div id="summary-wrap"><svg id="summary" role="img" aria-label="Sankey summary of where your bitcoin came from and where it went"></svg></div>
     </section>
@@ -189,8 +188,6 @@
     <div class="graph-area">
       <div id="graph-wrap"><svg id="flow" role="img" aria-label="Each account's balance over time with its events"></svg><div id="tg" style="display:none" aria-label="How coins moved between your accounts over time"></div></div>
     </div>
-    <div class="small muted" data-view="accounts">Each lane is one account: the line is its balance (scaled per account), the icons are what happened. Scroll to zoom, drag to pan, click an icon to open it below. Drag an account's name up or down to reorder the lanes.</div>
-    <div class="small muted" data-view="custody">Each ribbon is an account over time, thicker when it held more. Hover anything to follow its coins from the buys to where they ended up; click to open it below.</div>
     <section id="graph-detail" class="card" hidden></section>
   </section>
 

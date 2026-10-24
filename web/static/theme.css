@@ -8,7 +8,7 @@
 :root {
   /* paper and ink */
   --bg: #f4f3ee;
-  --panel: #fbfaf7;
+  --panel: #f4f3ee;              /* flat: panels are the page */
   --panel-2: #efeee8;          /* sunken fields, hover */
   --text: #111110;
   --text-2: #3d3c38;           /* secondary copy */
@@ -74,7 +74,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #0b0b0a;
-  --panel: #141413;
+  --panel: #0b0b0a;
   --panel-2: #1c1c1a;
   --text: #f1f0eb;
   --text-2: #c9c8c1;
@@ -127,20 +127,14 @@
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: var(--fs)/1.5 var(--font); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
-/* A fixed, quiet backdrop for the glass to work on: paper with a few large,
-   faint washes that stay put while the page scrolls. */
-body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background:
-  radial-gradient(1100px 700px at 12% -10%, var(--wash-1), transparent 65%),
-  radial-gradient(900px 600px at 95% 15%, var(--wash-2), transparent 70%),
-  radial-gradient(1200px 800px at 50% 110%, var(--wash-3), transparent 70%),
-  var(--bg); }
-/* The glass recipe, shared by cards, tiles, the header, the tab bar and tips */
-.glass, .card, .ov-card, .scroll, .tile, #top, #tabs, .chart-tip, div.vis-tooltip {
-  background: var(--glass-fill); border: 1px solid var(--glass-edge);
+/* Glass, only on the fixed bars and the floating tips: the page itself is
+   flat, everything else sits directly on it. */
+.glass, #top, #tabs, .chart-tip, div.vis-tooltip {
+  background: var(--glass-fill-2); border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-hi), var(--glass-shadow);
 }
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass, .card, .ov-card, .scroll, .tile, #top, #tabs, .chart-tip, div.vis-tooltip { -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-color: var(--glass-border); }
+  .glass, #top, #tabs, .chart-tip, div.vis-tooltip { -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-color: var(--glass-border); }
 }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: -.01em; margin: 0; }
 h2 { font-size: var(--fs-lg); margin: var(--s-6) 0 var(--s-3); }
@@ -226,28 +220,30 @@ main { max-width: 1180px; margin: 0 auto; padding: var(--s-4) var(--s-5) var(--s
 .tab { display: none; } .tab.on { display: block; }
 
 /* ---------- Components ---------- */
-/* Card: paper on paper, hairline edge */
-.card, .ov-card, .scroll { border-radius: var(--r); }
-.tile { border-radius: 18px; }
-.card { padding: var(--s-5); margin: var(--s-2) 0; }
-.ov-card { padding: var(--s-5); margin: var(--s-4) 0; }
-.hint { border-color: var(--accent) !important; background: var(--accent-soft); }
+/* Flat sections: no fill, border, shadow or radius. Air and the small
+   uppercase labels separate them, with one hairline between major blocks. */
+.card, .ov-card, .scroll, .tile { background: none; border: 0; box-shadow: none; border-radius: 0; }
+.card { padding: 0; margin: var(--s-4) 0; }
+.ov-card { padding: 0; margin: var(--s-8) 0 0; }
+.ov-card + .ov-card { border-top: 1px solid var(--line); padding-top: var(--s-6); margin-top: var(--s-7); }
+.hint { border-left: 2px solid var(--accent); padding: 4px 0 4px var(--s-4); }
 .scroll { overflow-x: auto; }
-.card .scroll, .ov-card .scroll { background: transparent; box-shadow: none; border-color: var(--line); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.card .tile, .ov-card .tile { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.tab > h2 { margin: var(--s-7) 0 var(--s-3); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); font-family: var(--font); }
+.tab > h2:not(:first-child) { border-top: 1px solid var(--line); padding-top: var(--s-5); }
+.tab > h2 + p.small { margin-top: 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s-4); }
 .wide { grid-column: 1 / -1; }
 .row { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
 
-/* Section header inside a card */
-.ov-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-bottom: var(--s-4); }
+/* Section header: the label, the controls, and a grip that shows on hover */
+.ov-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-bottom: var(--s-4); min-height: 34px; }
 .ov-head > .small.muted { color: var(--muted); }
 
 /* Stat tile */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s-3); margin-top: var(--s-4); }
-.tile { padding: 14px 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s-4) var(--s-6); margin-top: var(--s-4); }
+.tile { padding: 0; }
 .tile .k { margin-bottom: 6px; }
-.tile .v { font-family: var(--font-display); font-size: 24px; font-weight: 300; letter-spacing: -.01em; line-height: 1.15; }
+.tile .v { font-family: var(--font-display); font-size: 26px; font-weight: 300; letter-spacing: -.01em; line-height: 1.15; }
 .tile .sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; }
 .tile.tax .v { color: var(--neg); }
 
@@ -308,8 +304,10 @@ tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: color-mix(in srgb, var(--panel-2) 60%, transparent); }
 td.num, th.num { font-variant-numeric: tabular-nums; }
 td.row { display: table-cell; } td.row > * { vertical-align: middle; margin-right: 6px; }
-.scroll table thead th:first-child, .scroll table td:first-child { padding-left: 18px; }
-.scroll table thead th:last-child, .scroll table td:last-child { padding-right: 18px; }
+.scroll table thead th:first-child, .scroll table td:first-child { padding-left: 0; }
+.scroll table thead th:last-child, .scroll table td:last-child { padding-right: 0; }
+tbody tr:hover td { background: none; }
+th { border-bottom-color: var(--line-2); }
 
 /* Badges and pills */
 .pill { background: var(--accent); color: var(--accent-ink); border-radius: var(--pill); padding: 0 7px; font-size: 11px; font-weight: 700; }
@@ -373,12 +371,13 @@ details summary { cursor: pointer; color: var(--text-2); }
   #tabs .pill { top: 2px; right: 2px; border-color: var(--panel); }
   #page-head { padding: var(--s-4) var(--s-3) 0; }
   main { padding: var(--s-2) var(--s-3) calc(var(--tabbar-h) + 28px); }
-  .card { padding: var(--s-4); }
-  .ov-card { padding: var(--s-4); margin: var(--s-3) 0; }
+  .ov-card { margin-top: var(--s-6); }
+  .ov-card + .ov-card { padding-top: var(--s-5); margin-top: var(--s-5); }
+  .tab > h2 { margin-top: var(--s-6); }
   .grid { grid-template-columns: 1fr 1fr; gap: var(--s-3); }
   th, td { padding: 10px 10px; font-size: var(--fs-sm); }
-  .scroll table thead th:first-child, .scroll table td:first-child { padding-left: 12px; }
-  .scroll table thead th:last-child, .scroll table td:last-child { padding-right: 12px; }
+  .scroll table thead th:first-child, .scroll table td:first-child { padding-left: 0; }
+  .scroll table thead th:last-child, .scroll table td:last-child { padding-right: 0; }
   button { min-height: 40px; }
   .seg label, .seg button { min-height: 34px; }
   input, select { min-height: 40px; }

@@ -6,7 +6,8 @@
 
 /* ---------- Overview ---------- */
 /* "Right now": borderless, the hero number with the tax-year picker above it */
-.ov-card[data-card="now"] { background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0; margin: 0 0 var(--s-4); }
+.ov-card[data-card="now"] { margin: 0; }
+.ov-card[data-card="now"] + .ov-card { border-top: 0; padding-top: 0; margin-top: var(--s-7); }
 .ov-card[data-card="now"] .ov-head { margin: 0; }
 .ov-card[data-card="now"] .ov-head b { display: none; }
 .ov-card[data-card="now"] .tiles { max-width: 640px; margin: 0 auto; grid-template-columns: 1fr 1fr; }
@@ -14,14 +15,14 @@
 #year-select { min-height: 34px; padding: 6px 30px 6px 12px; font-size: var(--fs-sm); background-color: transparent; border-color: var(--line); border-radius: var(--pill); }
 .ov-card.dragging { opacity: .5; }
 .ov-card.drop-before { box-shadow: 0 -2px 0 0 var(--text); } .ov-card.drop-after { box-shadow: 0 2px 0 0 var(--text); }
-.ov-grip { cursor: grab; color: var(--muted); user-select: none; touch-action: none; padding: 0 4px; letter-spacing: -3px; opacity: .5; }
-.ov-grip:hover { opacity: 1; } .ov-grip:active { cursor: grabbing; }
+.ov-grip { cursor: grab; color: var(--muted); user-select: none; touch-action: none; padding: 0 4px; letter-spacing: -3px; opacity: 0; transition: opacity .15s ease; order: 99; margin-left: 4px; }
+.ov-head:hover .ov-grip, .ov-grip:focus-visible { opacity: .7; } .ov-grip:hover { opacity: 1; } .ov-grip:active { cursor: grabbing; }
 .ov-card .chart-card { margin: 0; }
 .whatif-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-3); margin-top: var(--s-1); }
 .whatif-grid .tile .v { font-size: 20px; }
 #whatif-form .row input[name="amount"] { width: 120px; }
 #warnings h2 { font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); margin: var(--s-4) 0 var(--s-2); font-family: var(--font); }
-#warnings .card { margin: 0; padding: var(--s-3) var(--s-4); }
+#warnings .card { margin: 0; }
 #warnings .warn + .warn { margin-top: 4px; }
 
 /* History chart: hairline grid, thin vertical strokes for holdings, 1.5px
@@ -48,9 +49,9 @@
 #history text { fill: var(--muted); font-size: 11px; font-family: var(--font); }
 #history .title { fill: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
 #history .cross { stroke: var(--line-2); stroke-dasharray: 2 3; }
-#history .pt-btc, #history .pt-px { fill: var(--panel); stroke: var(--chart-line); stroke-width: 1.5; }
-#history .buy-dot { fill: var(--panel); fill-opacity: .6; stroke: var(--chart-up); stroke-width: 1.5; }
-#history .sell-dot { fill: var(--chart-down); fill-opacity: .85; stroke: var(--panel); stroke-width: 1; }
+#history .pt-btc, #history .pt-px { fill: var(--bg); stroke: var(--chart-line); stroke-width: 1.5; }
+#history .buy-dot { fill: var(--bg); fill-opacity: .6; stroke: var(--chart-up); stroke-width: 1.5; }
+#history .sell-dot { fill: var(--chart-down); fill-opacity: .85; stroke: var(--bg); stroke-width: 1; }
 #history .buy-dot.hot { fill: var(--chart-up); fill-opacity: 1; }
 #history .sell-dot.hot { stroke: var(--chart-line); stroke-width: 1.5; fill-opacity: 1; }
 #history-hit { cursor: crosshair; touch-action: pan-y; }
@@ -89,12 +90,12 @@ body.flow #page-head { max-width: none; }
 .graph-bar button { padding: 6px 12px; min-height: 32px; font-size: var(--fs-sm); }
 .graph-bar label.inline { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--fs-sm); color: var(--muted); }
 .graph-bar label.inline select { min-height: 32px; padding: 4px 28px 4px 10px; font-size: var(--fs-sm); }
-.graph-area { position: relative; height: calc(100vh - var(--nav-h) - 170px); min-height: 320px; display: flex; transition: height .2s ease; }
+.graph-area { position: relative; height: calc(100vh - var(--nav-h) - 150px); min-height: 320px; display: flex; transition: height .2s ease; }
 body.picked .graph-area { height: max(320px, 56vh); }
-#graph-wrap { flex: 1; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+#graph-wrap { flex: 1; overflow: hidden; border-top: 1px solid var(--line); }
 #flow { display: block; cursor: grab; touch-action: none; user-select: none; }
 #flow.panning { cursor: grabbing; }
-#graph-detail { margin: 0; }
+#graph-detail { margin: 0; border-top: 1px solid var(--line); padding-top: var(--s-5); }
 .detail-cols { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.3fr); gap: var(--s-2) var(--s-7); }
 @media (max-width: 900px) { .detail-cols { grid-template-columns: 1fr; } }
 #graph-detail h3 { font-size: var(--fs-md); margin: 0 0 var(--s-3); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -122,7 +123,7 @@ body.picked .graph-area { height: max(320px, 56vh); }
 
 /* Accounts lanes: ink balance lines, faint fill, glyphs for events */
 #flow text { fill: var(--muted); font-size: 11px; font-family: var(--font); }
-#flow .gutter { fill: var(--panel); }
+#flow .gutter { fill: var(--bg); }
 #flow .lane-name { fill: var(--text); font-size: 12.5px; cursor: grab; }
 #flow .lane-name.lifting { fill: var(--pos); }
 #flow .lane-drop { stroke: var(--text); stroke-width: 1.5; }
@@ -130,11 +131,11 @@ body.picked .graph-area { height: max(320px, 56vh); }
 #flow .lane { stroke: var(--chart-grid); }
 #flow .lane.minor { stroke-opacity: .6; }
 #flow text.major { fill: var(--text); }
-#flow .band { fill: var(--bg); }
+#flow .band { fill: none; }
 #flow .band-label { fill: var(--muted); }
 #flow .bal-line, #legend .bal-line { fill: none; stroke: var(--chart-line); stroke-width: 1.5; }
 #flow .bal-area { fill: var(--chart-area); }
-#flow .lg-icon { font-size: 12px; cursor: pointer; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+#flow .lg-icon { font-size: 12px; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
 #flow .lg-icon.hl { font-size: 15px; } #flow .lg-icon.sel { font-size: 17px; } #flow .lg-icon.dim { opacity: .15; }
 .lg { font-size: 12px; }
 .lg.buy, #flow .lg-icon.buy { fill: var(--text); color: var(--text); }
@@ -147,19 +148,19 @@ body.picked .graph-area { height: max(320px, 56vh); }
 .lg.consol, #flow .lg-icon.consol { fill: var(--series-4); color: var(--series-4); }
 #flow .hl { fill: var(--pos); }
 #flow .sel { fill: var(--text); }
-#flow .hub, #legend .hub { fill: var(--panel); stroke: var(--series-3); stroke-width: 1.5; }
+#flow .hub, #legend .hub { fill: var(--bg); stroke: var(--series-3); stroke-width: 1.5; }
 #flow .hub-text, #legend .hub-text, #flow .consol-text, #legend .consol-text { font-size: 9px; font-weight: 600; fill: var(--text); pointer-events: none; }
 #flow .arrowhead, #legend .arrowhead { fill: var(--series-3); }
 #flow .link { stroke: var(--series-3); stroke-opacity: .45; fill: none; }
 #legend .link { stroke: var(--series-3); }
-#flow .link-end { fill: var(--panel); stroke: var(--series-3); stroke-width: 1.5; cursor: pointer; }
+#flow .link-end { fill: var(--bg); stroke: var(--series-3); stroke-width: 1.5; cursor: pointer; }
 #flow .tr { cursor: pointer; }
 #flow .tr.hl .link, #flow .tr.sel .link, #flow .link.hl, #flow .link-end.hl { stroke: var(--pos); stroke-opacity: 1; }
 #flow .tr.hl .arrowhead, #flow .tr.sel .arrowhead { fill: var(--pos); }
 #flow .consol-g { cursor: pointer; }
-#flow .consol, #legend .consol { fill: var(--panel); stroke: var(--series-3); stroke-width: 1.5; }
+#flow .consol, #legend .consol { fill: var(--bg); stroke: var(--series-3); stroke-width: 1.5; }
 #flow .dim { opacity: .15; }
-.dot { cursor: pointer; stroke: var(--panel); stroke-width: 1.5; }
+.dot { cursor: pointer; stroke: var(--bg); stroke-width: 1.5; }
 .dot.buy { fill: var(--text); } .dot.sell, .dot.spend, .dot.sold { fill: var(--chart-down); }
 .dot.income, .dot.purchase, .dot.gift-in { fill: var(--series-3); }
 .dot.unmatched { fill: var(--neg); } .dot.gift, .dot.donation, .dot.lost, .dot.untracked, .dot.refund { fill: var(--series-4); }
@@ -188,13 +189,14 @@ dl.facts dd { margin: 0; }
 #settings h3.wide { font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); font-family: var(--font); margin: var(--s-3) 0 0; padding-top: var(--s-3); border-top: 1px solid var(--line); }
 #settings form.card .wide.row, #wallets form.card .wide.row, #imports form.card .wide.row { gap: var(--s-2) var(--s-3); }
 #settings .card b.wide { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-md); }
-#settings #restore-form { padding-top: var(--s-4); border-top: 1px solid var(--line); }
+#settings #restore-form { padding-top: var(--s-5); margin-top: var(--s-3); }
+#settings #backup-form { padding-bottom: var(--s-3); }
 
 /* ---------- Phone ---------- */
 @media (max-width: 760px) {
   .ov-head > span.small { display: none; }
   .ov-grip { display: none; }
-  .ov-card[data-card="history"] { border: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 4px 0; }
+  .ov-card[data-card="history"] { padding: 4px 0; }
   .ov-card[data-card="now"] .ov-head { justify-content: flex-end; }
   .ov-card[data-card="now"] .tiles { grid-template-columns: 1fr 1fr; gap: var(--s-2); }
   #hero { padding: var(--s-4) 0 var(--s-4); }
