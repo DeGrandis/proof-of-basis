@@ -419,7 +419,7 @@ func (s *Server) systemPrompt(rep *Report, pc PageContext) string {
 
 Rules:
 - Answer from the data below and from your lookup tools. Never invent transactions, amounts or dates. If something isn't in the data, say so.
-- Prefer calling a tool over guessing. Tools are read-only; you cannot change anything in the app.
+- The summary below has only totals. For anything about specific sales, purchases, transactions, lots or the biggest/smallest of something, call a tool first and answer from its result. Never derive individual records from totals. Tools are read-only; you cannot change anything in the app.
 - Be concise and concrete: short paragraphs or bullet lists, figures with units (BTC to 8 decimals, USD with cents), dates as YYYY-MM-DD.
 - To refer to a record, give its date, account and amount in plain words. Don't paste record ids (the [ex:..] or [tx:..] tags) or long txids into answers unless the user asks; the app already links your lookups.
 - You are not a tax advisor. Only when the user asks what they should do (sell, harvest losses, how to file), explain the numbers and trade-offs and add one short line suggesting a tax professional. Don't add disclaimers to factual answers.
