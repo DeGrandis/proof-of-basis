@@ -15,9 +15,15 @@ $("#tg-period").addEventListener("change", tgRebuild);
 $("#tg-transfers").addEventListener("change", tgRebuild);
 $("#tg-fit").addEventListener("click", () => tgState?.network.fit({ animation: { duration: 400 } }));
 
-// Fixed category order (never cycled by rank) for accounts.
-const TG_PALETTE = ["#2563eb", "#db2777", "#059669", "#d97706", "#7c3aed", "#0891b2", "#65a30d", "#e11d48", "#0d9488", "#9333ea"];
-const TG = { withdraw: "#14b8a6", self: "#a855f7", deposit: "#f59e0b", outside: "#ef4444", sale: "#dc2626", income: "#3b82f6", merge: "#94a3b8", unmatched: "#eab308" };
+// Colors come from the theme (greys for accounts and moves, ink for buys,
+// the accent for sales and for the hovered chain), read when drawing so a
+// theme change only needs a rebuild.
+let TG_PALETTE = [], TG = {};
+function tgColors() {
+  TG_PALETTE = [3, 2, 4, 3, 5, 2, 4].map((i) => cssVar(`--series-${i}`)); // greys only: ink is for buys
+  TG = { withdraw: cssVar("--series-3"), self: cssVar("--series-3"), deposit: cssVar("--series-3"), outside: cssVar("--series-2"), sale: cssVar("--chart-down"),
+    income: cssVar("--series-3"), merge: cssVar("--series-4"), unmatched: cssVar("--neg"), buy: cssVar("--chart-up"), hot: cssVar("--chart-hot"), panel: cssVar("--panel") };
+}
 
 function tgLegend() {
   const item = (svg, label) => `<span class="tg-key">${svg} ${label}</span>`;
@@ -25,11 +31,11 @@ function tgLegend() {
   const dot = (c, shape) => shape === "square" ? `<svg width="12" height="12"><rect x="1" y="1" width="10" height="10" fill="${c}"/></svg>`
     : shape === "tri" ? `<svg width="12" height="12"><path d="M1,2 L11,2 L6,11 Z" fill="${c}"/></svg>` : `<svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="${c}"/></svg>`;
   $("#tg-legend").innerHTML = [
-    item(`<svg width="26" height="12"><rect x="1" y="3" width="24" height="6" rx="3" fill="#888"/></svg>`, "Account over time (thicker = more BTC)"),
-    item(dot("#888"), "Buy, in its exchange's color"), item(dot(TG.income), "Received from outside"),
+    item(`<svg width="26" height="12"><rect x="1" y="3" width="24" height="6" rx="3" fill="${TG.merge}"/></svg>`, "Account over time (thicker = more BTC)"),
+    item(dot(TG.buy), "Buy"), item(dot(TG.income), "Received from outside"),
     item(line(TG.withdraw), "Exchange → wallet"), item(line(TG.self), "Between your wallets"), item(line(TG.deposit), "Wallet → exchange"),
     item(dot(TG.merge, "square"), "Coins merged in a wallet"), item(line(TG.outside, true) + dot(TG.outside, "tri"), "Sent outside"),
-    item(dot(TG.sale, "tri"), "Sold or spent"),
+    item(dot(TG.sale, "tri"), "Sold or spent"), item(line(TG.hot), "Hovered chain"),
   ].join("");
 }
 
@@ -117,8 +123,8 @@ function timelineGraphData(year, transfersOnly) {
     if (transfersOnly) continue; // only moves between your accounts
     const st = stateNode(e.account, e.t);
     if (e.kind === "buy") {
-      const id = evNode(e, { shape: "dot", size: k * (3 + 10 * Math.sqrt(e.sats / maxSats)), color: { background: color[e.account], border: "#fff" }, borderWidth: 1, title: tip(e, "Buy"), dy: -gap * 0.3 });
-      edges.push({ id: "in:" + e.key, from: id, to: st, color: { color: color[e.account], opacity: 0.5 }, width: k });
+      const id = evNode(e, { shape: "dot", size: k * (3 + 10 * Math.sqrt(e.sats / maxSats)), color: { background: TG.buy, border: TG.panel }, borderWidth: 1, title: tip(e, "Buy"), dy: -gap * 0.3 });
+      edges.push({ id: "in:" + e.key, from: id, to: st, color: { color: TG.buy, opacity: 0.5 }, width: k });
     } else if (e.kind === "income" || e.dir === "in") {
       const c = TG.income;
       const id = evNode(e, { shape: "dot", size: k * (4 + 9 * Math.sqrt(e.sats / maxSats)), color: { background: c, border: c }, title: tip(e, "Received from outside"), dy: -gap * 0.3 });
@@ -173,6 +179,7 @@ function tgChain(key) {
 
 function drawTimelineGraph() {
   if (!report || typeof vis === "undefined") return;
+  tgColors();
   tgLegend();
   const years = [...new Set((report.graph || []).map((e) => new Date(e.t * 1000).getUTCFullYear()))].sort((a, b) => b - a);
   const sel = $("#tg-period");
@@ -242,6 +249,7 @@ function drawTimelineGraph() {
   const baseN = new Map(data.nodes.map((n) => [n.id, n.color]));
   const baseE = new Map(data.edges.map((e) => [e.id, { color: e.color, width: e.width }]));
   const faded = { background: "rgba(128,128,128,0.12)", border: "rgba(128,128,128,0.15)" };
+  const hot = { background: TG.hot, border: TG.hot };
   const light = (id) => {
     if (!id) {
       nodeSet.update(data.nodes.map((n) => ({ id: n.id, color: baseN.get(n.id) })));
@@ -262,8 +270,8 @@ function drawTimelineGraph() {
       const a = nodeSet.get(e.from), b = nodeSet.get(e.to);
       if (a.t >= span[e.acct][0] && b.t <= span[e.acct][1]) { onE.add(e.id); onN.add(e.from); onN.add(e.to); }
     }
-    nodeSet.update(data.nodes.map((x) => ({ id: x.id, color: onN.has(x.id) ? baseN.get(x.id) : faded })));
-    edgeSet.update(data.edges.map((e) => ({ id: e.id, color: onE.has(e.id) ? { ...baseE.get(e.id).color, opacity: 1 } : { color: "rgba(128,128,128,0.07)" } })));
+    nodeSet.update(data.nodes.map((x) => ({ id: x.id, color: onN.has(x.id) ? hot : faded })));
+    edgeSet.update(data.edges.map((e) => ({ id: e.id, color: onE.has(e.id) ? { color: TG.hot, opacity: 1 } : { color: "rgba(128,128,128,0.07)" } })));
   };
   network.on("hoverNode", (p) => light(p.node));
   network.on("blurNode", () => light(null));

@@ -35,7 +35,10 @@ function show(route) {
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
+  document.body.dataset.tab = tab;
   document.body.classList.toggle("flow", tab === "graph");
+  scrollTo(0, 0); // the section's id matches the hash, so the browser scrolled it under the header
+  requestAnimationFrame(() => scrollTo(0, 0));
   if (tab === "overview" && report) { drawHistory(); if (typeof drawSummary === "function") drawSummary(); }
   if (tab === "graph") drawGraph();
 }
@@ -43,6 +46,7 @@ function showLookup(kind, arg) {
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === "lookup"));
   $$("#tabs button").forEach((b) => b.classList.remove("on"));
   $("#tab-title").textContent = kind === "tx" ? "Transaction" : "Address";
+  document.body.dataset.tab = "lookup";
   document.body.classList.remove("flow");
   lookupRoute = [kind, arg];
   renderLookup();
@@ -60,27 +64,26 @@ $("#search").addEventListener("submit", (e) => {
   else toast("Enter a 64-character transaction id or a bitcoin address.");
 });
 
-// Sidebar: open by default (collapsed to icons on narrow screens); the
-// hamburger shrinks it to an icon rail and back. The choice is remembered.
-function setMenu(open, remember) {
-  document.body.classList.toggle("collapsed", !open);
-  $("#menu-btn").setAttribute("aria-expanded", String(open));
-  $("#menu-btn").setAttribute("aria-label", open ? "Collapse menu" : "Expand menu");
-  if (remember) try { localStorage.setItem("menu", open ? "open" : "closed"); } catch {}
-  if ($("#graph").classList.contains("on")) setTimeout(drawGraph, 200);
+// Theme: light or dark, remembered; without a choice it follows the OS.
+// Charts read their colors from CSS, so they are redrawn on a change.
+function applyTheme(t, remember) {
+  document.documentElement.dataset.theme = t;
+  $("#theme-toggle").setAttribute("aria-label", t === "dark" ? "Switch to light theme" : "Switch to dark theme");
+  if (remember) try { localStorage.setItem("theme", t); } catch {}
+  if (!report) return;
+  if ($("#overview").classList.contains("on")) { drawHistory(); if (typeof drawSummary === "function") drawSummary(); }
+  if ($("#graph").classList.contains("on")) { if (typeof tgRebuild === "function" && flowMode === "custody") tgRebuild(); else drawGraph(); }
+  if (selected && lastFlow) { const e = (report.graph || []).find((g) => g.key === selected); if (e) drawTxFlow(e, lastFlow); }
 }
-setMenu((() => { try { const v = localStorage.getItem("menu"); if (v) return v === "open"; } catch {} return innerWidth >= 760; })());
-$("#menu-btn").addEventListener("click", () => setMenu(document.body.classList.contains("collapsed"), true));
+$("#theme-toggle").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+  let saved = null; try { saved = localStorage.getItem("theme"); } catch {}
+  if (saved !== "light" && saved !== "dark") applyTheme(e.matches ? "dark" : "light", false);
+});
 $("#tabs").addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  if (b) { location.hash = b.dataset.tab; document.body.classList.remove("menu-open"); }
+  if (b) location.hash = b.dataset.tab;
 });
-// On a phone the sidebar is a drawer: the header's menu button opens it over
-// the page, and tapping outside or picking a page closes it.
-const menuOpen = (on) => { document.body.classList.toggle("menu-open", on); $("#menu-backdrop").hidden = !on; };
-$("#menu-top").addEventListener("click", () => menuOpen(!document.body.classList.contains("menu-open")));
-$("#menu-backdrop").addEventListener("click", () => menuOpen(false));
-$("#tabs").addEventListener("click", () => menuOpen(false));
 
 // Fulcrum status dot: green when the server answers, red when it does not.
 async function checkFulcrum(fresh) {
@@ -96,6 +99,7 @@ async function checkFulcrum(fresh) {
 $("#fulcrum-status").addEventListener("click", () => { $("#fulcrum-line").textContent = "checking…"; checkFulcrum(true); });
 setInterval(() => { if (!document.hidden) checkFulcrum(); }, 60000);
 window.addEventListener("hashchange", () => show(location.hash.slice(1) || "overview"));
+window.addEventListener("load", () => scrollTo(0, 0)); // the browser's own anchor scroll lands after the page is shown
 
 async function refresh() {
   try {
@@ -129,14 +133,15 @@ function renderOverview() {
   const ys = (r.years || []).find((y) => y.year === yr);
   const worth = r.price ? Math.round(r.holdingsSats * r.price / 1e8) : 0;
   $("#hero").innerHTML = r.price
-    ? `<div class="worth">${usd(worth)}</div><div class="held">${btc(r.holdingsSats)} BTC · ${usd(r.price)} per BTC <span class="muted">(${esc(r.priceDay)})</span></div>
+    ? `<div class="worth">${usd(worth)}</div><div class="label">Portfolio value</div>
+       <div class="held">${btc(r.holdingsSats)} BTC · ${usd(r.price)} per BTC <span class="muted">(${esc(r.priceDay)})</span></div>
        <div class="gain ${r.unrealized < 0 ? "neg" : "pos"}">${r.unrealized >= 0 ? "+" : "-"}${usd(Math.abs(r.unrealized))} unrealized</div>`
-    : `<div class="worth">${btc(r.holdingsSats)} BTC</div><div class="held">No price yet: press Update prices in Settings</div>`;
+    : `<div class="worth">${btc(r.holdingsSats)} BTC</div><div class="label">Bitcoin held</div><div class="held">No price yet: press Update prices in Settings</div>`;
   const tiles = [
     [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : "$0.00"],
     [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : "$0.00"],
   ];
-  $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
+  $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile${/tax/.test(k) ? " tax" : ""}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>`).join("");
   const held = (r.accounts || []).filter((a) => a.sats > 0 && a.kind !== "pool").sort((a, b) => b.sats - a.sats);
   const cur = $("#whatif-account").value;
   $("#whatif-account").innerHTML = held.map((a) => `<option value="${esc(a.name)}"${a.name === cur ? " selected" : ""}>${esc(a.name)} (${btc(a.sats)} BTC)</option>`).join("") || `<option value="">No BTC held</option>`;
@@ -370,6 +375,16 @@ function drawHistory() {
   const line = (arr, fx, fy) => arr.map((p, i) => `${i ? "L" : "M"}${fx(p).toFixed(1)},${fy(p).toFixed(1)}`).join("");
   const btcLine = line(pts, (p) => x(p.t), (p) => y1(p.sats));
   g += `<defs><clipPath id="hclip"><rect x="${L}" y="0" width="${W - L - R}" height="${H}"/></clipPath></defs><g clip-path="url(#hclip)">`;
+  // Holdings as thin vertical strokes, one every few pixels, under the line.
+  let bars = "", bi = 0;
+  for (let bx = L + 2; bx <= W - R; bx += 5) {
+    const t = t0 + ((bx - L) / (W - L - R)) * (t1 - t0);
+    while (bi + 1 < pts.length && pts[bi + 1].t <= t) bi++;
+    if (pts[bi].t > t) continue;
+    const yy = y1(pts[bi].sats);
+    if (yy < top1 + h1 - 0.5) bars += `M${bx},${yy.toFixed(1)}V${top1 + h1}`;
+  }
+  g += `<path class="bar" d="${bars}"/>`;
   g += `<path class="area" d="${btcLine}L${x(pts.at(-1).t)},${top1 + h1}L${x(pts[0].t)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
   if (priced.length > 1) g += `<path class="px" d="${line(priced, (p) => x(p.t), (p) => y2(p.price))}"/>`;
   // Buys and sales as dots on the price line, sized by amount, at the
@@ -378,12 +393,12 @@ function drawHistory() {
   const maxT = Math.max(...(report.graph || []).filter((e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)).map((e) => e.sats), 1);
   const nearest = (t) => { let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k; return pts[i]; };
   const priceAt = (t) => { let i = 0; for (let k = 1; k < priced.length; k++) if (Math.abs(priced[k].t - t) < Math.abs(priced[i].t - t)) i = k; return priced[i]?.price || 0; };
-  const dotR = 3 + (days > 365 ? 11 : 18) * Math.min(1, W / 900); // smaller dots on narrow charts
+  const dotR = 2.5 + (days > 365 ? 7 : 13) * Math.min(1, W / 900); // smaller dots on narrow charts
   const dots = [];
   trades.forEach((e, i) => {
     const p = e.cents && e.sats ? Math.round(e.cents * 1e8 / e.sats) : priceAt(e.t);
     if (!p) return;
-    const buy = e.kind === "buy", r = 3 + (dotR - 3) * Math.sqrt(e.sats / maxT), cx = x(e.t);
+    const buy = e.kind === "buy", r = 2.5 + (dotR - 2.5) * Math.sqrt(e.sats / maxT), cx = x(e.t);
     const cyP = y2(Math.min(Math.max(p, minP), maxP)), cyH = y1(nearest(e.t).sats);
     dots.push({ e, p, r, cx, cyP, cyH, i });
     g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" data-dot="${i}" cx="${cx.toFixed(1)}" cy="${cyP.toFixed(1)}" r="${r.toFixed(1)}"/>`;

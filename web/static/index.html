@@ -5,40 +5,39 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BTC Tax</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="app.css">
+<script src="theme-init.js"></script>
 <script src="app.js" defer></script>
 <script src="sankey.js" defer></script>
 <script src="vendor/vis-network.min.js" defer></script>
 <script src="timelinegraph.js" defer></script>
 </head>
 <body>
-<aside id="sidebar" aria-label="Navigation">
-  <div class="brand">
-    <button id="menu-btn" aria-label="Collapse menu" aria-expanded="true" title="Collapse or expand the menu">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
-    </button>
-    <h1 class="lbl">BTC Tax</h1>
-  </div>
-  <nav id="tabs">
-    <button data-tab="overview" class="on" title="Overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg><span class="lbl">Overview</span></button>
-    <button data-tab="wallets" title="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
-    <button data-tab="imports" title="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
-    <button data-tab="review" title="Review"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg><span class="lbl">Review</span> <span id="review-count" class="pill" hidden></span></button>
-    <button data-tab="lightning" title="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
-    <button data-tab="graph" title="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
-    <button data-tab="taxes" title="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
-    <button data-tab="settings" title="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
+<header id="top">
+  <a class="brand" href="#overview" aria-label="BTC Tax, overview"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="mark" cx="12" cy="12" r="11"/><path d="M9 7h4.5a2.5 2.5 0 0 1 0 5H9m0 0h5a2.5 2.5 0 0 1 0 5H9M9 7v10M11 5v2M11 17v2"/></svg><span>BTC Tax</span></a>
+  <nav id="tabs" aria-label="Pages">
+    <button data-tab="overview" class="on" aria-label="Overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg><span class="lbl">Overview</span></button>
+    <button data-tab="wallets" aria-label="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
+    <button data-tab="imports" aria-label="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
+    <button data-tab="review" aria-label="Review"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg><span class="lbl">Review</span><span id="review-count" class="pill" hidden></span></button>
+    <button data-tab="lightning" aria-label="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
+    <button data-tab="graph" aria-label="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
+    <button data-tab="taxes" aria-label="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
+    <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
   </nav>
+  <form id="search" role="search"><input name="q" placeholder="Search a txid or address" aria-label="Search a transaction id or bitcoin address" autocomplete="off" spellcheck="false"></form>
   <button id="fulcrum-status" class="fulcrum-status" title="Fulcrum: checking…">
     <span class="status-dot" id="fulcrum-dot"></span>
-    <span class="lbl"><b>Fulcrum</b><br><span id="fulcrum-line" class="small muted">checking…</span></span>
+    <span class="lbl"><b>Fulcrum</b> <span id="fulcrum-line">checking…</span></span>
   </button>
-</aside>
-<div id="page">
-<div id="menu-backdrop" hidden></div>
-<header><button id="menu-top" aria-label="Menu" title="Menu"><svg viewBox="0 0 20 20" aria-hidden="true" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button><span id="tab-title"></span><span class="spacer"></span>
-  <form id="search" role="search"><input name="q" placeholder="Search a txid or address" aria-label="Search a transaction id or bitcoin address" autocomplete="off" spellcheck="false"></form>
+  <button id="theme-toggle" class="icon-btn" aria-label="Switch to dark theme" title="Light or dark theme">
+    <svg class="sun" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></svg>
+    <svg class="moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
+  </button>
 </header>
+<div id="page">
+<div id="page-head"><h1 id="tab-title"></h1></div>
 <main>
   <div id="toast" role="status" hidden></div>
 
@@ -53,7 +52,7 @@
       <div class="tiles" id="tiles"></div>
     </section>
     <section class="ov-card" data-card="history">
-      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>BTC held over time</b><span class="small muted">with the BTC price below it. Orange dots are buys, purple dots sales, sized by amount.</span></div>
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>BTC held over time</b><span class="small muted">with the BTC price below it.</span><span class="spacer"></span><span class="chart-key"><span><i class="k-buy"></i>Buys</span><span><i class="k-sell"></i>Sales</span><span class="muted">sized by amount</span></span></div>
       <div class="row small" id="history-range" role="group" aria-label="Time range">
         <span class="seg"><button type="button" data-range="1">1D</button><button type="button" data-range="7">1W</button><button type="button" data-range="30">1M</button><button type="button" data-range="365">1Y</button><button type="button" data-range="1826">5Y</button><button type="button" data-range="all" class="on">All</button></span>
         <span class="muted">Scroll to zoom, drag to pan</span>
