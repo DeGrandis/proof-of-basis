@@ -334,6 +334,47 @@ function setHistRange(preset) {
   drawHistory();
 }
 $("#history-range").addEventListener("click", (e) => { const r = e.target.closest("[data-range]")?.dataset.range; if (r) setHistRange(r); });
+// A smooth line through points, monotone in each segment (Fritsch–Carlson),
+// so it never overshoots a step in the holdings.
+function smoothPath(P) {
+  const n = P.length;
+  if (n < 3) return P.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  const dx = [], m = [], t = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) { dx[i] = Math.max(P[i + 1][0] - P[i][0], 1e-6); m[i] = (P[i + 1][1] - P[i][1]) / dx[i]; }
+  t[0] = m[0]; t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i], b = t[i + 1] / m[i], s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; }
+  }
+  let d = `M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += `C${(P[i][0] + h).toFixed(1)},${(P[i][1] + t[i] * h).toFixed(1)} ${(P[i + 1][0] - h).toFixed(1)},${(P[i + 1][1] - t[i + 1] * h).toFixed(1)} ${P[i + 1][0].toFixed(1)},${P[i + 1][1].toFixed(1)}`;
+  }
+  return d;
+}
+const pct = (from, to) => from > 0 ? (to - from) / from * 100 : 0;
+const pctPill = (p) => `<span class="tip-pill ${p < 0 ? "neg" : "pos"}">${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(Math.abs(p) < 10 ? 1 : 0)}%</span>`;
+// Pointer drags on the chart and the scrubber are handled at the window, so
+// a redraw in the middle of a drag (every move redraws) loses nothing.
+hist.drag = null; // {mode: pan|scrub|left|right, x, t0, t1, pxPerSec}
+function histDragMove(e) {
+  const d = hist.drag; if (!d) return;
+  const [a, b] = histBounds(), dt = (e.clientX - d.x) / d.pxPerSec, span = d.t1 - d.t0;
+  if (d.mode === "pan") { hist.t0 = Math.min(Math.max(a, d.t0 - dt), b - span); hist.t1 = hist.t0 + span; }
+  else if (d.mode === "scrub") { hist.t0 = Math.min(Math.max(a, d.t0 + dt), b - span); hist.t1 = hist.t0 + span; }
+  else if (d.mode === "left") hist.t0 = Math.min(Math.max(a, d.t0 + dt), d.t1 - 2 * DAY);
+  else if (d.mode === "right") hist.t1 = Math.max(Math.min(b, d.t1 + dt), d.t0 + 2 * DAY);
+  d.moved = true;
+  hist.preset = ""; $$("#history-range button").forEach((x) => x.classList.remove("on"));
+  drawHistory();
+}
+window.addEventListener("pointermove", histDragMove);
+window.addEventListener("pointerup", () => { hist.drag = null; $("#history")?.classList.remove("dragging"); });
+window.addEventListener("pointercancel", () => { hist.drag = null; });
+
 function drawHistory() {
   const svg = $("#history"), all = report.history || [];
   if (all.length < 2) { svg.setAttribute("height", 40); svg.innerHTML = `<text x="8" y="24">Nothing to chart yet.</text>`; return; }
@@ -345,8 +386,9 @@ function drawHistory() {
   if (i0 < 0) i0 = all.length - 1;
   if (i1 < 0) i1 = all.length;
   const pts = all.slice(Math.max(i0 - 1, 0), Math.min(i1 + 1, all.length));
-  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, top1 = 18, h1 = 140, top2 = top1 + h1 + 34, h2 = 160, H = top2 + h2 + 24;
-  const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+  const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, PW = W - L - R;
+  const top1 = 22, h1 = 150, top2 = top1 + h1 + 36, h2 = 150, axisY = top2 + h2 + 18, scrubTop = axisY + 14, scrubH = 36, H = scrubTop + scrubH + 10;
+  const x = (t) => L + ((t - t0) / (t1 - t0)) * PW;
   const inView = pts.filter((p) => p.t >= t0 && p.t <= t1);
   const maxS = Math.max(...(inView.length ? inView : pts).map((p) => p.sats), 1);
   const priced = pts.filter((p) => p.price > 0), pricedIn = priced.filter((p) => p.t >= t0 && p.t <= t1);
@@ -360,9 +402,9 @@ function drawHistory() {
   const nice = (m) => { const e = Math.pow(10, Math.floor(Math.log10(m)) - 1); return [1, 2, 2.5, 5, 10, 20, 25, 50, 100].map((k) => k * e).find((s) => m / s <= 5); };
   let g = "";
   const sStep = nice(maxS / 1e8) * 1e8;
-  for (let s = 0; s <= maxS * 1.001; s += sStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y1(s)}" y2="${y1(s)}"/><text x="${L - 6}" y="${y1(s) + 4}" text-anchor="end">${+(s / 1e8).toFixed(4)}</text>`;
+  for (let s = 0; s <= maxS * 1.001; s += sStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y1(s)}" y2="${y1(s)}"/><text x="${L - 8}" y="${y1(s) + 4}" text-anchor="end">${+(s / 1e8).toFixed(4)}</text>`;
   const pStep = nice(Math.max(maxP - minP, 100) / 100) * 100;
-  for (let c = Math.ceil(minP / pStep) * pStep; c <= maxP * 1.001; c += pStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y2(c)}" y2="${y2(c)}"/><text x="${L - 6}" y="${y2(c) + 4}" text-anchor="end">$${c >= 100000 ? (c / 100000).toFixed(c % 100000 ? 1 : 0) + "k" : Math.round(c / 100)}</text>`;
+  for (let c = Math.ceil(minP / pStep) * pStep; c <= maxP * 1.001; c += pStep) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y2(c)}" y2="${y2(c)}"/><text x="${L - 8}" y="${y2(c) + 4}" text-anchor="end">$${c >= 100000 ? (c / 100000).toFixed(c % 100000 ? 1 : 0) + "k" : Math.round(c / 100)}</text>`;
   // Time labels suited to the window: years, months or days.
   const days = (t1 - t0) / DAY;
   const d0 = new Date(t0 * 1000);
@@ -371,26 +413,31 @@ function drawHistory() {
   else if (days > 45) for (let m = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1)); m / 1000 <= t1; m.setUTCMonth(m.getUTCMonth() + 1)) marks.push([m / 1000, m.getUTCMonth() === 0 ? String(m.getUTCFullYear()) : m.toLocaleString("en-US", { month: "short", timeZone: "UTC" })]);
   else { const step = days > 10 ? 7 : 1; for (let d = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate() + 1)); d / 1000 <= t1; d.setUTCDate(d.getUTCDate() + step)) marks.push([d / 1000, d.toISOString().slice(5, 10)]); }
   let lastX = -1e9;
-  for (const [t, label] of marks) { const xx = x(t); if (xx - lastX < 36) continue; g += `<text x="${xx}" y="${H - 6}" text-anchor="middle">${label}</text>`; lastX = xx; }
-  const line = (arr, fx, fy) => arr.map((p, i) => `${i ? "L" : "M"}${fx(p).toFixed(1)},${fy(p).toFixed(1)}`).join("");
-  const btcLine = line(pts, (p) => x(p.t), (p) => y1(p.sats));
-  g += `<defs><clipPath id="hclip"><rect x="${L}" y="0" width="${W - L - R}" height="${H}"/></clipPath></defs><g clip-path="url(#hclip)">`;
-  // Holdings as thin vertical strokes, one every few pixels, under the line.
-  let bars = "", bi = 0;
-  for (let bx = L + 2; bx <= W - R; bx += 5) {
-    const t = t0 + ((bx - L) / (W - L - R)) * (t1 - t0);
-    while (bi + 1 < pts.length && pts[bi + 1].t <= t) bi++;
-    if (pts[bi].t > t) continue;
-    const yy = y1(pts[bi].sats);
-    if (yy < top1 + h1 - 0.5) bars += `M${bx},${yy.toFixed(1)}V${top1 + h1}`;
-  }
-  g += `<path class="bar" d="${bars}"/>`;
-  g += `<path class="area" d="${btcLine}L${x(pts.at(-1).t)},${top1 + h1}L${x(pts[0].t)},${top1 + h1}Z"/><path class="btc" d="${btcLine}"/>`;
-  if (priced.length > 1) g += `<path class="px" d="${line(priced, (p) => x(p.t), (p) => y2(p.price))}"/>`;
-  // Buys and sales as dots on the price line, sized by amount, at the
-  // price paid or received. Hovering a dot shows its details.
-  const trades = (report.graph || []).filter((e) => (e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)) && e.t >= t0 - DAY && e.t <= t1 + DAY);
-  const maxT = Math.max(...(report.graph || []).filter((e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind)).map((e) => e.sats), 1);
+  for (const [t, label] of marks) { const xx = x(t); if (xx - lastX < 36) continue; g += `<text x="${xx}" y="${axisY}" text-anchor="middle">${label}</text>`; lastX = xx; }
+  // One sample per day in view (or per 3px when days outnumber pixels):
+  // each becomes a thin stroke, and together they carry the smooth line.
+  const sampleStep = Math.max(DAY, (t1 - t0) / (PW / 3));
+  const sample = (series, val) => {
+    const out = []; let k = 0;
+    for (let t = t0; t <= t1 + 1; t += sampleStep) {
+      while (k + 1 < series.length && series[k + 1].t <= t) k++;
+      if (series[k].t > t) continue;
+      out.push([x(Math.min(t, t1)), val(series[k]), series[k]]);
+    }
+    return out;
+  };
+  const strokes = (S, base) => S.map(([sx, sy]) => sy < base - 0.5 ? `M${sx.toFixed(1)},${sy.toFixed(1)}V${base}` : "").join("");
+  const S1 = sample(pts, (p) => y1(p.sats)), S2 = priced.length > 1 ? sample(priced, (p) => y2(p.price)) : [];
+  g += `<defs><clipPath id="hclip"><rect x="${L}" y="0" width="${PW}" height="${H}"/></clipPath><clipPath id="hband"><rect id="history-band" x="0" y="0" width="0" height="${H}"/></clipPath></defs><g clip-path="url(#hclip)">`;
+  const bars1 = strokes(S1, top1 + h1), bars2 = strokes(S2, top2 + h2);
+  g += `<path class="bar" d="${bars1}"/><path class="bar hot" clip-path="url(#hband)" d="${bars1}"/>`;
+  g += `<path class="btc" d="${smoothPath(S1.map(([sx, sy]) => [sx, sy]))}"/>`;
+  if (S2.length > 1) g += `<path class="bar" d="${bars2}"/><path class="bar hot" clip-path="url(#hband)" d="${bars2}"/><path class="px" d="${smoothPath(S2.map(([sx, sy]) => [sx, sy]))}"/>`;
+  // Buys and sales as rings and dots on the price line, sized by amount, at
+  // the price paid or received. Hovering one shows its card.
+  const isTrade = (e) => e.kind === "buy" || ["sell", "sold", "spend"].includes(e.kind);
+  const trades = (report.graph || []).filter((e) => isTrade(e) && e.t >= t0 - DAY && e.t <= t1 + DAY);
+  const maxT = Math.max(...(report.graph || []).filter(isTrade).map((e) => e.sats), 1);
   const nearest = (t) => { let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k; return pts[i]; };
   const priceAt = (t) => { let i = 0; for (let k = 1; k < priced.length; k++) if (Math.abs(priced[k].t - t) < Math.abs(priced[i].t - t)) i = k; return priced[i]?.price || 0; };
   const dotR = 2.5 + (days > 365 ? 7 : 13) * Math.min(1, W / 900); // smaller dots on narrow charts
@@ -404,71 +451,90 @@ function drawHistory() {
     g += `<circle class="${buy ? "buy-dot" : "sell-dot"}" data-dot="${i}" cx="${cx.toFixed(1)}" cy="${cyP.toFixed(1)}" r="${r.toFixed(1)}"/>`;
   });
   g += `</g>`;
-  g += `<text class="title" x="${L}" y="${top1 - 6}">BTC held</text><text class="title" x="${L}" y="${top2 - 8}">BTC price (USD)</text>`;
+  g += `<text class="title" x="${L}" y="${top1 - 8}">BTC held</text><text class="title" x="${L}" y="${top2 - 10}">BTC price (USD)</text>`;
   g += `<g id="history-cross" visibility="hidden"><line class="cross" y1="${top1}" y2="${top2 + h2}"/><circle class="pt-btc" r="4"/><circle class="pt-px" r="4"/></g>`;
-  g += `<rect x="${L}" y="${top1}" width="${W - L - R}" height="${top2 + h2 - top1}" fill="transparent" id="history-hit"/>`;
+  g += `<rect x="${L}" y="${top1}" width="${PW}" height="${top2 + h2 - top1}" fill="transparent" id="history-hit"/>`;
+  // The scrubber: the whole history as a faint area, with the visible
+  // window as a draggable frame with a handle at each end.
+  const sx = (t) => L + ((t - a) / Math.max(b - a, 1)) * PW;
+  const maxAll = Math.max(...all.map((p) => p.sats), 1), sy = (s) => scrubTop + scrubH - (s / maxAll) * (scrubH - 4);
+  const stepAll = Math.max(DAY, (b - a) / (PW / 2));
+  let area = `M${L},${scrubTop + scrubH}`, k = 0;
+  for (let t = a; t <= b; t += stepAll) { while (k + 1 < all.length && all[k + 1].t <= t) k++; area += `L${sx(t).toFixed(1)},${sy(all[k].sats).toFixed(1)}`; }
+  area += `L${sx(b).toFixed(1)},${sy(all.at(-1).sats).toFixed(1)}L${W - R},${scrubTop + scrubH}Z`;
+  const wx0 = sx(t0), wx1 = sx(t1), hw = 10;
+  g += `<g id="history-scrub"><rect class="scrub-bg" x="${L}" y="${scrubTop}" width="${PW}" height="${scrubH}" rx="6"/><path class="scrub-area" d="${area}"/>
+    <rect class="scrub-dim" x="${L}" y="${scrubTop}" width="${Math.max(wx0 - L, 0)}" height="${scrubH}"/><rect class="scrub-dim" x="${wx1}" y="${scrubTop}" width="${Math.max(W - R - wx1, 0)}" height="${scrubH}"/>
+    <rect class="scrub-win" data-scrub="scrub" x="${wx0}" y="${scrubTop}" width="${Math.max(wx1 - wx0, 2)}" height="${scrubH}" rx="6"/>
+    <g class="scrub-handle" data-scrub="left"><rect class="hit" x="${wx0 - 14}" y="${scrubTop - 6}" width="28" height="${scrubH + 12}"/><rect class="grip" x="${wx0 - hw / 2}" y="${scrubTop + 8}" width="${hw}" height="${scrubH - 16}" rx="3"/><line x1="${wx0}" x2="${wx0}" y1="${scrubTop + 13}" y2="${scrubTop + scrubH - 13}"/></g>
+    <g class="scrub-handle" data-scrub="right"><rect class="hit" x="${wx1 - 14}" y="${scrubTop - 6}" width="28" height="${scrubH + 12}"/><rect class="grip" x="${wx1 - hw / 2}" y="${scrubTop + 8}" width="${hw}" height="${scrubH - 16}" rx="3"/><line x1="${wx1}" x2="${wx1}" y1="${scrubTop + 13}" y2="${scrubTop + scrubH - 13}"/></g></g>`;
   svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = g;
-  const cross = $("#history-cross"), tip = $("#history-tip");
-  const hit = $("#history-hit");
+  const cross = $("#history-cross"), tip = $("#history-tip"), band = $("#history-band"), hit = $("#history-hit");
+  const bandW = Math.max(28, PW * 0.08);
+  const placeTip = (px, py) => {
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let tx = px + 16; if (tx + tw > W - 4) tx = px - 16 - tw; if (tx < 4) tx = 4;
+    tip.style.left = tx + "px"; tip.style.top = Math.max(2, Math.min(py - th / 2, H - th - 2)) + "px";
+  };
+  const first = inView[0] || pts[0], firstPriced = pricedIn[0] || priced[0];
   let hot = null;
   hit.addEventListener("pointermove", (e) => {
     if (hist.drag) return;
     const rect = svg.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    band.setAttribute("x", mx - bandW / 2); band.setAttribute("width", bandW);
     // A dot under the pointer wins over the plain readout.
     let best = null, bd = Infinity;
     for (const d of dots) { const dist = Math.hypot(d.cx - mx, d.cyP - my) - d.r; if (dist < bd) { bd = dist; best = d; } }
     if (hot != null) $$(`#history [data-dot="${hot}"]`).forEach((c) => c.classList.remove("hot"));
     hot = null;
+    tip.hidden = false;
+    cross.setAttribute("visibility", "visible");
+    const [cb, cp] = $$("circle", cross);
     if (best && bd < 6) {
       hot = best.i;
       $$(`#history [data-dot="${hot}"]`).forEach((c) => c.classList.add("hot"));
-      const ev = best.e, buy = ev.kind === "buy";
-      cross.setAttribute("visibility", "visible");
+      const ev = best.e, buy = ev.kind === "buy", now = report.price || priceAt(b);
       $("line", cross).setAttribute("x1", best.cx); $("line", cross).setAttribute("x2", best.cx);
-      const [cb, cp] = $$("circle", cross);
       cb.setAttribute("cx", best.cx); cb.setAttribute("cy", best.cyH); cp.setAttribute("cx", best.cx); cp.setAttribute("cy", best.cyP);
-      tip.hidden = false;
-      tip.innerHTML = `<b>${buy ? "Bought" : esc(KIND_NAMES[ev.kind] || "Sold")} ${btc(ev.sats)} BTC</b><br>${day(ev.t)} · ${esc(ev.account)}<br>at ${usd(best.p)} per BTC${ev.cents ? `<br>${buy ? "cost" : "proceeds"} ${usd(ev.cents)}` : ""}<br>${btc(nearest(ev.t).sats)} BTC held after`;
-      const tx = best.cx + 14 + tip.offsetWidth > W ? best.cx - 14 - tip.offsetWidth : best.cx + 14;
-      tip.style.left = tx + "px"; tip.style.top = Math.max(top1, my - 20) + "px";
+      tip.innerHTML = `<div class="tip-row"><b>${buy ? "Bought" : esc(KIND_NAMES[ev.kind] || "Sold")} ${btc(ev.sats)} BTC at ${usd(best.p)}</b>${now ? pctPill(pct(best.p, now)) : ""}</div>
+        <div class="tip-line">${ev.cents ? `${buy ? "Cost" : "Proceeds"} ${usd(ev.cents)} · ` : ""}${esc(ev.account)}${now ? ` · ${usd(now)} today` : ""}</div><div class="tip-cap">${day(ev.t)} · ${btc(nearest(ev.t).sats)} BTC held after</div>`;
+      placeTip(best.cx, best.cyP);
       return;
     }
-    const t = t0 + ((mx - L) / (W - L - R)) * (t1 - t0);
-    let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k].t - t) < Math.abs(pts[i].t - t)) i = k;
-    const p = pts[i], xx = x(p.t);
-    cross.setAttribute("visibility", "visible");
+    const t = t0 + ((mx - L) / PW) * (t1 - t0);
+    const p = nearest(t), xx = x(p.t);
     $("line", cross).setAttribute("x1", xx); $("line", cross).setAttribute("x2", xx);
-    const [cb, cp] = $$("circle", cross);
     cb.setAttribute("cx", xx); cb.setAttribute("cy", y1(p.sats));
     cp.setAttribute("cx", xx); cp.setAttribute("cy", p.price ? y2(p.price) : -20);
-    tip.hidden = false;
-    tip.innerHTML = `<b>${day(p.t)}</b><br>${btc(p.sats)} BTC held${p.price ? `<br>Price ${usd(p.price)}<br>Worth ${usd(Math.round(p.sats * p.price / 1e8))}` : ""}`;
-    const tx = xx + 12 + tip.offsetWidth > W ? xx - 12 - tip.offsetWidth : xx + 12;
-    tip.style.left = tx + "px"; tip.style.top = top1 + "px";
+    const change = p.price && firstPriced ? pct(firstPriced.price, p.price) : pct(first.sats, p.sats);
+    tip.innerHTML = `<div class="tip-row"><b>${btc(p.sats)} BTC</b>${pctPill(change)}</div>
+      <div class="tip-line">${p.price ? `${usd(p.price)} per BTC · worth ${usd(Math.round(p.sats * p.price / 1e8))}` : "No price for this day"}</div>
+      <div class="tip-cap">${day(p.t)} · ${p.price && firstPriced ? "price" : "holdings"} since ${day((p.price && firstPriced ? firstPriced : first).t)}</div>`;
+    placeTip(xx, y1(p.sats));
   });
-  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
-  // Wheel zooms around the pointer; dragging pans. Either leaves the presets.
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; band.setAttribute("width", 0); });
+  // Wheel zooms around the pointer; dragging pans; the scrubber's frame
+  // pans and its handles resize. Each leaves the presets.
   hit.addEventListener("wheel", (e) => {
     e.preventDefault();
-    const rect = svg.getBoundingClientRect(), f = Math.min(Math.max((e.clientX - rect.left - L) / (W - L - R), 0), 1);
+    const rect = svg.getBoundingClientRect(), f = Math.min(Math.max((e.clientX - rect.left - L) / PW, 0), 1);
     const at = t0 + f * (t1 - t0), k = Math.exp(e.deltaY * 0.0015);
     let span = Math.min(Math.max((t1 - t0) * k, 2 * DAY), b - a);
     hist.t0 = Math.max(a, at - f * span); hist.t1 = Math.min(b, hist.t0 + span); hist.t0 = Math.max(a, hist.t1 - span);
     hist.preset = ""; $$("#history-range button").forEach((x) => x.classList.remove("on"));
     drawHistory();
   }, { passive: false });
-  hit.addEventListener("pointerdown", (e) => { hist.drag = { x: e.clientX, t0, t1 }; hit.setPointerCapture(e.pointerId); cross.setAttribute("visibility", "hidden"); tip.hidden = true; });
-  hit.addEventListener("pointermove", (e) => {
-    if (!hist.drag) return;
-    const dt = -((e.clientX - hist.drag.x) / (W - L - R)) * (hist.drag.t1 - hist.drag.t0);
-    const span = hist.drag.t1 - hist.drag.t0;
-    hist.t0 = Math.min(Math.max(a, hist.drag.t0 + dt), b - span); hist.t1 = hist.t0 + span;
-    hist.preset = ""; $$("#history-range button").forEach((x) => x.classList.remove("on"));
-    drawHistory();
+  const startDrag = (e, mode, pxPerSec) => { e.preventDefault(); hist.drag = { mode, x: e.clientX, t0, t1, pxPerSec }; svg.classList.add("dragging"); cross.setAttribute("visibility", "hidden"); tip.hidden = true; band.setAttribute("width", 0); };
+  hit.addEventListener("pointerdown", (e) => startDrag(e, "pan", PW / (t1 - t0)));
+  $("#history-scrub").addEventListener("pointerdown", (e) => { const m = e.target.closest("[data-scrub]")?.dataset.scrub; if (m) startDrag(e, m, PW / Math.max(b - a, 1)); });
+  // Clicking the strip outside the frame jumps the window there.
+  $("#history-scrub").addEventListener("click", (e) => {
+    if (hist.drag?.moved || e.target.closest("[data-scrub]")) return;
+    const rect = svg.getBoundingClientRect(), at = a + ((e.clientX - rect.left - L) / PW) * (b - a), span = t1 - t0;
+    hist.t0 = Math.min(Math.max(a, at - span / 2), b - span); hist.t1 = hist.t0 + span; hist.preset = "";
+    $$("#history-range button").forEach((x) => x.classList.remove("on")); drawHistory();
   });
-  hit.addEventListener("pointerup", () => { hist.drag = null; });
-  hit.addEventListener("pointercancel", () => { hist.drag = null; });
 }
 window.addEventListener("resize", () => { if ($("#overview").classList.contains("on") && report) drawHistory(); });
 

@@ -6,7 +6,7 @@
 
 /* ---------- Overview ---------- */
 /* "Right now": borderless, the hero number with the tax-year picker above it */
-.ov-card[data-card="now"] { background: none; border: 0; padding: 0; margin: 0 0 var(--s-4); }
+.ov-card[data-card="now"] { background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0; margin: 0 0 var(--s-4); }
 .ov-card[data-card="now"] .ov-head { margin: 0; }
 .ov-card[data-card="now"] .ov-head b { display: none; }
 .ov-card[data-card="now"] .tiles { max-width: 640px; margin: 0 auto; grid-template-columns: 1fr 1fr; }
@@ -30,9 +30,20 @@
 #history-wrap { position: relative; }
 #history { display: block; width: 100%; }
 #history .bar { fill: none; stroke: var(--chart-bar); stroke-width: 1; }
-#history .area { fill: var(--chart-area); }
+#history .bar.hot { stroke: var(--chart-line); stroke-opacity: .55; }
+#history.dragging { cursor: grabbing; }
+#history .scrub-bg { fill: var(--chart-area); }
+#history .scrub-area { fill: var(--chart-bar); }
+#history .scrub-dim { fill: var(--bg); fill-opacity: .45; }
+#history .scrub-win { fill: transparent; stroke: var(--chart-line); stroke-width: 1.25; cursor: grab; }
+#history .scrub-handle { cursor: ew-resize; }
+#history .scrub-handle .hit { fill: transparent; }
+#history .scrub-handle .grip { fill: var(--ink); }
+#history .scrub-handle line { stroke: var(--on-ink); stroke-width: 1; }
+#history-scrub { touch-action: none; }
 #history .btc { fill: none; stroke: var(--chart-line); stroke-width: 1.5; stroke-linejoin: round; }
 #history .px { fill: none; stroke: var(--chart-line); stroke-width: 1.5; stroke-linejoin: round; }
+#history .btc, #history .px { stroke-linecap: round; }
 #history .grid { stroke: var(--chart-grid); shape-rendering: crispEdges; }
 #history text { fill: var(--muted); font-size: 11px; font-family: var(--font); }
 #history .title { fill: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
@@ -183,7 +194,7 @@ dl.facts dd { margin: 0; }
 @media (max-width: 760px) {
   .ov-head > span.small { display: none; }
   .ov-grip { display: none; }
-  .ov-card[data-card="history"] { border: 0; background: none; padding: 4px 0; }
+  .ov-card[data-card="history"] { border: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 4px 0; }
   .ov-card[data-card="now"] .ov-head { justify-content: flex-end; }
   .ov-card[data-card="now"] .tiles { grid-template-columns: 1fr 1fr; gap: var(--s-2); }
   #hero { padding: var(--s-4) 0 var(--s-4); }

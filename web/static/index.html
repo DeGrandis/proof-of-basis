@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BTC Tax</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="fonts/urbanist.css">
 <link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="app.css">
 <script src="theme-init.js"></script>
@@ -16,16 +17,6 @@
 <body>
 <header id="top">
   <a class="brand" href="#overview" aria-label="BTC Tax, overview"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="mark" cx="12" cy="12" r="11"/><path d="M9 7h4.5a2.5 2.5 0 0 1 0 5H9m0 0h5a2.5 2.5 0 0 1 0 5H9M9 7v10M11 5v2M11 17v2"/></svg><span>BTC Tax</span></a>
-  <nav id="tabs" aria-label="Pages">
-    <button data-tab="overview" class="on" aria-label="Overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg><span class="lbl">Overview</span></button>
-    <button data-tab="wallets" aria-label="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
-    <button data-tab="imports" aria-label="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
-    <button data-tab="review" aria-label="Review"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg><span class="lbl">Review</span><span id="review-count" class="pill" hidden></span></button>
-    <button data-tab="lightning" aria-label="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
-    <button data-tab="graph" aria-label="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
-    <button data-tab="taxes" aria-label="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
-    <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
-  </nav>
   <form id="search" role="search"><input name="q" placeholder="Search a txid or address" aria-label="Search a transaction id or bitcoin address" autocomplete="off" spellcheck="false"></form>
   <button id="fulcrum-status" class="fulcrum-status" title="Fulcrum: checking…">
     <span class="status-dot" id="fulcrum-dot"></span>
@@ -36,6 +27,16 @@
     <svg class="moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
   </button>
 </header>
+  <nav id="tabs" aria-label="Pages">
+    <button data-tab="overview" class="on" aria-label="Overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg><span class="lbl">Overview</span></button>
+    <button data-tab="wallets" aria-label="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
+    <button data-tab="imports" aria-label="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
+    <button data-tab="review" aria-label="Review"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg><span class="lbl">Review</span><span id="review-count" class="pill" hidden></span></button>
+    <button data-tab="lightning" aria-label="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
+    <button data-tab="graph" aria-label="Flow"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l4-6 4 3 6-8"/></svg><span class="lbl">Flow</span></button>
+    <button data-tab="taxes" aria-label="Taxes"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2h7l3 3v13H5zM8 9h4M8 12h4"/></svg><span class="lbl">Taxes</span></button>
+    <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
+  </nav>
 <div id="page">
 <div id="page-head"><h1 id="tab-title"></h1></div>
 <main>
