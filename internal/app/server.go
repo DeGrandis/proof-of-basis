@@ -22,6 +22,7 @@ import (
 	"btctax/internal/electrum"
 	"btctax/internal/importers"
 	"btctax/internal/lots"
+	"btctax/internal/ollama"
 	"btctax/internal/prices"
 	"btctax/internal/store"
 	"btctax/internal/tax"
@@ -70,6 +71,9 @@ var defaults = map[string]string{
 	"clnUrl":       "",
 	"clnCert":      "",
 	"clnName":      "Lightning node",
+	"aiUrl":        "",
+	"aiModel":      "",
+	"aiCtx":        "16384",
 }
 
 func (s *Server) settings() map[string]string {
@@ -112,6 +116,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/backup", s.postBackup)
 	mux.HandleFunc("POST /api/restore", s.postRestore)
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
+	mux.HandleFunc("GET /api/ai/status", s.aiStatus)
+	mux.HandleFunc("POST /api/ai/models", s.aiModels)
+	mux.HandleFunc("GET /api/ai/chats", s.aiChats)
+	mux.HandleFunc("POST /api/ai/chats", s.aiNewChat)
+	mux.HandleFunc("DELETE /api/ai/chats", s.aiDeleteChats)
+	mux.HandleFunc("GET /api/ai/chats/{id}", s.aiGetChat)
+	mux.HandleFunc("POST /api/ai/chats/{id}/rename", s.aiRenameChat)
+	mux.HandleFunc("DELETE /api/ai/chats/{id}", s.aiDeleteChat)
+	mux.HandleFunc("POST /api/ai/chats/{id}/send", s.aiSend)
 	mux.HandleFunc("GET /api/auth/status", s.authStatus)
 	mux.HandleFunc("POST /api/auth/setup", s.authSetup)
 	mux.HandleFunc("POST /api/auth/login", s.authLogin)
@@ -202,6 +215,19 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		case "feeMode":
 			if v != string(lots.FeeCarry) && v != string(lots.FeeAsDisposal) {
 				fail(w, 400, fmt.Errorf("feeMode must be carry or dispose"))
+				return
+			}
+		case "aiUrl":
+			if v = strings.TrimSpace(v); v != "" {
+				if _, err := ollama.New(v); err != nil {
+					fail(w, 400, err)
+					return
+				}
+			}
+			in[k] = v
+		case "aiCtx":
+			if n, err := strconv.Atoi(v); err != nil || n < 2048 || n > 262144 {
+				fail(w, 400, errors.New("context size must be between 2048 and 262144 tokens"))
 				return
 			}
 		case "clnUrl":
