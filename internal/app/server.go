@@ -127,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/ai/chats/{id}/rename", s.aiRenameChat)
 	mux.HandleFunc("DELETE /api/ai/chats/{id}", s.aiDeleteChat)
 	mux.HandleFunc("POST /api/ai/chats/{id}/send", s.aiSend)
+	mux.HandleFunc("GET /api/ai/export/{token}", s.getExport)
 	mux.HandleFunc("GET /api/actions", s.listActions)
 	mux.HandleFunc("GET /api/actions/{id}", s.getAction)
 	mux.HandleFunc("POST /api/actions/{id}/undo", s.undoAction)

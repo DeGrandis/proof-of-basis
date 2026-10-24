@@ -496,9 +496,12 @@ func actionToolSpecs() []ollama.Tool {
 		"note":     str("a short note (optional)"),
 	}, "required": []string{"id", "category"}}
 	return []ollama.Tool{
-		t("label_items", "Propose labels for one or more items waiting in Review. The user sees a card and must press Apply (unless they turned confirmation off). Only call this when the user asks you to label something or agrees to your suggestion.", obj(map[string]any{
-			"items": map[string]any{"type": "array", "items": item, "description": "the items and their labels"},
-		}, "items")),
+		t("label_items", "Propose labels for items waiting in Review: list them in items, or describe them with match plus one category (for example every Lightning payment under $5 as a spend). The user sees a card and must press Apply (unless they turned confirmation off). Only call this when the user asks you to label something or agrees to your suggestion.", obj(map[string]any{
+			"items":    map[string]any{"type": "array", "items": item, "description": "the items and their labels"},
+			"match":    map[string]any{"type": "object", "description": "label every Review item matching: account, direction (in/out), network (lightning/onchain), min_usd, max_usd, from, to, text", "properties": map[string]any{"account": str(""), "direction": str(""), "network": str(""), "min_usd": num(""), "max_usd": num(""), "from": str(""), "to": str(""), "text": str("")}},
+			"category": str("with match: the category for all of them"),
+			"note":     str("with match: a note for all of them (optional)"),
+		})),
 		t("link_transfer", "Propose linking two Review items as one transfer between the user's own accounts (an outflow and the matching inflow). The user confirms with Apply.", obj(map[string]any{
 			"out_id": str("record id of the outgoing side"),
 			"in_id":  str("record id of the incoming side"),
@@ -529,11 +532,27 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 	switch name {
 	case "label_items":
 		raw, _ := args["items"].([]any)
-		if len(raw) == 0 {
-			return "", true, errors.New("give at least one item")
+		if m, ok := args["match"].(map[string]any); ok && len(raw) == 0 {
+			items, err := tb.matchReview(m)
+			if err != nil {
+				return "", true, err
+			}
+			if len(items) == 0 {
+				return "", true, errors.New("no Review items match that description")
+			}
+			cat := argStr(args, "category")
+			if cat == "" {
+				return "", true, errors.New("give the category to apply")
+			}
+			for _, it := range items {
+				raw = append(raw, map[string]any{"id": it.Key, "category": cat, "note": argStr(args, "note")})
+			}
 		}
-		if len(raw) > 200 {
-			return "", true, errors.New("at most 200 items at a time")
+		if len(raw) == 0 {
+			return "", true, errors.New("give at least one item, or match and category")
+		}
+		if len(raw) > 500 {
+			return "", true, fmt.Errorf("%d items match; narrow it to 500 or fewer", len(raw))
 		}
 		for _, x := range raw {
 			m, _ := x.(map[string]any)

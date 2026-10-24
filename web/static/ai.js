@@ -133,7 +133,9 @@ function aiChips(lookups) {
   return `<div class="ai-chips">${aiChipItems(lookups)}</div>`;
 }
 function aiChipItems(lookups) {
-  return `${lookups.map((l) => l.link
+  return `${lookups.map((l) => l.link && l.link.startsWith("/api/ai/export/")
+    ? `<a class="ai-chip download" href="${esc(l.link)}" download title="Download (available for an hour)">${esc(l.summary)}</a>`
+    : l.link
     ? `<a class="ai-chip${l.error ? " bad" : ""}" href="${esc(l.link)}" title="${esc(l.error || "Open the page this came from")}">${esc(l.summary)}</a>`
     : `<span class="ai-chip${l.error ? " bad" : ""}" title="${esc(l.error || "")}">${esc(l.summary)}</span>`).join("")}`;
 }
@@ -144,11 +146,30 @@ function aiThinkHTML(text, secs, live) {
   return `<details class="ai-think${live ? " live" : ""}"><summary>${label}</summary><div class="ai-think-body">${esc(text || "").replace(/\n/g, "<br>")}</div></details>`;
 }
 
+// A small bar chart for a lookup that asked for one.
+const AI_FMT = { usd: (v) => usd(Math.round(v * 100)), btc: (v) => amt(Math.round(v * 1e8)), days: (v) => `${Math.round(v)} d`, count: (v) => String(Math.round(v)) };
+function aiChartHTML(c) {
+  if (!c || !c.labels?.length) return "";
+  const W = 560, H = 190, L = 8, R = 8, T = 22, B = 34, n = c.values.length;
+  const max = Math.max(...c.values, 0), min = Math.min(...c.values, 0), span = max - min || 1;
+  const bw = (W - L - R) / n, y = (v) => T + (H - T - B) * (max - v) / span, fmt = AI_FMT[c.unit] || AI_FMT.count;
+  const every = Math.ceil(n / 12);
+  let g = `<text class="ai-chart-title" x="${L}" y="14">${esc(c.title)}</text>`;
+  c.values.forEach((v, i) => {
+    const x = L + i * bw + bw * 0.15, w = bw * 0.7, top = Math.min(y(v), y(0)), h = Math.max(1, Math.abs(y(v) - y(0)));
+    g += `<rect class="ai-bar${v < 0 ? " neg" : ""}" x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${esc(c.labels[i])}: ${esc(fmt(v))}</title></rect>`;
+    if (i % every === 0) g += `<text class="ai-chart-label" x="${(x + w / 2).toFixed(1)}" y="${H - 18}" text-anchor="middle">${esc(String(c.labels[i]).slice(0, 10))}</text>`;
+  });
+  g += `<text class="ai-chart-label" x="${W - R}" y="14" text-anchor="end">max ${esc(fmt(max))}</text>`;
+  return `<div class="ai-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.title)}">${g}</svg></div>`;
+}
+const aiCharts = (lookups) => (lookups || []).map((l) => aiChartHTML(l.chart)).join("");
+
 function aiMsgHTML(m) {
   let data = {};
   try { data = m.data ? JSON.parse(m.data) : {}; } catch {}
   if (m.role === "user") return `<div class="ai-msg user"><div class="ai-bubble">${esc(m.content).replace(/\n/g, "<br>")}</div></div>`;
-  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
+  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${aiCharts(data.lookups)}${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
 }
 
 // Change cards in saved chats show their current state (applied, undone…).

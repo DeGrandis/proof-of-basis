@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"math"
@@ -12,31 +14,38 @@ import (
 	"btctax/internal/ollama"
 )
 
-// analyze_records: one tool for totals and statistics over the user's
-// records, so "most common buy amount", "average price paid per year",
-// "which weekday do I buy on" and the like need no extra tools. The server
-// does the math; the model only picks what to measure.
+// analyze_records: one tool to list, total and describe the user's
+// records. Searching, totals, statistics, lot timing, losses, Review
+// items, income and Lightning activity all go through it; the server does
+// the math and the model only picks what to look at. It can also hand the
+// rows over as a CSV download or draw a chart.
 
 func analyzeToolSpec() ollama.Tool {
 	return ollama.Tool{Type: "function", Function: ollama.ToolSpec{
 		Name: "analyze_records",
-		Description: "Exact totals and statistics over records. Pick the records (source and filters), what to measure, and the statistic; optionally group. " +
-			"Use it for any count, total, average, median, most common value, largest/smallest, distribution or per-year/per-account question instead of working it out yourself. " +
-			"Examples: most common buy amount = source buys, measure usd, stat mode; average price paid per year = source buys, measure price, stat mean, group_by year; " +
-			"usual holding time before selling = source sales, measure days_held, stat median; which weekday I buy on = source buys, measure weekday, stat count.",
+		Description: "List, count, total or describe records with exact math. Pick the records (source and filters), what to measure, and the statistic; optionally group, export or chart. " +
+			"Use it for searches, counts, totals, averages, medians, most common values, largest/smallest, distributions and per-year/per-account questions. Examples: " +
+			"most common buy amount = source buys, measure usd, stat mode; average price paid per year = source buys, measure price, stat mean, group_by year; " +
+			"which weekday I buy on = measure weekday, stat count; usual holding time = source sales, measure days_held, stat median; " +
+			"lots turning long-term in 60 days = source lots, measure days_to_long_term, max 60, stat list; lots at a loss = source lots, measure gain, max 0, stat list; " +
+			"find a record = stat list with filters (from, to, account, kind, text).",
 		Parameters: obj(map[string]any{
-			"source":   str("buys (default), sales (one row per sale), records (every record), income, review (items waiting for a label), lots (coins still held)"),
-			"measure":  str("usd (default), btc, price (USD per BTC), fee (USD), fee_btc, gain (USD; sales and lots), days_held (sales and lots), or a category: weekday, month, year, account, kind"),
-			"stat":     str("summary (default: count, sum, mean, median, min, max), count, sum, mean, median, mode (most common), min, max, stddev, percentiles, histogram, top (largest N records), bottom (smallest N)"),
-			"group_by": str("none (default), year, month, weekday, account or kind"),
-			"from":     str("first day, YYYY-MM-DD (optional)"),
-			"to":       str("last day, YYYY-MM-DD (optional)"),
-			"account":  str("only this account (optional)"),
-			"kind":     str("only this kind, for source records (optional)"),
-			"min":      num("only rows whose measure is at least this (optional)"),
-			"max":      num("only rows whose measure is at most this (optional)"),
-			"round_to": num("round values to this step first, for mode and histogram bins (for example 10 for $10 buckets); chosen automatically when left out"),
-			"top_n":    num("how many rows for top/bottom, default 10"),
+			"source":   str("buys (default), sales (one row per sale), records (every record), income, review (items waiting for a label), lots (coins still held), lightning (node activity)"),
+			"measure":  str("usd (default), btc, price (USD per BTC), fee, fee_btc, gain, days_held, days_to_long_term (lots), or a category: weekday, month, year, account, kind"),
+			"stat":     str("summary (default), list (the records themselves), count, sum, mean, median, mode (most common), min, max, stddev, percentiles, histogram, top, bottom"),
+			"group_by": str("none, year, month, weekday, account or kind"),
+			"from":     str("first day YYYY-MM-DD"),
+			"to":       str("last day YYYY-MM-DD"),
+			"account":  str("account name"),
+			"kind":     str("kind: buy, sell, transfer, income, spend, unmatched…; for review: in or out"),
+			"text":     str("text in the note, label, txid, address or id"),
+			"min":      num("measure at least this"),
+			"max":      num("measure at most this"),
+			"round_to": num("bucket size for mode/histogram, e.g. 10 for $10"),
+			"top_n":    num("rows for list/top/bottom, default 10 (list: 40)"),
+			"sort":     str("for list: newest (default), oldest, largest, smallest"),
+			"export":   map[string]any{"type": "boolean", "description": "also give the user a CSV download of every matching row"},
+			"chart":    map[string]any{"type": "boolean", "description": "also draw a chart (with group_by or histogram)"},
 		}),
 	}}
 }
@@ -49,6 +58,9 @@ type statRow struct {
 	fee, feeBTC     float64
 	gain, days      float64
 	hasGain         bool
+	toLong          float64 // lots: days until long-term (0 if already)
+	text            string  // searchable: note, label, txid, address
+	line            string  // how the record reads in a list
 }
 
 var weekdays = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
@@ -62,7 +74,8 @@ func (tb *toolbox) statRows(src string) ([]statRow, string, error) {
 				continue
 			}
 			rows = append(rows, statRow{key: g.Key, acct: g.Account, kind: g.Kind, t: time.Unix(g.Time, 0).UTC(),
-				usd: float64(g.Cents) / 100, btc: float64(g.Sats) / 1e8, hasUSD: g.Cents != 0, fee: float64(g.FeeCents) / 100, feeBTC: float64(g.FeeSats) / 1e8})
+				usd: float64(g.Cents) / 100, btc: float64(g.Sats) / 1e8, hasUSD: g.Cents != 0, fee: float64(g.FeeCents) / 100, feeBTC: float64(g.FeeSats) / 1e8,
+				text: strings.ToLower(g.Note + " " + g.Label + " " + g.Txid + " " + g.Address + " " + g.Key + " " + g.To), line: graphLine(g)})
 		}
 		if src == "" {
 			src = "buys"
@@ -74,23 +87,28 @@ func (tb *toolbox) statRows(src string) ([]statRow, string, error) {
 			if !ok {
 				i = len(rows)
 				idx[d.OpID] = i
-				rows = append(rows, statRow{key: d.OpID, acct: d.Account, kind: "sale", t: d.Disposed.UTC(), hasUSD: true, hasGain: true})
+				rows = append(rows, statRow{key: d.OpID, acct: d.Account, kind: "sale", t: d.Disposed.UTC(), hasUSD: true, hasGain: true, text: strings.ToLower(d.OpID)})
 			}
 			r := &rows[i]
 			btc := float64(d.Sats) / 1e8
-			// days held, weighted by amount across the sale's lots
 			r.days = (r.days*r.btc + d.Disposed.Sub(d.Acquired).Hours()/24*btc) / math.Max(r.btc+btc, 1e-12)
 			r.btc += btc
 			r.usd += float64(d.Proceeds) / 100
 			r.gain += float64(d.Gain()) / 100
 		}
+		for i := range rows {
+			r := &rows[i]
+			r.line = fmt.Sprintf("[%s] %s %s sold %s for %s, gain %s, held %.0f days on average", r.key, dayOf(r.t), r.acct, btcStr(int64(math.Round(r.btc*1e8))), usdStr(int64(math.Round(r.usd*100))), usdStr(int64(math.Round(r.gain*100))), r.days)
+		}
 	case "income":
 		for _, x := range tb.rep.Income {
-			rows = append(rows, statRow{key: x.Key, kind: x.Kind, t: x.Time.UTC(), usd: float64(x.Cents) / 100, btc: float64(x.Sats) / 1e8, hasUSD: true})
+			rows = append(rows, statRow{key: x.Key, kind: x.Kind, t: x.Time.UTC(), usd: float64(x.Cents) / 100, btc: float64(x.Sats) / 1e8, hasUSD: true, text: strings.ToLower(x.Key + " " + x.Kind),
+				line: fmt.Sprintf("[%s] %s %s: %s, worth %s when received", x.Key, dayOf(x.Time), x.Kind, btcStr(x.Sats), usdStr(x.Cents))})
 		}
 	case "review":
 		for _, it := range tb.rep.Unmatched {
-			rows = append(rows, statRow{key: it.Key, acct: it.Account, kind: string(it.Dir), t: it.Time.UTC(), usd: float64(it.Value) / 100, btc: float64(it.Sats) / 1e8, hasUSD: it.Value != 0, feeBTC: float64(it.FeeSats) / 1e8})
+			rows = append(rows, statRow{key: it.Key, acct: it.Account, kind: string(it.Dir), t: it.Time.UTC(), usd: float64(it.Value) / 100, btc: float64(it.Sats) / 1e8, hasUSD: it.Value != 0, feeBTC: float64(it.FeeSats) / 1e8,
+				text: strings.ToLower(it.Note + " " + it.Txid + " " + it.Address + " " + it.Key + " " + it.Network), line: itemLine(it.Key, it.Time, it.Account, string(it.Dir), it.Sats, it.FeeSats, it.Value, it.Network, it.Note, it.Txid)})
 		}
 	case "lots":
 		now := time.Now()
@@ -99,16 +117,33 @@ func (tb *toolbox) statRows(src string) ([]statRow, string, error) {
 				continue
 			}
 			worth := float64(l.Sats) / 1e8 * float64(tb.rep.Price) / 100
-			rows = append(rows, statRow{key: l.ID, acct: l.Account, kind: "lot", t: l.Acquired.UTC(), usd: float64(l.Basis) / 100, btc: float64(l.Sats) / 1e8, hasUSD: true,
-				days: now.Sub(l.Acquired).Hours() / 24, gain: worth - float64(l.Basis)/100, hasGain: tb.rep.Price > 0})
+			r := statRow{key: l.ID, acct: l.Account, kind: "lot", t: l.Acquired.UTC(), usd: float64(l.Basis) / 100, btc: float64(l.Sats) / 1e8, hasUSD: true,
+				days: now.Sub(l.Acquired).Hours() / 24, gain: worth - float64(l.Basis)/100, hasGain: tb.rep.Price > 0, text: strings.ToLower(l.ID + " " + l.OriginID)}
+			if longOn := l.Acquired.AddDate(1, 0, 1); longOn.After(now) {
+				r.toLong = math.Ceil(longOn.Sub(now).Hours() / 24)
+			}
+			term := "long-term"
+			if r.toLong > 0 {
+				term = fmt.Sprintf("long-term on %s (in %.0f days)", dayOf(l.Acquired.AddDate(1, 0, 1)), r.toLong)
+			}
+			r.line = fmt.Sprintf("lot %s in %s: %s acquired %s, basis %s (%s per BTC), unrealized gain %s, %s, from [%s]", l.ID, l.Account, btcStr(l.Sats), dayOf(l.Acquired), usdStr(l.Basis),
+				usdStr(int64(math.Round(r.usd/r.btc*100))), usdStr(int64(math.Round(r.gain*100))), term, l.OriginID)
+			rows = append(rows, r)
+		}
+	case "lightning":
+		if ln := tb.rep.Lightning; ln != nil {
+			for _, e := range ln.Events {
+				net := e.CreditSats - e.DebitSats
+				rows = append(rows, statRow{key: e.UID, acct: ln.Account, kind: e.Tag, t: time.Unix(e.Time, 0).UTC(), btc: float64(net) / 1e8, text: strings.ToLower(e.Description + " " + e.Tag + " " + e.Txid),
+					line: fmt.Sprintf("%s %s: in %s, out %s %s", dayOf(time.Unix(e.Time, 0)), e.Tag, btcStr(e.CreditSats), btcStr(e.DebitSats), clip(e.Description, 60))})
+			}
 		}
 	default:
-		return nil, "", errors.New("source must be buys, sales, records, income, review or lots")
+		return nil, "", errors.New("source must be buys, sales, records, income, review, lots or lightning")
 	}
 	return rows, src, nil
 }
 
-// value reads the measure from a row; ok is false when the row has none.
 func statValue(r statRow, m string) (v float64, cat string, ok bool) {
 	switch m {
 	case "", "usd":
@@ -127,6 +162,8 @@ func statValue(r statRow, m string) (v float64, cat string, ok bool) {
 		return r.gain, "", r.hasGain
 	case "days_held":
 		return r.days, "", r.days > 0
+	case "days_to_long_term":
+		return r.toLong, "", r.toLong > 0
 	case "weekday":
 		return 0, weekdays[r.t.Weekday()], true
 	case "month":
@@ -157,20 +194,18 @@ func groupKey(r statRow, by string) string {
 	return ""
 }
 
-// fmtVal writes a value in the measure's unit.
 func fmtVal(m string, v float64) string {
 	switch m {
 	case "", "usd", "price", "fee", "gain":
 		return usdStr(int64(math.Round(v * 100)))
 	case "btc", "fee_btc":
 		return btcStr(int64(math.Round(v * 1e8)))
-	case "days_held":
+	case "days_held", "days_to_long_term":
 		return fmt.Sprintf("%.0f days", v)
 	}
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// niceStep picks a round bucket size for a set of values.
 func niceStep(vals []float64, buckets float64) float64 {
 	lo, hi := vals[0], vals[len(vals)-1]
 	span := hi - lo
@@ -202,7 +237,18 @@ func percentile(sorted []float64, p float64) float64 {
 	return sorted[i] + (sorted[i+1]-sorted[i])*(pos-float64(i))
 }
 
-func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
+// Chart is a small bar chart drawn under an answer.
+type Chart struct {
+	Title  string    `json:"title"`
+	Labels []string  `json:"labels"`
+	Values []float64 `json:"values"`
+	Unit   string    `json:"unit"` // usd, btc, days or count
+}
+
+var validStats = map[string]bool{"summary": true, "list": true, "count": true, "sum": true, "mean": true, "median": true, "mode": true, "min": true, "max": true,
+	"stddev": true, "percentiles": true, "histogram": true, "top": true, "bottom": true}
+
+func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error) {
 	src := strings.ToLower(argStr(a, "source"))
 	m := strings.ToLower(argStr(a, "measure"))
 	stat := strings.ToLower(argStr(a, "stat"))
@@ -210,14 +256,18 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 	if by == "none" {
 		by = ""
 	}
-	if stat == "" {
+	switch stat {
+	case "":
 		stat = "summary"
-	}
-	if stat == "average" || stat == "avg" {
+	case "average", "avg":
 		stat = "mean"
-	}
-	if stat == "most_common" || stat == "most common" {
+	case "most_common", "most common":
 		stat = "mode"
+	case "search", "rows", "records":
+		stat = "list"
+	}
+	if !validStats[stat] {
+		return "", "", fmt.Errorf("unknown stat %q", stat)
 	}
 	rows, src, err := tb.statRows(src)
 	if err != nil {
@@ -232,11 +282,12 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 		}
 	}
 	kind := argStr(a, "kind")
+	text := strings.ToLower(argStr(a, "text"))
 	_, hasMin := a["min"]
 	_, hasMax := a["max"]
 	lo, hi := argNum(a, "min"), argNum(a, "max")
 	categorical := map[string]bool{"weekday": true, "month": true, "year": true, "account": true, "kind": true}[m]
-	if categorical && stat != "count" && stat != "mode" && stat != "summary" && stat != "histogram" {
+	if categorical && stat != "count" && stat != "mode" && stat != "summary" && stat != "histogram" && stat != "list" {
 		return "", "", fmt.Errorf("%s is a category: use stat count or mode", m)
 	}
 	type item struct {
@@ -253,12 +304,17 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 		if acct != "" && !strings.EqualFold(r.acct, acct) {
 			continue
 		}
-		if kind != "" && !kindMatches(kind, r.kind) {
+		if kind != "" && !kindMatches(kind, r.kind) && !strings.EqualFold(kind, r.kind) {
+			continue
+		}
+		if text != "" && !strings.Contains(r.text, text) {
 			continue
 		}
 		v, cat, ok := statValue(r, m)
 		if !ok {
-			continue
+			if stat != "list" || m != "" || hasMin || hasMax {
+				continue
+			}
 		}
 		if !categorical && (hasMin && v < lo || hasMax && v > hi) {
 			continue
@@ -269,14 +325,15 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 		groups[g] = append(groups[g], it)
 	}
 	unit := map[string]string{"": "USD amount", "usd": "USD amount", "btc": "BTC amount", "price": "price per BTC", "fee": "fee (USD)", "fee_btc": "fee (BTC)",
-		"gain": "gain", "days_held": "days held"}[m]
+		"gain": "gain", "days_held": "days held", "days_to_long_term": "days until long-term"}[m]
 	if unit == "" {
 		unit = m
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s of %s, %d rows", strings.ToUpper(stat[:1])+stat[1:], unit, len(all))
-	if src != "" {
-		fmt.Fprintf(&b, " (source %s", src)
+	if stat == "list" {
+		fmt.Fprintf(&b, "%d %s records match", len(all), src)
+	} else {
+		fmt.Fprintf(&b, "%s of %s, %d rows (source %s", strings.ToUpper(stat[:1])+stat[1:], unit, len(all), src)
 		if acct != "" {
 			fmt.Fprintf(&b, ", account %s", acct)
 		}
@@ -286,18 +343,126 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 		b.WriteString(")")
 	}
 	b.WriteString(":\n")
+	summary := fmt.Sprintf("Analyzed %s (%s of %s)", src, stat, unit)
+	if stat == "list" {
+		summary = fmt.Sprintf("Found %d %s records", len(all), src)
+	}
 	if len(all) == 0 {
 		b.WriteString("No rows match.\n")
-		return b.String(), "Analyzed " + src, nil
+		return b.String(), summary, nil
+	}
+	if want, _ := a["export"].(bool); want {
+		name, csvData := exportCSV(src, m, func(yield func(statRow, float64)) {
+			for _, it := range all {
+				yield(it.r, it.v)
+			}
+		})
+		tok := tb.s.addExport(name, csvData)
+		lk.Link = "/api/ai/export/" + tok
+		summary = fmt.Sprintf("Download CSV (%d rows)", len(all))
+		fmt.Fprintf(&b, "A CSV download of all %d rows is ready for the user as a button under your answer.\n", len(all))
 	}
 	step := argNum(a, "round_to")
 	topN := int(argNum(a, "top_n"))
 	if topN <= 0 {
 		topN = 10
+		if stat == "list" {
+			topN = 40
+		}
 	}
-	topN = min(topN, 40)
+	topN = min(topN, 60)
+	chartWanted, _ := a["chart"].(bool)
+	var chart *Chart
+	chartPoint := func(label string, v float64) {
+		if chart != nil {
+			chart.Labels = append(chart.Labels, label)
+			chart.Values = append(chart.Values, v)
+		}
+	}
+	if chartWanted {
+		u := map[string]string{"": "usd", "usd": "usd", "price": "usd", "fee": "usd", "gain": "usd", "btc": "btc", "fee_btc": "btc", "days_held": "days", "days_to_long_term": "days"}[m]
+		if categorical || stat == "count" {
+			u = "count"
+		}
+		chart = &Chart{Title: strings.ToUpper(stat[:1]) + stat[1:] + " of " + unit, Unit: u}
+	}
+
+	// one number per group, for charts
+	single := func(items []item) (float64, bool) {
+		vals := make([]float64, 0, len(items))
+		var sum float64
+		for _, it := range items {
+			vals = append(vals, it.v)
+			sum += it.v
+		}
+		sort.Float64s(vals)
+		switch stat {
+		case "count":
+			return float64(len(vals)), true
+		case "sum", "summary":
+			return sum, true
+		case "mean":
+			if m == "price" {
+				var u, c float64
+				for _, it := range items {
+					u += it.r.usd
+					c += it.r.btc
+				}
+				if c > 0 {
+					return u / c, true
+				}
+			}
+			return sum / float64(len(vals)), true
+		case "median":
+			return percentile(vals, .5), true
+		case "min":
+			return vals[0], true
+		case "max":
+			return vals[len(vals)-1], true
+		}
+		return 0, false
+	}
 
 	describe := func(items []item, indent string) {
+		if stat == "list" {
+			sorted := append([]item(nil), items...)
+			switch strings.ToLower(argStr(a, "sort")) {
+			case "oldest":
+				sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].r.t.Before(sorted[j].r.t) })
+			case "largest":
+				sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].v > sorted[j].v })
+			case "smallest":
+				sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].v < sorted[j].v })
+			default:
+				if m == "days_to_long_term" {
+					sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].v < sorted[j].v })
+				} else {
+					sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].r.t.After(sorted[j].r.t) })
+				}
+			}
+			var tsats, tusd, tgain float64
+			for _, it := range items {
+				tsats += it.r.btc
+				tusd += it.r.usd
+				tgain += it.r.gain
+			}
+			fmt.Fprintf(&b, "%stotal %s", indent, btcStr(int64(math.Round(tsats*1e8))))
+			if items[0].r.hasUSD {
+				fmt.Fprintf(&b, ", %s", usdStr(int64(math.Round(tusd*100))))
+			}
+			if items[0].r.hasGain {
+				fmt.Fprintf(&b, ", gain %s", usdStr(int64(math.Round(tgain*100))))
+			}
+			b.WriteString("\n")
+			for i, it := range sorted {
+				if i >= topN {
+					fmt.Fprintf(&b, "%s(%d more; narrow the filters, or use export)\n", indent, len(sorted)-topN)
+					break
+				}
+				fmt.Fprintf(&b, "%s- %s\n", indent, it.r.line)
+			}
+			return
+		}
 		if categorical {
 			counts := map[string]int{}
 			for _, it := range items {
@@ -313,11 +478,19 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 				}
 				return keys[i] < keys[j]
 			})
+			if m == "weekday" && chart != nil {
+				for _, d := range weekdays {
+					chartPoint(d[:3], float64(counts[d]))
+				}
+			}
 			for i, k := range keys {
 				if i >= 20 {
 					break
 				}
 				fmt.Fprintf(&b, "%s- %s: %d (%.0f%%)\n", indent, k, counts[k], 100*float64(counts[k])/float64(len(items)))
+				if m != "weekday" {
+					chartPoint(k, float64(counts[k]))
+				}
 			}
 			return
 		}
@@ -331,7 +504,6 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 		n := float64(len(vals))
 		mean := sum / n
 		line := func(label, v string) { fmt.Fprintf(&b, "%s%s: %s\n", indent, label, v) }
-		// For prices, the meaningful average is total spent / total BTC.
 		if m == "price" && (stat == "mean" || stat == "summary") {
 			var u, c float64
 			for _, it := range items {
@@ -371,11 +543,9 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 			count := func() {
 				counts = map[float64]int{}
 				for _, v := range vals {
-					k := v
+					k := math.Round(v*100) / 100
 					if s > 0 {
 						k = math.Round(v/s) * s
-					} else {
-						k = math.Round(v*100) / 100
 					}
 					counts[k]++
 				}
@@ -385,7 +555,7 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 			for _, c := range counts {
 				best = max(best, c)
 			}
-			if best == 1 && s == 0 && len(vals) > 1 { // no exact repeats: bucket
+			if best == 1 && s == 0 && len(vals) > 1 {
 				s, auto = niceStep(vals, 12), true
 				count()
 			}
@@ -434,6 +604,12 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 					break
 				}
 				fmt.Fprintf(&b, "%s- %s to %s: %d\n", indent, fmtVal(m, k), fmtVal(m, k+s), bins[k])
+				if indent == "" {
+					chartPoint(fmtVal(m, k), float64(bins[k]))
+				}
+			}
+			if chart != nil {
+				chart.Unit = "count"
 			}
 		case "top", "bottom":
 			sorted := append([]item(nil), items...)
@@ -447,19 +623,9 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 				if i >= topN {
 					break
 				}
-				fmt.Fprintf(&b, "%s- %s: [%s] %s %s, %s", indent, fmtVal(m, it.v), it.r.key, dayOf(it.r.t), it.r.acct, btcStr(int64(math.Round(it.r.btc*1e8))))
-				if it.r.hasUSD && m != "usd" && m != "" {
-					fmt.Fprintf(&b, ", %s", usdStr(int64(math.Round(it.r.usd*100))))
-				}
-				b.WriteString("\n")
+				fmt.Fprintf(&b, "%s- %s: %s\n", indent, fmtVal(m, it.v), it.r.line)
 			}
-		default:
-			fmt.Fprintf(&b, "%sunknown stat %q\n", indent, stat)
 		}
-	}
-	if stat != "summary" && stat != "count" && stat != "sum" && stat != "mean" && stat != "median" && stat != "min" && stat != "max" &&
-		stat != "stddev" && stat != "percentiles" && stat != "mode" && stat != "histogram" && stat != "top" && stat != "bottom" {
-		return "", "", fmt.Errorf("unknown stat %q", stat)
 	}
 	if by == "" {
 		describe(all, "")
@@ -486,11 +652,46 @@ func (tb *toolbox) analyze(a map[string]any) (string, string, error) {
 			}
 			fmt.Fprintf(&b, "%s (%d rows):\n", k, len(groups[k]))
 			describe(groups[k], "  ")
+			if v, ok := single(groups[k]); ok {
+				chartPoint(k, v)
+			}
 		}
-		if stat != "top" && stat != "bottom" {
+		if stat != "top" && stat != "bottom" && stat != "list" {
 			fmt.Fprintf(&b, "ALL (%d rows):\n", len(all))
 			describe(all, "  ")
 		}
 	}
-	return b.String(), fmt.Sprintf("Analyzed %s (%s of %s)", src, stat, unit), nil
+	if chart != nil {
+		if len(chart.Labels) >= 2 {
+			if len(chart.Labels) > 40 {
+				chart.Labels, chart.Values = chart.Labels[len(chart.Labels)-40:], chart.Values[len(chart.Values)-40:]
+			}
+			lk.Chart = chart
+			b.WriteString("A chart of this is shown to the user under your answer.\n")
+		} else {
+			b.WriteString("(No chart: charts need group_by, a histogram or a category.)\n")
+		}
+	}
+	return b.String(), summary, nil
+}
+
+func exportCSV(src, m string, each func(func(statRow, float64))) (string, []byte) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	w.Write([]string{"date", "account", "kind", "btc", "usd", "price_per_btc", "fee_usd", "fee_btc", "gain_usd", "days_held", "id"})
+	each(func(r statRow, _ float64) {
+		price := ""
+		if r.hasUSD && r.btc > 0 {
+			price = strconv.FormatFloat(math.Round(r.usd/r.btc*100)/100, 'f', 2, 64)
+		}
+		f := func(v float64, d int) string {
+			if v == 0 {
+				return ""
+			}
+			return strconv.FormatFloat(v, 'f', d, 64)
+		}
+		w.Write([]string{dayOf(r.t), r.acct, r.kind, strconv.FormatFloat(r.btc, 'f', 8, 64), f(r.usd, 2), price, f(r.fee, 2), f(r.feeBTC, 8), f(r.gain, 2), f(math.Round(r.days), 0), r.key})
+	})
+	w.Flush()
+	return "btctax-" + src + "-" + time.Now().Format("2006-01-02") + ".csv", buf.Bytes()
 }

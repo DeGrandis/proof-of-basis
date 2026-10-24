@@ -524,3 +524,11 @@ a.ai-chip:hover { border-color: var(--line-2); color: var(--text); }
 .act.compact { border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; margin: 0 0 8px; background: var(--bg); }
 .act.compact.pending { border-color: var(--text-2); }
 .act.compact.loading { display: none; }
+.ai-chart { margin: 8px 0; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px; }
+.ai-chart svg { width: 100%; height: auto; display: block; }
+.ai-bar { fill: var(--chart-line); opacity: .85; }
+.ai-bar.neg { fill: var(--neg); }
+.ai-bar:hover { opacity: 1; fill: var(--accent); }
+.ai-chart-title { font-size: 12px; font-weight: 600; fill: var(--text-2); }
+.ai-chart-label { font-size: 10px; fill: var(--muted); }
+.ai-chip.download::before { background: var(--text-2); }

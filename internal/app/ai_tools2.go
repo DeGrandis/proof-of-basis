@@ -81,7 +81,7 @@ func (tb *toolbox) runMore(name string, args map[string]any, lk *Lookup) (out st
 				args["source"] = "records"
 			}
 		}
-		out, lk.Summary, err = tb.analyze(args)
+		out, lk.Summary, err = tb.analyze(args, lk)
 	case "calculate":
 		var v float64
 		expr := argStr(args, "expression")
