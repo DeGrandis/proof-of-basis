@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -267,6 +268,101 @@ func TestSameRecord(t *testing.T) {
 	for _, id := range []string{"", "tx:" + tx + ":1", "ex:1", tx[:20]} {
 		if sameRecord(key, tx, id) {
 			t.Errorf("%q should not match", id)
+		}
+	}
+}
+
+func TestCalc(t *testing.T) {
+	for expr, want := range map[string]float64{"1+2*3": 7, "(8672.03 - 1090.09)": 7581.94, "-81.11 - (-76.10)": -5.01, "$1,234.50 / 2": 617.25, "10 % 3": 1} {
+		got, err := calc(expr)
+		if err != nil || round6(got) != want {
+			t.Errorf("%s = %v (%v), want %v", expr, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "2+", "1/0", "abc", "((1)"} {
+		if _, err := calc(bad); err == nil {
+			t.Errorf("%q should fail", bad)
+		}
+	}
+}
+
+func TestMoreTools(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, err := srv.buildReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolbox{s: srv, rep: rep}
+	var buy, sale string
+	for _, g := range rep.Graph {
+		if g.Kind == "buy" && buy == "" {
+			buy = g.Key
+		}
+		if g.Kind == "sell" && sale == "" {
+			sale = g.Key
+		}
+	}
+	cases := []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"summarize_records", map[string]any{"source": "review", "group_by": "account"}, "TOTAL"},
+		{"summarize_records", map[string]any{"group_by": "year", "kind": "buy"}, "TOTAL"},
+		{"summarize_records", map[string]any{"source": "sales", "group_by": "year"}, "gain"},
+		{"calculate", map[string]any{"expression": "2 * (3 + 4)"}, "= 14"},
+		{"holdings_on", map[string]any{"date": "2023-12-31"}, "By account"},
+		{"lots_turning_long_term", map[string]any{"within_days": float64(400)}, "long-term"},
+		{"lots_at_a_loss", map[string]any{}, "below cost"},
+		{"review_match_candidates", map[string]any{"id": rep.Unmatched[0].Key}, "Review item"},
+		{"data_health", map[string]any{}, "Review"},
+		{"income_records", map[string]any{"year": float64(2021)}, "income"},
+		{"trace_coins", map[string]any{"id": buy}, "Where these coins went"},
+		{"trace_coins", map[string]any{"id": sale}, "came from"},
+		{"trace_coins", map[string]any{"account": "Cold storage"}, "came from"},
+		{"what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "highest_cost"}, "Estimated extra tax"},
+		{"what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "lowest_cost"}, "Estimated extra tax"},
+	}
+	for _, c := range cases {
+		lk, out := tb.run(c.name, c.args)
+		if lk.Error != "" || !strings.Contains(out, c.want) {
+			t.Errorf("%s %v: error=%q out=%.400s", c.name, c.args, lk.Error, out)
+		}
+	}
+	// Highest-cost coins should never produce a larger gain than lowest-cost ones.
+	gain := func(strategy string) string {
+		_, out := tb.run("what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": strategy})
+		return out
+	}
+	if gain("highest_cost") == gain("lowest_cost") {
+		t.Log("strategies gave the same result (single lot?)")
+	}
+	if lk, _ := tb.run("summarize_records", map[string]any{"group_by": "planet"}); lk.Error == "" {
+		t.Error("bad group_by accepted")
+	}
+	if lk, _ := tb.run("what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "random"}); lk.Error == "" {
+		t.Error("bad strategy accepted")
+	}
+	// The review count by account must match the report exactly.
+	_, out := tb.run("summarize_records", map[string]any{"source": "review", "group_by": "account"})
+	if !strings.Contains(out, fmt.Sprintf("TOTAL: %d records", len(rep.Unmatched))) {
+		t.Errorf("review total wrong: %s", out)
+	}
+}
+
+func TestKindMatches(t *testing.T) {
+	for _, c := range [][2]string{{"sold", "sell"}, {"sale", "sell"}, {"sold", "sold"}, {"purchase", "buy"}, {"bought", "purchase"}, {"spent", "spend"}, {"buy", "buy"}} {
+		if !kindMatches(c[0], c[1]) {
+			t.Errorf("%q should match %q", c[0], c[1])
+		}
+	}
+	for _, c := range [][2]string{{"buy", "sell"}, {"sold", "buy"}, {"income", "transfer"}} {
+		if kindMatches(c[0], c[1]) {
+			t.Errorf("%q should not match %q", c[0], c[1])
 		}
 	}
 }

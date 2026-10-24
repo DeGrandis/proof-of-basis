@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"btctax/internal/lots"
 	"btctax/internal/ollama"
 	"btctax/internal/store"
 )
@@ -455,6 +456,8 @@ Rules:
 - To refer to a record, give its date, account and amount in plain words. Don't paste record ids (the [ex:..] or [tx:..] tags) or long txids into answers unless the user asks; the app already links your lookups.
 - You are not a tax advisor. Only when the user asks what they should do (sell, harvest losses, how to file), explain the numbers and trade-offs and add one short line suggesting a tax professional. Don't add disclaimers to factual answers.
 - Don't narrate that you are about to look something up; just call the tool, then answer.
+- For totals, counts or "which has the most", call summarize_records. For any arithmetic (sums, differences, comparing gains or losses), call calculate rather than working it out yourself. Remember a loss is a negative gain: -$76 is larger than -$81.
+- To explain where coins came from or went, call trace_coins.
 - Short-term means held one year or less; long-term means more than a year (US rules).
 
 `, now.Format("2006-01-02"))
@@ -648,6 +651,39 @@ func graphLine(g GraphEvent) string {
 	return s
 }
 
+// kindMatches accepts the words people (and models) use for a kind:
+// "sold" or "sale" finds exchange sales and sales to people alike.
+func kindMatches(want, have string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	if want == have || kindName(have) == want {
+		return true
+	}
+	groups := [][]string{
+		{"sell", "sold", "sale", "sales", "selling", "sells"},
+		{"buy", "purchase", "bought", "buys", "purchases", "buying"},
+		{"spend", "spent", "payment", "spends", "payments"},
+		{"income", "earned", "reward", "rewards", "interest"},
+		{"transfer", "moved", "move", "transfers"},
+		{"unmatched", "unlabeled", "review"},
+		{"gift-out", "gift", "gifted", "gift given"},
+		{"gift-in", "gift received"},
+	}
+	for _, g := range groups {
+		in := func(s string) bool {
+			for _, x := range g {
+				if x == s {
+					return true
+				}
+			}
+			return false
+		}
+		if in(want) && (in(have) || have == "sold" && g[0] == "sell" || have == "purchase" && g[0] == "buy") {
+			return true
+		}
+	}
+	return false
+}
+
 func kindName(k string) string {
 	if n, ok := map[string]string{"buy": "bought", "sell": "sold", "income": "income", "transfer": "moved", "unmatched": "unlabeled",
 		"spend": "spent", "sold": "sold to a person", "purchase": "bought from a person", "gift-in": "gift received", "gift-out": "gift given",
@@ -763,6 +799,10 @@ func str(desc string) map[string]any { return map[string]any{"type": "string", "
 func num(desc string) map[string]any { return map[string]any{"type": "number", "description": desc} }
 
 func toolSpecs() []ollama.Tool {
+	return append(baseToolSpecs(), moreToolSpecs()...)
+}
+
+func baseToolSpecs() []ollama.Tool {
 	t := func(name, desc string, params map[string]any) ollama.Tool {
 		return ollama.Tool{Type: "function", Function: ollama.ToolSpec{Name: name, Description: desc, Parameters: params}}
 	}
@@ -854,7 +894,10 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 	case "what_if_sale":
 		out, lk.Summary, err = tb.whatIf(args)
 	default:
-		err = fmt.Errorf("there is no tool called %q", name)
+		var ok bool
+		if out, ok, err = tb.runMore(name, args, &lk); !ok {
+			err = fmt.Errorf("there is no tool called %q", name)
+		}
 	}
 	if err != nil {
 		lk.Error = err.Error()
@@ -915,7 +958,7 @@ func (tb *toolbox) search(a map[string]any) (string, string, error) {
 		if acct != "" && !strings.Contains(strings.ToLower(g.Account), acct) && !strings.Contains(strings.ToLower(g.To), acct) {
 			continue
 		}
-		if kind != "" && g.Kind != kind {
+		if kind != "" && !kindMatches(kind, g.Kind) {
 			continue
 		}
 		if minS > 0 && g.Sats < minS || maxS > 0 && g.Sats > maxS {
@@ -1055,7 +1098,7 @@ func (tb *toolbox) account(name string) (string, string, error) {
 		if time.Since(l.Acquired) > 365*24*time.Hour {
 			term = "long-term if sold today"
 		}
-		fmt.Fprintf(&b, "- %s acquired %s, basis %s, %s, from [%s]\n", btcStr(l.Sats), dayOf(l.Acquired), usdStr(l.Basis), term, l.OriginID)
+		fmt.Fprintf(&b, "- lot %s: %s acquired %s, basis %s (%s per BTC), %s, from [%s]\n", l.ID, btcStr(l.Sats), dayOf(l.Acquired), usdStr(l.Basis), usdStr(lots.MulDiv(l.Basis, 100_000_000, max(l.Sats, 1))), term, l.OriginID)
 	}
 	b.WriteString("Latest records:\n")
 	var evs []GraphEvent
@@ -1110,7 +1153,14 @@ func (tb *toolbox) price(day string) (string, string, error) {
 }
 
 func (tb *toolbox) whatIf(a map[string]any) (string, string, error) {
-	body, _ := json.Marshal(map[string]any{"account": argStr(a, "account"), "btc": argNum(a, "btc"), "usd": argNum(a, "usd")})
+	in := map[string]any{"account": argStr(a, "account"), "btc": argNum(a, "btc"), "usd": argNum(a, "usd")}
+	if s, _ := a["strategy"].(string); s != "" {
+		in["strategy"] = s
+	}
+	if l, ok := a["lots"].([]string); ok && len(l) > 0 {
+		in["lots"] = l
+	}
+	body, _ := json.Marshal(in)
 	req := httptest.NewRequest("POST", "/api/whatif", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	tb.s.whatIf(rec, req)

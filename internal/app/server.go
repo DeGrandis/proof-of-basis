@@ -534,6 +534,9 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 		BTC     float64  `json:"btc"`
 		USD     float64  `json:"usd"`
 		Lots    []string `json:"lots"` // specific lots to sell, by open-lot id
+		// Strategy picks the coins: highest_cost, lowest_cost, oldest,
+		// newest or long_term_first (used when Lots is empty).
+		Strategy string `json:"strategy"`
 	}
 	if err := decode(r, &in); err != nil {
 		fail(w, 400, err)
@@ -560,6 +563,59 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 	}
 	// Picking coins: sell exactly those lots, whatever the year's method.
 	var picks []lots.Pick
+	if len(in.Lots) == 0 && in.Strategy != "" && sats > 0 {
+		var held []lots.Lot
+		for _, l := range base.Open {
+			if l.Account == in.Account && l.Sats > 0 {
+				held = append(held, l)
+			}
+		}
+		now := time.Now()
+		cost := func(l lots.Lot) float64 { return float64(l.Basis) / float64(l.Sats) }
+		long := func(l lots.Lot) bool { return now.Sub(l.Acquired) > 365*24*time.Hour }
+		switch in.Strategy {
+		case "highest_cost":
+			sort.SliceStable(held, func(i, j int) bool { return cost(held[i]) > cost(held[j]) })
+		case "lowest_cost":
+			sort.SliceStable(held, func(i, j int) bool { return cost(held[i]) < cost(held[j]) })
+		case "oldest":
+			sort.SliceStable(held, func(i, j int) bool { return held[i].Acquired.Before(held[j].Acquired) })
+		case "newest":
+			sort.SliceStable(held, func(i, j int) bool { return held[i].Acquired.After(held[j].Acquired) })
+		case "long_term_first":
+			sort.SliceStable(held, func(i, j int) bool {
+				if long(held[i]) != long(held[j]) {
+					return long(held[i])
+				}
+				return cost(held[i]) > cost(held[j])
+			})
+		default:
+			fail(w, 400, errors.New("strategy must be highest_cost, lowest_cost, oldest, newest or long_term_first"))
+			return
+		}
+		left := sats
+		for _, l := range held {
+			if left <= 0 {
+				break
+			}
+			take := min(l.Sats, left)
+			picks = append(picks, lots.Pick{LotID: l.ID, Sats: take})
+			left -= take
+		}
+		if left > 0 {
+			fail(w, 400, fmt.Errorf("%s holds %s BTC, less than that", in.Account, satsStr(sats-left)))
+			return
+		}
+		cfg := p.cfg
+		yearMethod := cfg.Method
+		cfg.Method = func(y int) tax.Method {
+			if y == time.Now().UTC().Year() {
+				return tax.Specific
+			}
+			return yearMethod(y)
+		}
+		p.cfg = cfg
+	}
 	if len(in.Lots) > 0 {
 		want := map[string]bool{}
 		for _, id := range in.Lots {
