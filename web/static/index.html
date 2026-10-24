@@ -13,6 +13,7 @@
 <script src="sankey.js" defer></script>
 <script src="vendor/vis-network.min.js" defer></script>
 <script src="timelinegraph.js" defer></script>
+<script src="ai.js" defer></script>
 </head>
 <body>
 <header id="top">
@@ -258,6 +259,15 @@
       <label>Repeat new password <input name="next2" type="password" autocomplete="new-password" required></label>
       <div class="wide row"><button type="submit" class="primary">Change password</button><button type="button" id="logout-btn">Sign out</button><button type="button" id="logout-all-btn">Sign out everywhere</button></div>
       <div class="wide small muted">Changing the password signs out every other device. Forgot it? On the server, run <code>docker compose exec btctax /btctax reset-password</code> and set a new one on the next visit. Over plain http on your network the password isn't encrypted in transit; use HTTPS (for example a reverse proxy or Tailscale) to reach this app from outside your home.</div>
+    </form>
+    <h2>Assistant (optional)</h2>
+    <form id="ai-settings" class="card grid">
+      <label class="wide">Ollama server address <input name="aiUrl" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false"></label>
+      <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
+      <label>Memory for each question <select name="aiCtx"><option value="8192">Small (8k tokens)</option><option value="16384">Medium (16k tokens)</option><option value="32768">Large (32k tokens)</option><option value="65536">Very large (64k tokens)</option></select></label>
+      <div class="wide small muted" id="ai-settings-line"></div>
+      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="ai-test">Test connection</button><button type="button" id="ai-off" class="link">Turn off</button></div>
+      <div class="wide small muted">Adds a chat button to every page that answers questions about your data, using a model on your own <a href="https://ollama.com" rel="noreferrer noopener" target="_blank">Ollama</a> server. Your data goes only to that address, never anywhere else. Pick a model that can use tools (for example qwen3:8b or llama3.1:8b) so it can look things up. If Ollama runs on this same computer, use http://host.docker.internal:11434, since inside Docker "localhost" is the app itself. More memory lets it consider more at once but needs more RAM on the Ollama machine. Chats are saved here, included in backups and removed by Wipe.</div>
     </form>
     <h2>Backup and restore</h2>
     <div class="card grid">

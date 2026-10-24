@@ -235,3 +235,18 @@ func TestAssistantTools(t *testing.T) {
 		}
 	}
 }
+
+func TestSameRecord(t *testing.T) {
+	tx := strings.Repeat("ab", 32)
+	key := "tx:" + tx + ":0"
+	for _, id := range []string{key, "[" + key + "]", "tx:" + tx, tx, "`" + key + "`"} {
+		if !sameRecord(key, tx, id) {
+			t.Errorf("%q should match", id)
+		}
+	}
+	for _, id := range []string{"", "tx:" + tx + ":1", "ex:1", tx[:20]} {
+		if sameRecord(key, tx, id) {
+			t.Errorf("%q should not match", id)
+		}
+	}
+}

@@ -14,6 +14,10 @@ services:
       # BTCTAX_PASSWORD: change-me
       # Forgot it? docker compose exec btctax /btctax reset-password
       BTCTAX_ADDR: 0.0.0.0:8080
+    extra_hosts:
+      # Lets the optional assistant reach Ollama on this same machine at
+      # http://host.docker.internal:11434
+      - "host.docker.internal:host-gateway"
     volumes:
       - btctax-data:/data
 volumes:

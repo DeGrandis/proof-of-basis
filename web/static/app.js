@@ -816,7 +816,7 @@ function renderReview() {
       <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${amt(it.FeeSats)} fee</div>` : ""}${it.Value ? `<div class="small muted">≈ ${usd(it.Value)}</div>` : ""}</td>
       <td class="row"><select class="cat"><option value="">Choose…</option>${cats.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
         <span class="extra"></span><button class="save" hidden>Save</button></td>
-      <td class="small">${detail}</td></tr>`;
+      <td class="small">${detail}<button type="button" class="link ai-ask" data-ask="${esc(it.Key)}" data-ask-q="What is this item, and how should I label it?">Ask the assistant</button></td></tr>`;
   }).join("") || `<tr><td colspan="6" class="muted">Nothing to label.</td></tr>`;
   $("#links-table tbody").innerHTML = (report.links || []).map((l) => `<tr><td class="small mono">${esc(l.From)}</td><td class="small mono">${esc(l.To)}</td><td>${esc(l.Method)}${l.Method === "manual" ? ` <button class="link" data-unlink="${esc(l.From)}" data-unlink2="${esc(l.To)}">undo</button>` : ""}</td></tr>`).join("")
     || `<tr><td colspan="3" class="muted">No transfers matched yet.</td></tr>`;

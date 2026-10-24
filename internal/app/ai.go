@@ -415,14 +415,15 @@ func pageName(hash string) (page, arg string) {
 func (s *Server) systemPrompt(rep *Report, pc PageContext) string {
 	var b strings.Builder
 	now := time.Now().UTC()
-	fmt.Fprintf(&b, `You are the assistant inside BTC Tax, a self-hosted Bitcoin tax calculator. You help the owner understand their own bitcoin history, cost basis and taxes. Today is %s.
+	fmt.Fprintf(&b, `You are the assistant inside BTC Tax, a self-hosted Bitcoin tax calculator. You help the owner understand their own bitcoin history, cost basis and taxes. Today is %s. Unless the page says otherwise, "this year" means the current calendar year.
 
 Rules:
 - Answer from the data below and from your lookup tools. Never invent transactions, amounts or dates. If something isn't in the data, say so.
 - Prefer calling a tool over guessing. Tools are read-only; you cannot change anything in the app.
 - Be concise and concrete: short paragraphs or bullet lists, figures with units (BTC to 8 decimals, USD with cents), dates as YYYY-MM-DD.
-- To refer to a record, give its date, account and amount; the app turns lookups into links.
-- You are not a tax advisor. When the user asks what to do about taxes, explain the numbers and the trade-offs, and suggest checking with a tax professional for filing decisions.
+- To refer to a record, give its date, account and amount in plain words. Don't paste record ids (the [ex:..] or [tx:..] tags) or long txids into answers unless the user asks; the app already links your lookups.
+- You are not a tax advisor. Only when the user asks what they should do (sell, harvest losses, how to file), explain the numbers and trade-offs and add one short line suggesting a tax professional. Don't add disclaimers to factual answers.
+- Don't narrate that you are about to look something up; just call the tool, then answer.
 - Short-term means held one year or less; long-term means more than a year (US rules).
 
 `, now.Format("2006-01-02"))
@@ -499,18 +500,8 @@ func (s *Server) pageSlice(rep *Report, pc PageContext) string {
 		if yr == 0 {
 			yr = time.Now().UTC().Year()
 		}
-		fmt.Fprintf(&b, "The tax year picker is set to %d. The page shows portfolio value, %d realized gain and estimated tax, BTC held over time with the price and buy/sell dots, a summary of how coins arrived and left, and account balances.\n", yr, yr)
-		// Year-end holdings, and today's.
-		for i, h := range rep.History {
-			t := time.Unix(h.T, 0).UTC()
-			if t.Month() == 12 && t.Day() == 31 || i == len(rep.History)-1 {
-				fmt.Fprintf(&b, "- Held on %s: %s", dayOf(t), btcStr(h.Sats))
-				if h.Price > 0 {
-					fmt.Fprintf(&b, " at %s per BTC", usdStr(h.Price))
-				}
-				b.WriteString("\n")
-			}
-		}
+		fmt.Fprintf(&b, "The tax year picker is set to %d, so \"this year\" means %[1]d unless the user says otherwise. The page shows portfolio value, %[1]d realized gain and estimated tax, BTC held over time with the price and buy/sell dots, a summary of how coins arrived and left, and account balances.\n", yr)
+		b.WriteString(holdingsByYear(rep, yr))
 	case "review":
 		fmt.Fprintf(&b, "Items that couldn't be matched to another of the user's accounts, waiting for a label (%d):\n", len(rep.Unmatched))
 		for i, it := range rep.Unmatched {
@@ -640,13 +631,13 @@ func eventDetail(rep *Report, key string) string {
 	var b strings.Builder
 	found := false
 	for _, g := range rep.Graph {
-		if g.Key == key || (g.Txid != "" && g.Txid == key) {
+		if sameRecord(g.Key, g.Txid, key) {
 			b.WriteString("- " + graphLine(g) + "\n")
 			found = true
 		}
 	}
 	for _, it := range rep.Unmatched {
-		if it.Key == key || (it.Txid != "" && it.Txid == key) {
+		if sameRecord(it.Key, it.Txid, key) {
 			b.WriteString("- Waiting in Review: " + itemLine(it.Key, it.Time, it.Account, string(it.Dir), it.Sats, it.FeeSats, it.Value, it.Network, it.Note, it.Txid) + "\n")
 			found = true
 		}
@@ -682,6 +673,27 @@ func saleLots(rep *Report, key string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// sameRecord matches a record by its id or txid, forgiving the ways a
+// model shortens them: brackets, a dropped output index, a bare txid.
+func sameRecord(key, txid, id string) bool {
+	id = strings.Trim(strings.TrimSpace(id), "[]`\"' ")
+	if id == "" {
+		return false
+	}
+	if id == key || txid != "" && id == txid {
+		return true
+	}
+	if strings.HasPrefix(id, "tx:") {
+		if parts := strings.Split(id, ":"); len(parts) >= 2 && len(parts[1]) == 64 {
+			t := parts[1]
+			if len(parts) == 2 {
+				return txid == t || strings.HasPrefix(key, "tx:"+t+":")
+			}
+		}
+	}
+	return len(id) == 64 && strings.HasPrefix(key, "tx:"+id+":")
 }
 
 func urlUnescape(s string) (string, error) {
@@ -795,7 +807,7 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 		out, lk.Summary, err = tb.search(args)
 	case "get_transaction":
 		id := strings.Trim(argStr(args, "id"), "[] ")
-		lk.Summary, lk.Link = "Looked up record "+clip(id, 24), "#tx/"+linkArg(tb.rep, id)
+		lk.Summary, lk.Link = "Looked up "+recordName(tb.rep, id), "#tx/"+linkArg(tb.rep, id)
 		out = eventDetail(tb.rep, id)
 	case "get_tax_year":
 		out, lk.Summary, err = tb.taxYear(int(argNum(args, "year")))
@@ -823,11 +835,34 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 	return lk, out
 }
 
+// recordName is a short human name for a record: date, account, amount.
+func recordName(rep *Report, id string) string {
+	for _, g := range rep.Graph {
+		if sameRecord(g.Key, g.Txid, id) {
+			return fmt.Sprintf("%s %s %s", dayOf(time.Unix(g.Time, 0)), g.Account, btcStr(g.Sats))
+		}
+	}
+	for _, it := range rep.Unmatched {
+		if sameRecord(it.Key, it.Txid, id) {
+			return fmt.Sprintf("%s %s %s", dayOf(it.Time), it.Account, btcStr(it.Sats))
+		}
+	}
+	return "record " + clip(id, 20)
+}
+
 func linkArg(rep *Report, id string) string {
 	for _, g := range rep.Graph {
-		if g.Key == id && g.Txid != "" {
+		if sameRecord(g.Key, g.Txid, id) && g.Txid != "" {
 			return g.Txid
 		}
+	}
+	for _, it := range rep.Unmatched {
+		if sameRecord(it.Key, it.Txid, id) && it.Txid != "" {
+			return it.Txid
+		}
+	}
+	if parts := strings.Split(id, ":"); len(parts) >= 2 && parts[0] == "tx" && len(parts[1]) == 64 {
+		return parts[1]
 	}
 	if len(id) == 64 && !strings.Contains(id, ":") {
 		return id
@@ -1082,4 +1117,54 @@ func (tb *toolbox) whatIf(a map[string]any) (string, string, error) {
 		b.WriteString(" " + w)
 	}
 	return b.String(), "Estimated a sale from " + argStr(a, "account"), nil
+}
+
+// holdingsByYear is a compact table of how holdings moved each year.
+func holdingsByYear(rep *Report, picked int) string {
+	type yr struct{ start, end, in, out, bought, sold, income int64 }
+	years := map[int]*yr{}
+	get := func(y int) *yr {
+		if years[y] == nil {
+			years[y] = &yr{}
+		}
+		return years[y]
+	}
+	var held int64
+	lastYear := 0
+	for _, h := range rep.History {
+		y := time.Unix(h.T, 0).UTC().Year()
+		if y != lastYear {
+			get(y).start = held
+			lastYear = y
+		}
+		held = h.Sats
+		get(y).end = held
+	}
+	for _, g := range rep.Graph {
+		y := get(time.Unix(g.Time, 0).UTC().Year())
+		switch g.Kind {
+		case "buy", "purchase":
+			y.bought += g.Sats
+		case "income":
+			y.income += g.Sats
+		case "sell", "sold", "spend":
+			y.sold += g.Sats
+		}
+	}
+	var ys []int
+	for y := range years {
+		ys = append(ys, y)
+	}
+	sort.Ints(ys)
+	var b strings.Builder
+	b.WriteString("Holdings by year (BTC held at the start and end of each year, and what was bought, earned as income, and sold or spent during it):\n")
+	for _, y := range ys {
+		v := years[y]
+		mark := ""
+		if y == picked {
+			mark = " <- the selected year"
+		}
+		fmt.Fprintf(&b, "- %d: start %s, end %s (change %s); bought %s, income %s, sold or spent %s%s\n", y, btcStr(v.start), btcStr(v.end), btcStr(v.end-v.start), btcStr(v.bought), btcStr(v.income), btcStr(v.sold), mark)
+	}
+	return b.String()
 }

@@ -5,7 +5,8 @@ your wallets' extended public keys, traces coins from exchange to
 self-custody and back, and estimates realized gains, losses and tax.
 
 - Talks only to **your own Fulcrum (Electrum) server**. No price APIs, no
-  telemetry, no third-party assets, no AI.
+  telemetry, no third-party assets. AI is optional and off by default: it
+  only ever uses a model on your own Ollama server.
 - One static Go binary with the UI embedded; the Docker image is about 17 MB.
 - All data lives in one SQLite file in `/data`.
 
@@ -23,6 +24,25 @@ anything that could not be matched), **Taxes**.
 Environment: `BTCTAX_ADDR` (default `127.0.0.1:8080`, the image uses
 `0.0.0.0:8080`), `BTCTAX_DATA` (default `./data`), `BTCTAX_PASSWORD`
 (optional; see below).
+
+### Assistant (optional)
+
+Settings > Assistant connects a model running on your own
+[Ollama](https://ollama.com) server. A chat button then appears on every
+page. It knows which page you're on and can look things up (transactions,
+tax years, accounts, Review items, prices, a what-if sale) with read-only
+tools; it can't change anything. Your data goes only to the Ollama address
+you enter. Chats are saved in the app's database, included in backups and
+removed by Wipe; prompts are never written to the log.
+
+- Pick a model that can use tools, such as `qwen3:8b`, `llama3.1:8b` or
+  `gemma4:e4b`. Settings greys out models that can't.
+- If Ollama runs on the same machine as the container, use
+  `http://host.docker.internal:11434` (inside Docker, `localhost` is the
+  container). Ollama on another machine must listen on the network
+  (`OLLAMA_HOST=0.0.0.0`).
+- "Memory for each question" is Ollama's context window. 16k tokens is a
+  good start; more needs more RAM or VRAM on the Ollama machine.
 
 ### Login
 
