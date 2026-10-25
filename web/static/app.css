@@ -223,3 +223,6 @@ dl.facts dd { margin: 0; }
 .login-box button { padding: 10px 12px; }
 .login-box p { margin: 0; }
 .login-error { color: var(--sell); text-align: center; margin: 8px 0 0; }
+
+.attach-box { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.attach-box .att-add { cursor: pointer; text-decoration: underline; }

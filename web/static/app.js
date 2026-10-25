@@ -1448,7 +1448,8 @@ function selectEvent(key, zoom) {
   box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${amt(e.sats)} <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
     <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
     <div id="txflow-wrap"><svg id="txflow" class="txf" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
-  box.insertAdjacentHTML("beforeend", actionsFor(e));
+  box.insertAdjacentHTML("beforeend", actionsFor(e) + attachBox(e.key));
+  fillAttachments(box);
   box.hidden = false;
   document.body.classList.add("picked");
   lastFlow = sides;
@@ -1650,6 +1651,34 @@ document.addEventListener("click", async (e) => {
 // The transaction page: the on-chain transaction (from your wallets' scans
 // or your Fulcrum), each of your records for it with its trace, labels and
 // protection, and the coins diagram.
+// Files kept as proof for a record (receipts, letters), on its panel.
+const attachBox = (key) => `<div class="attach-box small" data-key="${esc(key)}"></div>`;
+async function fillAttachments(root) {
+  for (const box of $$(".attach-box", root)) {
+    let list = [];
+    try { list = await api(`/api/attachments?key=${encodeURIComponent(box.dataset.key)}`); } catch { continue; }
+    box.innerHTML = `<b>Proof:</b> ${list.map((a) => `<a href="/api/attachments/${a.id}">${esc(a.filename)}</a>${a.note ? ` <span class="muted">(${esc(a.note)})</span>` : ""}
+      <button class="link small att-del" data-id="${a.id}" aria-label="Remove ${esc(a.filename)}">✕</button>`).join(" · ") || '<span class="muted">none attached</span>'}
+      <label class="link small att-add">Attach a file<input type="file" hidden></label>
+      <input class="att-note" size="16" placeholder="Note (optional)">`;
+  }
+}
+document.addEventListener("change", async (e) => {
+  if (!e.target.closest(".att-add") || !e.target.files?.length) return;
+  const box = e.target.closest(".attach-box");
+  const fd = new FormData();
+  fd.append("key", box.dataset.key);
+  fd.append("note", $(".att-note", box)?.value || "");
+  fd.append("file", e.target.files[0]);
+  try { await api("/api/attachments", { method: "POST", body: fd }); toast("File attached"); fillAttachments(box.parentElement); } catch (err) { toast(err.message); }
+});
+document.addEventListener("click", async (e) => {
+  const id = e.target.closest(".att-del")?.dataset.id;
+  if (!id) return;
+  const box = e.target.closest(".attach-box");
+  try { await api(`/api/attachments/${id}`, { method: "DELETE" }); fillAttachments(box.parentElement); } catch (err) { toast(err.message); }
+});
+
 async function renderLookup() {
   if (!lookupRoute || !report) return;
   const [kind, arg] = lookupRoute, page = $("#lookup");
@@ -1658,6 +1687,7 @@ async function renderLookup() {
     if (kind === "addr") { page.innerHTML = await addressPage(arg); return; }
     page.innerHTML = await txPage(arg);
     $$("#lookup svg.txflow").forEach((svg) => { const d = buildDetail(svg.dataset.key); if (d) drawTxFlow(d.e, d.sides, svg); });
+    fillAttachments(page);
   } catch (err) { page.innerHTML = `<h2>Not found</h2><p class="warn">${esc(err.message)}</p>`; }
 }
 const shortTx = (t) => `${t.slice(0, 10)}…${t.slice(-6)}`;
@@ -1695,7 +1725,7 @@ async function txPage(arg) {
     const d = buildDetail(r.key);
     return `<div class="card rec"><h3><span class="kind ${esc(r.kind)}">${esc(KIND_NAMES[r.kind] || r.kind)}</span> ${amt(r.sats)} · ${esc(r.account)}${r.to ? ` → ${esc(r.to)}` : ""}</h3>
       <div class="detail-cols"><dl>${d.rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${d.trace}</div></div>
-      <svg class="txflow txf" data-key="${esc(r.key)}" role="img" aria-label="Where these coins came from and went"></svg>${actionsFor(r)}</div>`;
+      <svg class="txflow txf" data-key="${esc(r.key)}" role="img" aria-label="Where these coins came from and went"></svg>${actionsFor(r)}${attachBox(r.key)}</div>`;
   }).join("") : `<p class="muted">None of your records refer to this transaction.</p>`;
   return h;
 }
