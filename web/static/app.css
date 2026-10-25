@@ -229,3 +229,6 @@ dl.facts dd { margin: 0; }
 
 .checklist { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
 .checklist li { line-height: 1.4; }
+
+a.button { display: inline-block; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line-2); text-decoration: none; color: inherit; }
+a.button.primary { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }

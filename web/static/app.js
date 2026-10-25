@@ -967,6 +967,7 @@ async function renderReadiness() {
   $("#ready-year").innerHTML = (years.length ? years : [formsYear]).map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
   let r;
   try { r = await api(`/api/readiness?year=${formsYear}`); } catch (e) { $("#ready-out").textContent = e.message; return; }
+  $("#ready-download").innerHTML = `<a class="button primary" href="/api/package/${r.year}.zip" download>Download accountant package</a>`;
   const icon = { ok: '<span class="pos">✓</span>', warn: '<span class="warn">!</span>', bad: '<span class="neg">✕</span>' };
   const order = { bad: 0, warn: 1, ok: 2 };
   const checks = [...r.checks].sort((a, b) => order[a.status] - order[b.status]);

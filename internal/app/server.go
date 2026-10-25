@@ -117,6 +117,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/allocation", s.postAllocation)
 	mux.HandleFunc("POST /api/unlink", s.postUnlink)
 	mux.HandleFunc("GET /api/readiness", s.getReadiness)
+	mux.HandleFunc("GET /api/package/{year}", s.getPackage)
 	mux.HandleFunc("GET /api/attachments", s.listAttachments)
 	mux.HandleFunc("POST /api/attachments", s.postAttachment)
 	mux.HandleFunc("GET /api/attachments/{id}", s.getAttachment)

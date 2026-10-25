@@ -190,6 +190,7 @@ type Import struct {
 	Account    string              `json:"account"`
 	Handler    string              `json:"handler"`
 	Filename   string              `json:"filename"`
+	SHA256     string              `json:"sha256"`
 	ImportedAt string              `json:"importedAt"`
 	Rows       int                 `json:"rows"`
 	Warnings   []importers.Warning `json:"warnings"`
@@ -234,7 +235,7 @@ func (s *Store) AddImport(accountID int64, handler, filename, sha string, evs []
 }
 
 func (s *Store) Imports() ([]Import, error) {
-	rows, err := s.db.Query(`SELECT i.id,i.account_id,a.name,i.handler,i.filename,i.imported_at,i.rows,i.warnings
+	rows, err := s.db.Query(`SELECT i.id,i.account_id,a.name,i.handler,i.filename,i.sha256,i.imported_at,i.rows,i.warnings
 		FROM imports i JOIN accounts a ON a.id=i.account_id ORDER BY i.id`)
 	if err != nil {
 		return nil, err
@@ -244,7 +245,7 @@ func (s *Store) Imports() ([]Import, error) {
 	for rows.Next() {
 		var im Import
 		var wj string
-		if err := rows.Scan(&im.ID, &im.AccountID, &im.Account, &im.Handler, &im.Filename, &im.ImportedAt, &im.Rows, &wj); err != nil {
+		if err := rows.Scan(&im.ID, &im.AccountID, &im.Account, &im.Handler, &im.Filename, &im.SHA256, &im.ImportedAt, &im.Rows, &wj); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(wj), &im.Warnings)

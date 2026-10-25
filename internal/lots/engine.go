@@ -80,6 +80,9 @@ type Lot struct {
 	Acquired time.Time
 	Sats     int64
 	Basis    int64
+	// Path is the transfers (op ids) these coins went through since the
+	// acquisition, oldest first: their provenance.
+	Path []string `json:",omitempty"`
 }
 
 type Disposal struct {
@@ -95,6 +98,8 @@ type Disposal struct {
 	LongTerm bool
 	// Missing is set when there were not enough lots; basis is zero.
 	Missing bool
+	// Path is the transfers the coins went through before this sale.
+	Path []string `json:",omitempty"`
 }
 
 func (d Disposal) Gain() int64 { return d.Proceeds - d.Basis }
@@ -350,7 +355,7 @@ func (e *engine) realise(op Op, account string, pieces []piece, proceeds int64) 
 		if p.lot == nil {
 			d.Missing, d.Acquired = true, op.Time
 		} else {
-			d.LotID, d.OriginID, d.Acquired = p.lot.ID, p.lot.OriginID, p.lot.Acquired
+			d.LotID, d.OriginID, d.Acquired, d.Path = p.lot.ID, p.lot.OriginID, p.lot.Acquired, p.lot.Path
 			d.LongTerm = e.cfg.Rules.LongTerm(p.lot.Acquired, op.Time)
 		}
 		e.res.Disposals = append(e.res.Disposals, d)
@@ -389,6 +394,7 @@ func (e *engine) transfer(op Op) {
 		nl := &Lot{OriginID: op.ID, Account: e.acctKey(op.To), Acquired: op.Time, Sats: moveSats, Basis: moveBasis}
 		if p.lot != nil {
 			nl.OriginID, nl.Acquired = p.lot.OriginID, p.lot.Acquired
+			nl.Path = append(append([]string(nil), p.lot.Path...), op.ID)
 			e.splitSeq[p.lot.OriginID]++
 			nl.ID = fmt.Sprintf("%s/%d", p.lot.OriginID, e.splitSeq[p.lot.OriginID])
 		} else {
@@ -400,6 +406,11 @@ func (e *engine) transfer(op Op) {
 		e.realise(op, op.Account, feePieces, op.FeeCents)
 	}
 }
+
+// PoolSplit starts the path of coins that came out of the universal pool:
+// where they were before is not tracked, only the account they were given
+// to at the switch (PoolSplit + account).
+const PoolSplit = "pool-split:"
 
 // switchToPerAccount assigns the universal pool to accounts at the
 // Rev. Proc. 2024-28 transition, up to each account's actual balance:
@@ -437,7 +448,7 @@ func (e *engine) switchToPerAccount() {
 		b := mulDiv(l.Basis, n, l.Sats)
 		e.splitSeq[l.OriginID]++
 		nl := &Lot{ID: fmt.Sprintf("%s/%d", l.OriginID, e.splitSeq[l.OriginID]), OriginID: l.OriginID,
-			Account: a, Acquired: l.Acquired, Sats: n, Basis: b}
+			Account: a, Acquired: l.Acquired, Sats: n, Basis: b, Path: []string{PoolSplit + a}}
 		kept = append(kept, nl)
 		e.res.Allocations = append(e.res.Allocations, Allocation{nl.ID, nl.OriginID, a, nl.Acquired, n, b})
 		l.Sats -= n

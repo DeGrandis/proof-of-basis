@@ -1,6 +1,7 @@
 package lots
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -287,5 +288,37 @@ func TestIdentifiedByOrigin(t *testing.T) {
 	}
 	if got["b2"] != btc || got["b1"] != btc/2 {
 		t.Errorf("sold %v", got)
+	}
+}
+
+// A sale knows the transfers its coins went through.
+func TestDisposalPath(t *testing.T) {
+	ops := []Op{
+		{ID: "buy", Kind: Acquire, Time: d("2025-01-10"), Account: "ex", Sats: btc, Cents: 30_000_00},
+		{ID: "w", Kind: Transfer, Time: d("2025-02-01"), Account: "ex", To: "cold", Sats: btc},
+		{ID: "x", Kind: Transfer, Time: d("2025-03-01"), Account: "cold", To: "river", Sats: btc},
+		{ID: "s", Kind: Dispose, Time: d("2025-04-01"), Account: "river", Sats: btc, Cents: 35_000_00},
+	}
+	r := run(t, ops, tax.FIFO, nil)
+	if len(r.Disposals) != 1 || strings.Join(r.Disposals[0].Path, ",") != "w,x" || r.Disposals[0].OriginID != "buy" {
+		t.Errorf("%+v", r.Disposals)
+	}
+}
+
+// Coins from the pre-2025 pool don't claim a route they didn't take: their
+// path starts at the account they were given in the 2025 split.
+func TestPoolPathStartsAtTheSplit(t *testing.T) {
+	ops := []Op{
+		{ID: "buy", Kind: Acquire, Time: d("2023-01-10"), Account: "ex", Sats: btc, Cents: 30_000_00},
+		{ID: "t1", Kind: Transfer, Time: d("2024-02-01"), Account: "ex", To: "cold", Sats: btc - 1_000, FeeSats: 1_000},
+		{ID: "t2", Kind: Transfer, Time: d("2025-03-01"), Account: "cold", To: "hot", Sats: btc / 2},
+		{ID: "s", Kind: Dispose, Time: d("2025-04-01"), Account: "hot", Sats: btc / 2, Cents: 35_000_00},
+	}
+	r, err := Run(ops, Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Disposals) != 1 || strings.Join(r.Disposals[0].Path, ",") != PoolSplit+"cold,t2" {
+		t.Errorf("%+v", r.Disposals)
 	}
 }
