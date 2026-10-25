@@ -182,3 +182,33 @@ func TestRecordedIdentification(t *testing.T) {
 		}
 	}
 }
+
+// A wrong automatic match can be undone: the pair goes back to Review
+// and isn't matched again until allowed.
+func TestUnlinkMatch(t *testing.T) {
+	st, h := newTest(t)
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	cb, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	rv, _ := st.ExchangeAccount("River", "river")
+	st.AddImport(cb, "coinbase", "c.csv", "c", []importers.Event{
+		{Kind: importers.Buy, Time: at("2024-01-01"), Sats: 500_000, FiatCents: 200_00, UID: "b"},
+		{Kind: importers.Withdrawal, Time: at("2024-02-01"), Sats: 300_000, UID: "w"},
+	}, nil)
+	st.AddImport(rv, "river", "r.csv", "r", []importers.Event{{Kind: importers.Deposit, Time: at("2024-02-01"), Sats: 300_000, UID: "d"}}, nil)
+	report := func() Report {
+		var r Report
+		json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &r)
+		return r
+	}
+	if r := report(); len(r.Links) != 1 || r.Links[0].From != "ex:2" || r.Links[0].To != "ex:3" {
+		t.Fatalf("links %+v", r.Links)
+	}
+	call(h, "POST", "/api/unlink", `{"From":"ex:2","To":"ex:3"}`)
+	if r := report(); len(r.Links) != 0 || len(r.Unmatched) != 2 || len(r.Unlinked) != 1 {
+		t.Errorf("after unlinking: links %+v, review %d, unlinked %v", r.Links, len(r.Unmatched), r.Unlinked)
+	}
+	call(h, "POST", "/api/unlink", `{"From":"ex:2","To":"ex:3","Allow":true}`)
+	if r := report(); len(r.Links) != 1 {
+		t.Errorf("allowed again: %+v", r.Links)
+	}
+}

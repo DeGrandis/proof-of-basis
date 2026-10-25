@@ -197,6 +197,9 @@ type Options struct {
 	// PriceSource describes the price Price gives for a day, for the
 	// documents ("BTC close 2024-02-01, built-in history").
 	PriceSource func(day time.Time) string
+	// Unlinked are pairs ("outflow key>inflow key") the user said are not
+	// the same transfer: automatic matching never links them.
+	Unlinked map[string]bool
 	// Lightning is a Core Lightning node's bookkeeper history, tracked as
 	// one account named LightningAccount.
 	Lightning        []lightning.Event
@@ -637,6 +640,8 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 		}
 		return r
 	}
+	// A pair the user unlinked is never matched again automatically.
+	allowed := func(o, i Item) bool { return !b.opt.Unlinked[o.Key+">"+i.Key] }
 	within := func(win time.Duration) func(o, i Item) bool {
 		return func(o, i Item) bool {
 			if o.Account == i.Account {
@@ -660,7 +665,7 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 		for _, o := range free(outs) {
 			var cands []Item
 			for _, i := range free(ins) {
-				if fits(o, i) {
+				if fits(o, i) && allowed(o, i) {
 					cands = append(cands, i)
 				}
 			}
@@ -669,7 +674,7 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 			}
 			back := 0
 			for _, o2 := range free(outs) {
-				if fits(o2, cands[0]) {
+				if fits(o2, cands[0]) && allowed(o2, cands[0]) {
 					back++
 				}
 			}
@@ -692,7 +697,7 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 	}
 	for _, o := range free(outs) {
 		for _, i := range free(ins) {
-			if o.Txid != "" && o.Txid == i.Txid && o.Account != i.Account && (i.Sats <= o.Sats+o.FeeSats) {
+			if o.Txid != "" && o.Txid == i.Txid && o.Account != i.Account && (i.Sats <= o.Sats+o.FeeSats) && allowed(o, i) {
 				b.link(o.Key, i.Key, "txid")
 				break
 			}
@@ -704,7 +709,7 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 	// what left. Never one where more arrived than left, or two sends to
 	// one address could swap receipts.
 	sameAddr := func(o, i Item) bool {
-		return o.Address != "" && o.Address == i.Address && (ok(o, i) || slowSend(o, i))
+		return o.Address != "" && o.Address == i.Address && (ok(o, i) || slowSend(o, i)) && allowed(o, i)
 	}
 	covered := func(o, i Item) bool { return i.Sats <= o.Sats+o.FeeSats }
 	for _, fits := range []func(o, i Item) bool{amountFits, hiddenFee, covered} {

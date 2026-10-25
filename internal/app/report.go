@@ -112,6 +112,8 @@ type Report struct {
 	Allocation AllocationView `json:"allocation"`
 	// Identifications are coins chosen before a sale, and their status.
 	Identifications []IdentView `json:"identifications"`
+	// Unlinked are pairs the user said aren't one transfer.
+	Unlinked []string `json:"unlinked"`
 }
 
 // DipView is the first record that took an account below zero. Key is the
@@ -225,7 +227,8 @@ func (s *Server) pipeline() (*pipeline, error) {
 	if err != nil {
 		return nil, err
 	}
-	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup, PriceSource: prices.describe, Lightning: lnEvents, LightningAccount: s.lnAccount()})
+	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup, PriceSource: prices.describe, Lightning: lnEvents, LightningAccount: s.lnAccount(),
+		Unlinked: s.unlinked()})
 	set := s.settings()
 	// Tax years and holding periods follow the user's calendar.
 	z := loc(set)
@@ -338,6 +341,11 @@ func (s *Server) buildReport() (*Report, error) {
 	documentYears(r, p, res)
 	r.Allocation = s.allocationView(res, tr.Ops)
 	r.Identifications = p.idents
+	r.Unlinked = []string{}
+	for k := range s.unlinked() {
+		r.Unlinked = append(r.Unlinked, k)
+	}
+	sort.Strings(r.Unlinked)
 	r.IncomeTypes = trace.IncomeTypes
 
 	// Accounts: engine balance and basis, plus chain balance for wallets.

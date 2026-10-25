@@ -172,7 +172,9 @@
     <p class="small muted">These moved BTC in or out of your tracked accounts and could not be matched to another of your accounts. Say what each one was.</p>
     <div class="scroll"><table id="review-table"><thead><tr><th><button class="sort" data-sort="date">Date</button></th><th><button class="sort" data-sort="account">Account</button></th><th><button class="sort" data-sort="type">Type</button></th><th class="num"><button class="sort" data-sort="amount"><span class="unit-name">BTC</span></button></th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
     <h2>Matched transfers</h2>
-    <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th>How</th></tr></thead><tbody></tbody></table></div>
+    <p class="small muted">Records matched as one move between your own accounts, and how. If a match is wrong, unlink it: both records come back here to label or link by hand, and that pair is never matched automatically again.</p>
+    <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th class="num">Fee</th><th>How</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="unlinked-list" class="small"></div>
   </section>
 
   <section id="graph" class="tab">

@@ -884,8 +884,17 @@ function renderReview() {
         <span class="extra"></span><button class="save" hidden>Save</button></td>
       <td class="small">${detail}<button type="button" class="link ai-ask" data-ask="${esc(it.Key)}" data-ask-q="What is this item, and how should I label it?">Ask the assistant</button></td></tr>`;
   }).join("") || `<tr><td colspan="6" class="muted">Nothing to label.</td></tr>`;
-  $("#links-table tbody").innerHTML = (report.links || []).map((l) => `<tr><td class="small mono">${esc(l.From)}</td><td class="small mono">${esc(l.To)}</td><td>${esc(l.Method)}${l.Method === "manual" ? ` <button class="link" data-unlink="${esc(l.From)}" data-unlink2="${esc(l.To)}">undo</button>` : ""}</td></tr>`).join("")
-    || `<tr><td colspan="3" class="muted">No transfers matched yet.</td></tr>`;
+  // A record as people read it: date, account, amount.
+  const byKey = Object.fromEntries((report.graph || []).map((g) => [g.key, g]));
+  const unm = Object.fromEntries((report.unmatched || []).map((i) => [i.Key, i]));
+  const rec = (k) => { const g = byKey[k]; const i = unm[k]; return g ? `${day(g.t)} ${esc(g.account)} ${amt(g.sats)}` : i ? `${day(i.Time)} ${esc(i.Account)} ${amt(i.Sats)}` : `<span class="mono">${esc(k)}</span>`; };
+  $("#links-table tbody").innerHTML = (report.links || []).map((l) => `<tr><td class="small"><a href="#graph" data-flowpick="${esc(l.From)}">${rec(l.From)}</a></td>
+      <td class="small">${byKey[l.From]?.to ? `${day(byKey[l.From].t)} ${esc(byKey[l.From].to)} ${amt(byKey[l.From].sats)}` : rec(l.To)}</td><td class="num small">${l.FeeSats ? amt(l.FeeSats) : ""}</td><td class="small">${esc(l.Method)}</td>
+      <td>${l.Method === "manual" ? `<button class="link" data-unlink="${esc(l.From)}" data-unlink2="${esc(l.To)}">undo</button>` : `<button class="link" data-autounlink="${esc(l.From)}" data-autounlink2="${esc(l.To)}">Unlink</button>`}</td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">No transfers matched yet.</td></tr>`;
+  $("#unlinked-list").innerHTML = (report.unlinked || []).length
+    ? `<h3>Not to be matched</h3>` + report.unlinked.map((p) => { const [a, b] = p.split(">"); return `<div>${rec(a)} → ${rec(b)} <button class="link small" data-allow="${esc(a)}" data-allow2="${esc(b)}">Allow again</button></div>`; }).join("")
+    : "";
 }
 $("#review-table").addEventListener("change", (e) => {
   if (!e.target.classList.contains("cat")) return;
@@ -919,6 +928,18 @@ $("#review-table").addEventListener("click", async (e) => {
   const cp = $(".cp", tr)?.value;
   if (cp) label.Counterpart = cp;
   try { await post("/api/labels", label); refresh(); } catch (err) { toast(err.message); }
+});
+// Unlink an automatic match, or allow a pair to be matched again.
+document.addEventListener("click", async (e) => {
+  const t = e.target.closest("[data-autounlink],[data-allow]");
+  if (!t) return;
+  const allow = !!t.dataset.allow;
+  try {
+    await post("/api/unlink", { From: t.dataset.autounlink || t.dataset.allow, To: t.dataset.autounlink2 || t.dataset.allow2, Allow: allow });
+    toast(allow ? "This pair can be matched again" : "Unlinked: both records are back in Review");
+    await refresh();
+    if ($("#graph-detail") && !$("#graph-detail").hidden && selected) selectEvent(selected, false);
+  } catch (err) { toast(err.message); }
 });
 $("#links-table").addEventListener("click", async (e) => {
   const a = e.target.dataset.unlink, b = e.target.dataset.unlink2;
@@ -1398,7 +1419,8 @@ function buildDetail(key) {
   if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
   if (e.feeSats) rows.push(["Network fee", `${amt(e.feeSats)}`]);
   if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);
-  if (e.method) rows.push(["Matched by", esc(e.method)]);
+  if (e.method) rows.push(["Matched by", esc(e.method) + (e.toKey && e.method !== "manual" && e.method !== "same transaction"
+    ? ` <button class="link small" data-autounlink="${esc(e.key)}" data-autounlink2="${esc(e.toKey)}">Unlink these</button>` : "")]);
   if (e.txid) rows.push(["Transaction", `<a class="mono small" href="#tx/${esc(e.txid)}">${esc(e.txid)}</a>`]);
   if (e.address) rows.push(["Address", `<a class="mono small" href="#addr/${encodeURIComponent(e.address)}">${esc(e.address)}</a>`]);
   if (e.note) rows.push(["Note", esc(e.note)]);
