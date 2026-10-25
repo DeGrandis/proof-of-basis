@@ -117,6 +117,44 @@ type Label struct {
 	FiatCents   int64     // FMV, proceeds or basis depending on category
 	AcquiredAt  time.Time // GiftIn: donor's acquisition date
 	Note        string
+	// IncomeType says what kind of income it was (see IncomeTypes), for
+	// income labels and for imported income.
+	IncomeType string `json:",omitempty"`
+	// Recipient is who a gift or donation went to.
+	Recipient string `json:",omitempty"`
+}
+
+// IncomeTypes are the kinds of income a tax professional reports in
+// different places, with where they usually go. The professional decides.
+var IncomeTypes = map[string]string{
+	"staking":         "Schedule 1 (other income)",
+	"mining":          "Schedule 1, or Schedule C if mining is a business",
+	"interest":        "Schedule 1 or Schedule B, per the payer's 1099",
+	"rewards":         "often a purchase rebate, not income: ask",
+	"airdrop":         "Schedule 1 (other income)",
+	"self-employment": "Schedule C, with self-employment tax",
+	"wages":           "Form W-2 wages",
+	"routing":         "Schedule 1, or Schedule C if a business",
+	"other":           "ask your tax professional",
+}
+
+// defaultIncomeType guesses the kind of an imported income record from
+// its importer kind and note.
+func defaultIncomeType(e importers.Event) string {
+	n := strings.ToLower(e.Note)
+	switch {
+	case e.Kind == importers.Reward:
+		return "rewards"
+	case strings.Contains(n, "interest"):
+		return "interest"
+	case strings.Contains(n, "staking"), strings.Contains(n, "stake"):
+		return "staking"
+	case strings.Contains(n, "airdrop"):
+		return "airdrop"
+	case strings.Contains(n, "reward"), strings.Contains(n, "cashback"), strings.Contains(n, "earn"):
+		return "rewards"
+	}
+	return "other"
 }
 
 // PriceFunc returns the USD price in cents for 1 BTC on the given day.
@@ -129,6 +167,7 @@ type IncomeRow struct {
 	Cents   int64
 	Kind    string
 	Account string
+	Type    string // see IncomeTypes
 }
 
 // TxInfo is the shape of an on-chain transaction, for display.
@@ -186,7 +225,11 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 			if l := labels[key]; l.Category == IncomeIn && l.FiatCents > 0 {
 				from = "entered by you"
 			}
-			b.income(key, e.Account, e.Time, e.Sats, v, from, string(e.Kind))
+			typ := labels[key].IncomeType
+			if typ == "" {
+				typ = defaultIncomeType(e.Event)
+			}
+			b.income(key, e.Account, e.Time, e.Sats, v, from, string(e.Kind), typ)
 		case importers.Withdrawal, importers.Deposit:
 			it := Item{Key: key, Source: "exchange", Account: e.Account, Time: e.Time, Sats: e.Sats,
 				FeeSats: e.FeeSats, FeeApprox: e.FeeApprox, Address: e.Address, Txid: e.Txid, Kind: string(e.Kind), Note: e.Note, Dir: In}
@@ -293,10 +336,10 @@ func IncomeValue(e importers.Event, l Label) int64 {
 	return e.FiatCents
 }
 
-func (b *builder) income(key, account string, t time.Time, sats, given int64, givenFrom, kind string) {
+func (b *builder) income(key, account string, t time.Time, sats, given int64, givenFrom, kind, typ string) {
 	v := b.fmv(key, t, sats, given, givenFrom)
 	b.op(lots.Op{ID: key, Kind: lots.Acquire, Time: t, Account: account, Sats: sats, Cents: v})
-	b.res.Income = append(b.res.Income, IncomeRow{Key: key, Time: t, Sats: sats, Cents: v, Kind: kind, Account: account})
+	b.res.Income = append(b.res.Income, IncomeRow{Key: key, Time: t, Sats: sats, Cents: v, Kind: kind, Account: account, Type: typ})
 }
 
 // chainLegs splits every wallet transaction into internal transfers
@@ -529,7 +572,7 @@ func (b *builder) lightningItems(evs []lightning.Event, acct string) (withdrawal
 				b.op(lots.Op{ID: key, Kind: lots.Transfer, Time: t, Account: acct, To: acct, FeeSats: e.DebitSats})
 			}
 		case (e.Tag == "routed" || e.Tag == "lease_fee") && e.CreditSats > 0:
-			b.income(key, acct, t, e.CreditSats, 0, "", "routing")
+			b.income(key, acct, t, e.CreditSats, 0, "", "routing", "routing")
 		case e.DebitSats > 0 && strings.HasSuffix(e.Tag, "fee"):
 			b.op(lots.Op{ID: key, Kind: lots.Transfer, Time: t, Account: acct, To: acct, FeeSats: e.DebitSats})
 		case e.CreditSats > 0 || e.DebitSats > 0:
@@ -741,7 +784,11 @@ func (b *builder) applyLabel(it Item, l Label) {
 		op.Sats = it.Sats
 		switch l.Category {
 		case IncomeIn:
-			b.income(it.Key, it.Account, it.Time, it.Sats, l.FiatCents, "entered by you", "income")
+			typ := l.IncomeType
+			if typ == "" {
+				typ = "other"
+			}
+			b.income(it.Key, it.Account, it.Time, it.Sats, l.FiatCents, "entered by you", "income", typ)
 			return
 		case GiftIn:
 			// Carryover basis and holding period from the donor. (US rule for

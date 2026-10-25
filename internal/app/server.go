@@ -107,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/report", s.getReport)
 	mux.HandleFunc("POST /api/labels", s.postLabel)
 	mux.HandleFunc("DELETE /api/labels/{key}", s.deleteLabel)
+	mux.HandleFunc("POST /api/labels/{key}/details", s.postLabelDetails)
 	mux.HandleFunc("POST /api/prices", s.noted("prices", "Imported a price history file", s.postPrices))
 	mux.HandleFunc("GET /api/prices", s.priceInfo)
 	mux.HandleFunc("POST /api/prices/fetch", s.noted("prices", "Updated BTC prices", s.fetchPrices))

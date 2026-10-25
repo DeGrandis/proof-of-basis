@@ -951,6 +951,18 @@ $("#da-list").addEventListener("click", async (e) => {
 function renderTaxes() {
   renderProtected();
   renderForms();
+  const types = report.incomeTypes || {};
+  const incRows = [];
+  for (const y of [...(report.years || [])].reverse()) {
+    for (const [t, v] of Object.entries(y.incomeByType || {}).sort((a, b) => b[1] - a[1])) incRows.push(`<tr><td>${y.year}</td><td>${esc(t)}</td><td class="num">${usd(v)}</td><td class="small">${esc(types[t] || "")}</td></tr>`);
+  }
+  $("#income-types-table tbody").innerHTML = incRows.join("") || `<tr><td colspan="4" class="muted">No income.</td></tr>`;
+  const giftName = { gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", "gift-in": "Gift received" };
+  $("#gifts-table tbody").innerHTML = (report.gifts || []).map((g) => `<tr>
+    <td>${day(g.t)}</td><td>${esc(giftName[g.category] || g.category)}</td><td>${esc(g.recipient || "")}</td><td class="num">${btc(g.sats)}</td>
+    <td class="num">${usd(g.value)}</td><td class="num">${usd(g.basis)}</td><td>${esc(g.term || "")}</td><td class="num">${g.deduction ? usd(g.deduction) : ""}</td>
+    <td class="small">${g.flags.map((f) => `<div class="warn">${esc(f)}</div>`).join("")} <a href="#graph" data-flowpick="${esc(g.key)}">open</a></td></tr>`).join("")
+    || `<tr><td colspan="9" class="muted">None.</td></tr>`;
   const sales = {};
   // A sale can use several lots; count each sale once.
   const seenSale = new Set();
@@ -966,7 +978,8 @@ function renderTaxes() {
     <td class="num">${y.carryInShort || y.carryInLong ? usd(y.carryInShort + y.carryInLong) : '<span class="muted">–</span>'}</td>
     <td class="num">${y.lossDeducted ? usd(y.lossDeducted) : '<span class="muted">–</span>'}</td>
     <td class="num">${y.carryOutShort || y.carryOutLong ? `<span title="${usd(y.carryOutShort)} short-term, ${usd(y.carryOutLong)} long-term">${usd(y.carryOutShort + y.carryOutLong)}</span>` : '<span class="muted">–</span>'}</td>
-    <td class="num">${y.estimatedTax < 0 ? `<span class="pos" title="Losses lower this year's tax">saves ${usd(-y.estimatedTax)}</span>` : usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${amt(y.missingBasisSats)} sold with no known basis">!</span>` : ""}</td>
+    <td class="num">${y.estimatedTax < 0 ? `<span class="pos" title="Losses lower this year's tax">saves ${usd(-y.estimatedTax)}</span>` : usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${amt(y.missingBasisSats)} sold with no known basis">!</span>` : ""}</td>    <td title="${esc([...(y.digitalAsset?.reasons || []), ...(y.digitalAsset?.ask || [])].join("; ") || "No sales, spends, income or fees paid in BTC")}">${esc(y.digitalAsset?.answer || "No")}${y.digitalAsset?.ask?.length ? ' <span class="warn">?</span>' : ""}</td>
+
     <td>${sales[y.year] ? `<a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a> <span class="small muted">${sales[y.year]} sales</span>` : `<span class="small muted" title="Form 8949 lists sales and spends. This year only has income, which is reported elsewhere.">No sales to report</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
   $("#disposals-table tbody").innerHTML = (report.disposals || []).map((d) => `<tr>
     <td>${day(d.Disposed)}</td><td>${d.Missing ? '<span class="warn">unknown</span>' : day(d.Acquired)}</td><td>${esc(d.Account)}</td>
@@ -1497,6 +1510,16 @@ function actionsFor(e) {
         <button class="lb-value primary" data-cat="${esc(e.label)}">Save value</button>`);
     }
   }
+  if (e.kind === "income" || e.label === "income") {
+    // What kind of income, so it lands on the right form.
+    const types = report.incomeTypes || {};
+    parts.push(`<span>Type:</span><select class="lb-itype">${Object.keys(types).map((t) => `<option value="${t}"${t === e.incomeType ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>
+      <span class="small muted">${esc(types[e.incomeType] || "")}</span>`);
+  }
+  if (["gift", "donation", "gift-in"].includes(e.label)) {
+    parts.push(`<span>${e.label === "gift-in" ? "From" : e.label === "donation" ? "Charity" : "To"}:</span>
+      <input class="lb-recipient" size="18" value="${esc(e.recipient || "")}" placeholder="Name"><button class="lb-recipient-save">Save</button>`);
+  }
   if (e.kind === "income" && e.key.startsWith("ex:")) {
     // Imported income: its value (the basis of these coins) can be corrected.
     parts.push(`<span>Value received${e.label ? " (you set it)" : ""}:</span>
@@ -1510,7 +1533,12 @@ function actionsFor(e) {
   }
   return parts.length ? `<div class="label-box" data-key="${esc(e.key)}">${parts.join('<span class="spacer"></span>')}</div>` : "";
 }
-document.addEventListener("change", (e) => {
+document.addEventListener("change", async (e) => {
+  if (e.target.classList.contains("lb-itype")) {
+    const key = e.target.closest(".label-box").dataset.key;
+    try { await post(`/api/labels/${encodeURIComponent(key)}/details`, { IncomeType: e.target.value }); toast("Income type saved"); await refresh(); if ((report.graph || []).some((g) => g.key === key)) selectEvent(key, false); } catch (err) { toast(err.message); }
+    return;
+  }
   if (!e.target.classList.contains("lb-cat")) return;
   const box = e.target.closest(".label-box"), cat = e.target.value, amt = $(".lb-amt", box);
   amt.hidden = !(MARKET_VALUE[cat] || needsAmount[cat]);
@@ -1520,10 +1548,13 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("click", async (e) => {
   const t = e.target, box = t.closest(".label-box");
-  if (!box || !(t.classList.contains("lb-save") || t.classList.contains("lb-value") || t.classList.contains("lb-unlabel") || t.classList.contains("lb-protect"))) return;
+  if (!box || !(t.classList.contains("lb-save") || t.classList.contains("lb-value") || t.classList.contains("lb-unlabel") || t.classList.contains("lb-protect") || t.classList.contains("lb-recipient-save"))) return;
   const key = box.dataset.key;
   try {
-    if (t.classList.contains("lb-value")) {
+    if (t.classList.contains("lb-recipient-save")) {
+      await post(`/api/labels/${encodeURIComponent(key)}/details`, { Recipient: $(".lb-recipient", box).value });
+      toast("Saved");
+    } else if (t.classList.contains("lb-value")) {
       const amt = Number($(".lb-val", box).value.replace(/[$,\s]/g, ""));
       if (!(amt > 0)) { toast("Enter the value in USD"); return; }
       await post("/api/labels", { Key: key, Category: t.dataset.cat, FiatCents: Math.round(amt * 100) });

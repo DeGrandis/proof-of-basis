@@ -209,8 +209,14 @@
 
   <section id="taxes" class="tab">
     <h2>By tax year</h2>
-    <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num" title="Capital loss carried in from earlier years">Loss carried in</th><th class="num" title="Net capital loss deducted from other income this year">Loss deducted</th><th class="num" title="Capital loss carried to next year">Carried out</th><th class="num">Impact estimate</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num" title="Capital loss carried in from earlier years">Loss carried in</th><th class="num" title="Net capital loss deducted from other income this year">Loss deducted</th><th class="num" title="Capital loss carried to next year">Carried out</th><th class="num">Impact estimate</th><th title="Form 1040 asks whether you received, sold, exchanged or otherwise disposed of a digital asset">1040 question</th><th></th></tr></thead><tbody></tbody></table></div>
     <p class="small muted">A rough impact at the rates and filing status in Settings, to see what something would do before you do it. It is not your return: your tax professional prepares that. Net losses are deducted up to the yearly limit and the rest is carried forward.</p>
+    <h2>Income by type</h2>
+    <p class="small muted">Income is reported in different places depending on what it was. Set a record's type from its details in Flow; where it usually goes is a starting point for your tax professional.</p>
+    <div class="scroll"><table id="income-types-table"><thead><tr><th>Year</th><th>Type</th><th class="num">Value</th><th>Usually reported on</th></tr></thead><tbody></tbody></table></div>
+    <h2>Gifts, donations and losses</h2>
+    <p class="small muted">BTC you gave away, donated, lost, or received as a gift, with what your tax professional will ask for. Add a recipient from the record's details in Flow.</p>
+    <div class="scroll"><table id="gifts-table"><thead><tr><th>Date</th><th>What</th><th>To / from</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">Value</th><th class="num">Basis</th><th>Held</th><th class="num">Deduction</th><th>To check</th></tr></thead><tbody></tbody></table></div>
     <h2>Form 8949 and 1099-DA</h2>
     <div class="card" id="forms-card">
       <div class="row"><label>Tax year <select id="forms-year"></select></label><span class="spacer"></span><span id="forms-downloads" class="small"></span></div>

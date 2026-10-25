@@ -33,6 +33,9 @@ type YearSummary struct {
 	// EstimatedTax is a rough impact at the user's own rates, not a
 	// return: negative when the year's losses lower tax.
 	EstimatedTax int64 `json:"estimatedTax"`
+	// Income by kind (staking, interest...), and the Form 1040 answer.
+	IncomeByType map[string]int64     `json:"incomeByType,omitempty"`
+	DigitalAsset DigitalAssetQuestion `json:"digitalAsset"`
 }
 
 type AccountView struct {
@@ -78,6 +81,8 @@ type GraphEvent struct {
 	// ValueSource says where Cents came from: entered, the export's, or a
 	// named day's price.
 	ValueSource string `json:"valueSource,omitempty"`
+	IncomeType  string `json:"incomeType,omitempty"`
+	Recipient   string `json:"recipient,omitempty"`
 }
 
 type Report struct {
@@ -99,6 +104,9 @@ type Report struct {
 	History    []HistoryPoint    `json:"history"`
 	Lightning  *LightningView    `json:"lightning,omitempty"`
 	Dips       []DipView         `json:"dips"`
+	Gifts      []GiftRow         `json:"gifts"`
+	// IncomeTypes names each income type and where it usually goes.
+	IncomeTypes map[string]string `json:"incomeTypes"`
 }
 
 // DipView is the first record that took an account below zero. Key is the
@@ -306,6 +314,8 @@ func (s *Server) buildReport() (*Report, error) {
 	}
 
 	r.Years = summarize(res.Disposals, tr.Income, set, time.Now().In(loc(set)).Year())
+	documentYears(r, p, res)
+	r.IncomeTypes = trace.IncomeTypes
 
 	// Accounts: engine balance and basis, plus chain balance for wallets.
 	accts, err := s.st.Accounts()
@@ -388,6 +398,14 @@ func (s *Server) buildReport() (*Report, error) {
 	for i := range r.Graph {
 		r.Graph[i].Protected = p.prot[r.Graph[i].Key]
 		r.Graph[i].ValueSource = tr.ValueSource[r.Graph[i].Key]
+		r.Graph[i].Recipient = labels[r.Graph[i].Key].Recipient
+	}
+	incomeType := map[string]string{}
+	for _, in := range tr.Income {
+		incomeType[in.Key] = in.Type
+	}
+	for i := range r.Graph {
+		r.Graph[i].IncomeType = incomeType[r.Graph[i].Key]
 	}
 	r.History = history(tr.Ops, prices.lookup)
 	r.fillNil()
@@ -456,7 +474,7 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, 
 			// The value counted: the user's, else the export's, else the
 			// day's price. The page shows it and offers to change it.
 			ev.Cents = incomeCents[ev.Key]
-			if l, ok := labels[ev.Key]; ok && l.Category == trace.IncomeIn {
+			if l, ok := labels[ev.Key]; ok && l.Category == trace.IncomeIn && l.FiatCents > 0 {
 				ev.Label = string(trace.IncomeIn)
 			}
 		}
