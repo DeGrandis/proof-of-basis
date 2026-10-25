@@ -202,7 +202,17 @@ function renderOverview() {
   const dips = (r.dips || []).map((d) => {
     const g = (r.graph || []).find((x) => x.key === d.key);
     const what = !g ? d.key : g.kind === "transfer" && g.account === d.account ? `moved ${amt(g.sats)} to ${g.to}` : `${KIND_NAMES[g.label || g.kind] || g.kind} ${amt(g.sats)}`;
-    return `<div class="warn"><b>${esc(d.account)} first goes below zero on ${day(d.t)}</b>, at ${esc(what)} (balance then ${amt(d.balanceSats)}). Coins it used up to then were never recorded coming in: look for a missing or misread record just before. <a href="#graph" data-flowpick="${esc(d.key)}">Show it on Flow</a></div>`;
+    const out = d.beforeSats - d.balanceSats;
+    let why = `It had ${amt(d.beforeSats)} counted coming in before this, and this took ${amt(out)}.`;
+    if (d.chainSats != null) {
+      why += ` On chain it really held ${amt(d.chainSats)} just before.`;
+      if (d.chainSats < out) why += ` That isn't enough either, so this send also spent coins from an address none of your wallets cover: open it, and add the inputs with no wallet name if they're yours.`;
+      else if (d.chainSats > d.beforeSats) why += ` So ${amt(d.chainSats - d.beforeSats)} that reached it on chain was never counted in.`;
+    }
+    if (d.uncounted.length) why += ` ${d.uncounted.length} incoming record${d.uncounted.length === 1 ? "" : "s"} for it up to then (${amt(d.uncountedSats)}) ${d.uncounted.length === 1 ? "is" : "are"} still in Review and count${d.uncounted.length === 1 ? "s" : ""} for nothing until labeled: <a href="#review">label ${d.uncounted.length === 1 ? "it" : "them"}</a>.`;
+    else if (d.chainSats != null && d.chainSats > d.beforeSats) why += ` None are waiting in Review, so check how its earlier incoming records are labeled or linked on Flow.`;
+    else if (d.chainSats == null) why += ` Look for a purchase, deposit or conversion into it that is missing or misread just before.`;
+    return `<div class="warn"><b>${esc(d.account)} first goes below zero on ${day(d.t)}</b>, at ${esc(what)} (balance then ${amt(d.balanceSats)}). ${why} <a href="#graph" data-flowpick="${esc(d.key)}">Show it on Flow</a></div>`;
   }).join("");
   $("#warnings").innerHTML = (r.warnings || []).length || nLabel || dips
     ? `<h2>Warnings</h2><div class="card small">${dips}${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";

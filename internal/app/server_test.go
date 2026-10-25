@@ -3,6 +3,7 @@ package app
 import (
 	"btctax/internal/demo"
 	"btctax/internal/importers"
+	"btctax/internal/scan"
 	"bytes"
 	"encoding/json"
 	"mime/multipart"
@@ -421,5 +422,46 @@ func TestReportNamesFirstDip(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("dip key %q is not in the graph", d.Key)
+	}
+}
+
+// A wallet send whose inputs are all the wallet's own, but one coin it spent
+// arrived in a receipt still waiting in Review: the dip says what the
+// wallet really held on chain and which incoming record is uncounted.
+// Invented data.
+func TestDipExplainsUncountedReceipt(t *testing.T) {
+	st, h := newTest(t)
+	cb, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	og, _ := st.AddWallet("OG", "xpub-placeholder", "p2pkh", 20)
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	st.AddImport(cb, "coinbase", "c.csv", "c", []importers.Event{
+		{Kind: importers.Buy, Time: at("2017-06-01"), Sats: 6_962_891, FiatCents: 200_00, UID: "c1"},
+		{Kind: importers.Withdrawal, Time: at("2017-06-02"), Sats: 6_962_891, UID: "c2"},
+	}, nil)
+	in := func(txid string, sats int64, day string) scan.Tx {
+		return scan.Tx{Txid: txid, Height: 100, Time: at(day), Inputs: []scan.Input{{PrevTxid: "elsewhere-" + txid}},
+			Outputs: []scan.Output{{Vout: 0, Address: "og-" + txid, Sats: sats, Ours: true}}, RecvSats: sats}
+	}
+	spend := scan.Tx{Txid: "cc", Height: 300, Time: at("2017-12-31"),
+		Inputs:   []scan.Input{{PrevTxid: "aa", Sats: 6_962_891, Ours: true}, {PrevTxid: "bb", Sats: 5_700_000, Ours: true}},
+		Outputs:  []scan.Output{{Vout: 0, Address: "x1", Sats: 10_000}, {Vout: 1, Address: "gone", Sats: 12_625_585}},
+		SentSats: 12_662_891, FeeSats: 27_306}
+	st.SaveScan(og, &scan.Result{Txs: []scan.Tx{in("aa", 6_962_891, "2017-06-02"), in("bb", 5_700_000, "2017-09-01"), spend}})
+	call(h, "POST", "/api/labels", `{"Key":"tx:cc:0","Category":"spend"}`)
+	call(h, "POST", "/api/labels", `{"Key":"tx:cc:1","Category":"lost"}`)
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	if len(rep.Dips) != 1 {
+		t.Fatalf("dips %+v", rep.Dips)
+	}
+	d := rep.Dips[0]
+	if d.Account != "OG" || d.Key != "tx:cc:1" || d.Balance != -5_700_000 || d.Before != 6_925_585 {
+		t.Errorf("dip %+v", d)
+	}
+	if d.Chain == nil || *d.Chain != 12_662_891 {
+		t.Errorf("chain before %v", d.Chain)
+	}
+	if len(d.Uncounted) != 1 || d.Uncounted[0] != "tx:bb:0" || d.UncountedSats != 5_700_000 {
+		t.Errorf("uncounted %v %d", d.Uncounted, d.UncountedSats)
 	}
 }

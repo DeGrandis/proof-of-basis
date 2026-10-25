@@ -128,7 +128,8 @@ type Dip struct {
 	Account string
 	OpID    string
 	Time    time.Time
-	Balance int64 // right after the operation
+	Before  int64 // the balance just before the operation
+	Balance int64 // right after it
 }
 
 type engine struct {
@@ -168,6 +169,7 @@ func Run(ops []Op, cfg Config) (*Result, error) {
 		if !e.perAcct && !op.Time.Before(cut) {
 			e.switchToPerAccount()
 		}
+		before := e.res.Balances[op.Account]
 		switch op.Kind {
 		case Acquire:
 			e.acquire(op)
@@ -182,7 +184,7 @@ func Run(ops []Op, cfg Config) (*Result, error) {
 		}
 		if b := e.res.Balances[op.Account]; b < 0 && !dipped[op.Account] {
 			dipped[op.Account] = true
-			e.res.Dips = append(e.res.Dips, Dip{op.Account, op.ID, op.Time, b})
+			e.res.Dips = append(e.res.Dips, Dip{op.Account, op.ID, op.Time, before, b})
 		}
 	}
 	if !e.perAcct && !cut.IsZero() && time.Now().After(cut) {

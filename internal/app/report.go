@@ -89,12 +89,19 @@ type Report struct {
 }
 
 // DipView is the first record that took an account below zero. Key is the
-// record's key in Graph, so the page can open it.
+// record's key in Graph, so the page can open it. For a wallet, Chain is
+// what it really held just before, to set against the Before it had been
+// credited; Uncounted are its incoming records up to then still waiting
+// in Review, which credit nothing until labeled.
 type DipView struct {
-	Account string `json:"account"`
-	T       int64  `json:"t"`
-	Key     string `json:"key"`
-	Balance int64  `json:"balanceSats"`
+	Account       string   `json:"account"`
+	T             int64    `json:"t"`
+	Key           string   `json:"key"`
+	Before        int64    `json:"beforeSats"`
+	Balance       int64    `json:"balanceSats"`
+	Chain         *int64   `json:"chainSats,omitempty"`
+	Uncounted     []string `json:"uncounted"`
+	UncountedSats int64    `json:"uncountedSats"`
 }
 
 // LightningView is the node's state for the Overview and Lightning tab.
@@ -167,6 +174,7 @@ type pipeline struct {
 	cfg    lots.Config
 	prot   map[string]bool
 	ln     []lightning.Event
+	wal    []trace.WalletTxs
 }
 
 func (s *Server) pipeline() (*pipeline, error) {
@@ -205,7 +213,7 @@ func (s *Server) pipeline() (*pipeline, error) {
 		},
 		Protected: func(id string) bool { return prot[id] },
 	}
-	return &pipeline{ex, labels, prices, tr, set, cfg, prot, lnEvents}, nil
+	return &pipeline{ex, labels, prices, tr, set, cfg, prot, lnEvents, wal}, nil
 }
 
 func (s *Server) lnAccount() string { return s.st.Setting("clnName", "Lightning node") }
@@ -261,7 +269,26 @@ func (s *Server) buildReport() (*Report, error) {
 	for _, d := range res.Dips {
 		// A linked transfer's op is "from>to"; the graph keys it by its outflow.
 		key, _, _ := strings.Cut(d.OpID, ">")
-		r.Dips = append(r.Dips, DipView{d.Account, d.Time.Unix(), key, d.Balance})
+		dv := DipView{Account: d.Account, T: d.Time.Unix(), Key: key, Before: d.Before, Balance: d.Balance, Uncounted: []string{}}
+		for _, w := range p.wal {
+			if w.Account != d.Account {
+				continue
+			}
+			var held int64
+			for _, t := range w.Txs {
+				if t.Height > 0 && t.Time.Before(d.Time) {
+					held += t.Net()
+				}
+			}
+			dv.Chain = &held
+		}
+		for _, it := range tr.Unmatched {
+			if it.Account == d.Account && it.Dir == trace.In && !it.Time.After(d.Time) {
+				dv.Uncounted = append(dv.Uncounted, it.Key)
+				dv.UncountedSats += it.Sats
+			}
+		}
+		r.Dips = append(r.Dips, dv)
 	}
 
 	// Per-year summary.
