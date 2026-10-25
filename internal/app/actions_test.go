@@ -361,3 +361,39 @@ func TestDescriptionTiersSupersede(t *testing.T) {
 		}
 	}
 }
+
+func TestThoseNarrowed(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, _ := srv.buildReport()
+	var shown []string
+	under := 0
+	for _, it := range rep.Unmatched {
+		if it.Dir == "out" && len(shown) < 20 {
+			shown = append(shown, it.Key)
+			if it.Value <= 1000 {
+				under++
+			}
+		}
+	}
+	tb := &toolbox{s: srv, rep: rep, chatID: 4, refersBack: true, historyKeys: shown}
+	// "Of those, label the ones under $10": only those, not all 20.
+	lk, _ := tb.run("label_items", map[string]any{"match": map[string]any{"max_usd": 10.0}, "category": "spend"})
+	if lk.Error != "" {
+		t.Fatal(lk.Error)
+	}
+	var cs []change
+	json.Unmarshal(lastAction(t, st).Changes, &cs)
+	if len(cs) != under {
+		t.Errorf("labeled %d, want %d of the shown 20", len(cs), under)
+	}
+	// "Label those": all of them.
+	tb.run("label_items", map[string]any{"match": map[string]any{}, "category": "spend"})
+	json.Unmarshal(lastAction(t, st).Changes, &cs)
+	if len(cs) != len(shown) {
+		t.Errorf("labeled %d, want all %d", len(cs), len(shown))
+	}
+}

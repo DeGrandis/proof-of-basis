@@ -571,9 +571,27 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 			}
 		}
 		// "Label these": the list the previous answer showed, exactly.
-		if _, ok := args["match"].(map[string]any); ok && len(raw) == 0 && tb.refersBack {
+		if m, ok := args["match"].(map[string]any); ok && len(raw) == 0 && tb.refersBack {
 			if items := tb.historyItems(argStr(args, "category")); items != nil {
-				raw = items // exactly the rows that answer showed
+				// Exactly the rows that answer showed, narrowed by the
+				// model's own filters ("of those, the ones under $10").
+				if picked, err := tb.matchReview(m); err == nil {
+					in := map[string]bool{}
+					for _, it := range picked {
+						in[it.Key] = true
+					}
+					var both []any
+					for _, x := range items {
+						if in[x.(map[string]any)["id"].(string)] {
+							both = append(both, x)
+						}
+					}
+					if len(both) == 0 {
+						return "", true, errors.New("none of the items in your previous answer match those filters")
+					}
+					items = both
+				}
+				raw = items
 			} else if tb.historyMatch != "" {
 				var match map[string]any
 				json.Unmarshal([]byte(tb.historyMatch), &match)
