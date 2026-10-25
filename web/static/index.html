@@ -211,6 +211,19 @@
     <h2>By tax year</h2>
     <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num" title="Capital loss carried in from earlier years">Loss carried in</th><th class="num" title="Net capital loss deducted from other income this year">Loss deducted</th><th class="num" title="Capital loss carried to next year">Carried out</th><th class="num">Impact estimate</th><th></th></tr></thead><tbody></tbody></table></div>
     <p class="small muted">A rough impact at the rates and filing status in Settings, to see what something would do before you do it. It is not your return: your tax professional prepares that. Net losses are deducted up to the yearly limit and the rest is carried forward.</p>
+    <h2>Form 8949 and 1099-DA</h2>
+    <div class="card" id="forms-card">
+      <div class="row"><label>Tax year <select id="forms-year"></select></label><span class="spacer"></span><span id="forms-downloads" class="small"></span></div>
+      <p class="small muted">Each sale or spend as a Form 8949 line, in the box the IRS asks for: C and F before 2025; from 2025, G/J when your exchange's 1099-DA reported basis, H/K when it didn't, I/L for sales no 1099-DA covers (your own wallets, Lightning). Import each exchange's 1099-DA to check every line against it: differences get the code and column (g) adjustment that keep the gain your records support.</p>
+      <form id="da-form" class="row">
+        <label>1099-DA for <select name="account" id="da-account"></select></label>
+        <input type="file" name="file" accept=".csv,text/csv" required>
+        <button type="submit">Import 1099-DA</button>
+      </form>
+      <div id="da-list" class="small"></div>
+      <div id="forms-summary" class="small"></div>
+      <div class="scroll"><table id="forms-table"><thead><tr><th>Box</th><th>Sold</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">(d) Proceeds</th><th class="num">(e) Basis</th><th>(f)</th><th class="num">(g)</th><th class="num">(h) Gain</th><th>1099-DA check</th></tr></thead><tbody></tbody></table></div>
+    </div>
     <h2>Protected purchases</h2>
     <p class="small muted">Coins from these are sold last: your method skips them until nothing else is left in that account. Protect a purchase from its details in Flow.</p>
     <div class="scroll"><table id="protected-table"><thead><tr><th>Acquired</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th></th></tr></thead><tbody></tbody></table></div>

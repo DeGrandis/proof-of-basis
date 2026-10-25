@@ -900,10 +900,66 @@ $("#protected-table").addEventListener("click", async (e) => {
   if (k) { await post("/api/protect", { key: k, on: false }); refresh(); }
 });
 
+// Form 8949 lines for one year, checked against imported 1099-DAs.
+let formsYear = 0;
+async function renderForms() {
+  const years = [...new Set((report.disposals || []).map((d) => Number(day(d.Disposed).slice(0, 4))))].sort((a, b) => b - a);
+  const sel = $("#forms-year");
+  if (!years.includes(formsYear)) formsYear = years[0] || new Date().getFullYear();
+  sel.innerHTML = (years.length ? years : [formsYear]).map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
+  const exch = (report.accounts || []).filter((a) => a.kind === "exchange");
+  $("#da-account").innerHTML = exch.map((a) => `<option>${esc(a.name)}</option>`).join("") || `<option value="">No exchange accounts</option>`;
+  let f;
+  try { f = await api(`/api/forms?year=${formsYear}`); } catch (e) { $("#forms-summary").textContent = e.message; return; }
+  const boxes = Object.keys(f.boxes).sort();
+  $("#forms-downloads").innerHTML = f.rows.length
+    ? `Download: <a href="/api/export/8949.csv?year=${f.year}">all lines</a>` + boxes.map((b) => ` · <a href="/api/export/8949.csv?year=${f.year}&box=${b}">box ${b}</a> (${f.boxes[b]})`).join("")
+      + (f.forms.length || f.year >= 2025 ? ` · <a href="/api/export/1099da-reconciliation.csv?year=${f.year}">1099-DA reconciliation</a>` : "")
+    : "";
+  $("#da-list").innerHTML = f.forms.length
+    ? "1099-DAs for " + f.year + ": " + f.forms.map((x) => `${esc(x.account)} <span class="muted">(${esc(x.filename)})</span> <button class="link small da-del" data-id="${x.id}">Remove</button>`).join(" · ")
+    : f.year >= 2025 ? `<span class="muted">No 1099-DA imported for ${f.year} yet. Exchange sales are assumed to be reported without basis (H/K) until one is.</span>` : "";
+  $("#forms-summary").innerHTML = f.issues
+    ? `<p class="warn">${f.issues} line${f.issues === 1 ? "" : "s"} to look at: differences from a 1099-DA, sales a 1099-DA should cover but doesn't, 1099-DA lines with no sale, or coins with no known purchase.</p>`
+    : f.rows.length ? `<p class="pos">Every line is accounted for.</p>` : `<p class="muted">No sales or spends in ${f.year}.</p>`;
+  const ok = (r) => r.status === "matches the 1099-DA" || r.status === "before 1099-DA reporting" || r.status === "not a broker account: no 1099-DA expected";
+  $("#forms-table tbody").innerHTML = f.rows.map((r) => `<tr>
+      <td><b>${esc(r.box)}</b></td><td>${esc(r.sold)}</td><td>${esc(r.account)}</td><td class="num">${btc(r.sats)}</td>
+      <td class="num">${usd(r.proceeds)}</td><td class="num">${usd(r.basis)}</td><td>${esc(r.code)}</td><td class="num">${r.adjustment ? usd(r.adjustment) : ""}</td>
+      <td class="num">${signed(r.gain)}</td>
+      <td class="small${ok(r) && !r.note ? " muted" : " warn"}">${esc(r.status)}${r.note ? `<br>${esc(r.note)}` : ""} <a href="#graph" data-flowpick="${esc(r.record)}">open</a></td></tr>`).join("")
+    + f.daOnly.map((d) => `<tr><td></td><td>${day(d.row.sold)}</td><td>${esc(d.account)}</td><td class="num">${btc(d.row.sats)}</td><td class="num">${usd(d.row.proceeds)}</td>
+      <td class="num">${d.row.hasBasis ? usd(d.row.basis) : "not reported"}</td><td></td><td></td><td></td><td class="small warn">Only on the 1099-DA. ${esc(d.note)}</td></tr>`).join("")
+    || `<tr><td colspan="10" class="muted">None.</td></tr>`;
+}
+$("#forms-year").addEventListener("change", (e) => { formsYear = Number(e.target.value); renderForms(); });
+$("#da-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const r = await api("/api/1099da", { method: "POST", body: new FormData(e.target) });
+    toast(`Imported ${r.rows} Bitcoin line${r.rows === 1 ? "" : "s"}` + (r.warnings?.length ? `, ${r.warnings.length} skipped` : ""));
+    e.target.reset();
+    renderForms();
+  } catch (err) { toast(err.message); }
+});
+$("#da-list").addEventListener("click", async (e) => {
+  const id = e.target.closest(".da-del")?.dataset.id;
+  if (!id) return;
+  try { await api(`/api/1099da/${id}`, { method: "DELETE" }); renderForms(); } catch (err) { toast(err.message); }
+});
+
 function renderTaxes() {
   renderProtected();
+  renderForms();
   const sales = {};
-  for (const d of report.disposals || []) { const yr = Number(day(d.Disposed).slice(0, 4)); sales[yr] = (sales[yr] || 0) + 1; }
+  // A sale can use several lots; count each sale once.
+  const seenSale = new Set();
+  for (const d of report.disposals || []) {
+    if (seenSale.has(d.OpID)) continue;
+    seenSale.add(d.OpID);
+    const yr = Number(day(d.Disposed).slice(0, 4));
+    sales[yr] = (sales[yr] || 0) + 1;
+  }
   $("#years-table tbody").innerHTML = (report.years || []).map((y) => `<tr><td>${y.year}</td>
     <td class="num">${signed(y.shortProceeds - y.shortBasis)}</td><td class="num">${signed(y.longProceeds - y.longBasis)}</td>
     <td class="num">${usd(y.income)}</td>

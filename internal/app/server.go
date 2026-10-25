@@ -4,7 +4,6 @@ package app
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -112,6 +111,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/prices", s.priceInfo)
 	mux.HandleFunc("POST /api/prices/fetch", s.noted("prices", "Updated BTC prices", s.fetchPrices))
 	mux.HandleFunc("GET /api/export/8949.csv", s.export8949)
+	mux.HandleFunc("GET /api/export/1099da-reconciliation.csv", s.exportReconciliation)
+	mux.HandleFunc("GET /api/forms", s.getForms)
+	mux.HandleFunc("GET /api/1099da", s.list1099DA)
+	mux.HandleFunc("POST /api/1099da", s.noted("import", "Imported a Form 1099-DA", s.post1099DA))
+	mux.HandleFunc("DELETE /api/1099da/{id}", s.noted("import", "Removed a Form 1099-DA", s.delete1099DA))
 	mux.HandleFunc("POST /api/wipe", s.wipe)
 	mux.HandleFunc("POST /api/whatif", s.whatIf)
 	mux.HandleFunc("POST /api/protect", s.protect)
@@ -1002,42 +1006,6 @@ func (s *Server) postPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]int{"days": len(out)})
-}
-
-// export8949 writes a Form 8949-style CSV for one tax year.
-func (s *Server) export8949(w http.ResponseWriter, r *http.Request) {
-	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
-	rep, err := s.buildReport()
-	if err != nil {
-		fail(w, 500, err)
-		return
-	}
-	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="form8949-%d.csv"`, year))
-	cw := csv.NewWriter(w)
-	cw.Write([]string{"Description", "Date acquired", "Date sold", "Proceeds", "Cost basis", "Gain or loss", "Term", "Account", "Source lot", "Note"})
-	money := func(c int64) string {
-		sign := ""
-		if c < 0 {
-			sign, c = "-", -c
-		}
-		return fmt.Sprintf("%s%d.%02d", sign, c/100, c%100)
-	}
-	for _, d := range rep.Disposals {
-		if d.Disposed.Year() != year {
-			continue
-		}
-		term, acq, note := "Short", d.Acquired.Format("01/02/2006"), ""
-		if d.LongTerm {
-			term = "Long"
-		}
-		if d.Missing {
-			acq, note = "VARIOUS", "basis unknown: missing records"
-		}
-		cw.Write([]string{fmt.Sprintf("%s BTC", satsStr(d.Sats)), acq, d.Disposed.Format("01/02/2006"),
-			money(d.Proceeds), money(d.Basis), money(d.Gain()), term, d.Account, d.OriginID, note})
-	}
-	cw.Flush()
 }
 
 func satsStr(s int64) string { return fmt.Sprintf("%d.%08d", s/100_000_000, s%100_000_000) }
