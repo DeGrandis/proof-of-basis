@@ -1,8 +1,15 @@
 # btctax
 
-A self-hosted Bitcoin tax calculator. It reads your exchange CSV exports and
-your wallets' extended public keys, traces coins from exchange to
-self-custody and back, and estimates realized gains, losses and tax.
+A self-hosted Bitcoin cost-basis tracker. It reads your exchange CSV exports
+and your wallets' extended public keys, traces coins from exchange to
+self-custody and back, and works out realized gains, losses and income.
+
+It untangles a messy history so that when you sell or spend, the
+documentation is one download away: a package for your tax professional with
+Form 8949 lines, a check against your exchanges' Forms 1099-DA, where every
+coin came from, and the proof behind each number. It shows the impact of a
+sale before you make it and records which coins you chose. It does not
+prepare or file returns; your tax professional does that.
 
 - Talks only to **your own Fulcrum (Electrum) server**. No price APIs, no
   telemetry, no third-party assets. AI is optional and off by default: it
@@ -31,7 +38,9 @@ Settings > Assistant connects a model running on your own
 [Ollama](https://ollama.com) server. A chat button then appears on every
 page. It knows which page you're on and can look things up (transactions,
 tax years, accounts, Review items, prices, a what-if sale) with read-only
-tools; it can't change anything. Your data goes only to the Ollama address
+tools. It can also propose changes (labels, transfer links, protecting a
+purchase, correcting a value), which happen only when you press Apply, and
+can be undone from Activity. Your data goes only to the Ollama address
 you enter. Chats are saved in the app's database, included in backups and
 removed by Wipe; prompts are never written to the log.
 
@@ -77,10 +86,12 @@ automatically when it is served over HTTPS.
 |---|---|
 | Wallets | xpub/ypub/zpub (and testnet forms) or an output descriptor: `pkh`, `wpkh`, `sh(wpkh)`, `tr(KEY)`, `wsh`/`sh(wsh)`/`sh` with `multi`/`sortedmulti`, `<0;1>` paths, checksum verified. Gap-limit scan via Fulcrum, TLS cert pinned on first use |
 | Imports | Coinbase (incl. Card Spend as a disposal and converts into BTC), River, Strike (reversed transactions netted out), Fold (metadata and disclaimer rows skipped), auto-detected. Each row gets a stable ID, so importing an overlapping or longer export never duplicates rows |
-| Tracing | Exchange withdrawal to wallet, wallet to exchange deposit, wallet to wallet, exchange to exchange; by txid, then address, then unique amount+time |
+| Tracing | Exchange withdrawal to wallet, wallet to exchange deposit, wallet to wallet, exchange to exchange; by txid, then address (where the amount fits), then a unique amount and time, then an amount short by a network fee the export folds in or gives only in USD; exchange sends that confirmed up to two weeks late. A wrong automatic match can be unlinked |
 | Labeling | Spend, sold, gift, donation, lost, income, gift received, P2P purchase, refund, untracked wallet, manual match |
-| Basis | FIFO, LIFO, specific lot; universal pool before 2025, per wallet from 1 Jan 2025 (Rev. Proc. 2024-28); network fee on own transfers carried into basis or treated as a disposal |
-| Output | Per-year short/long gains, income, estimated tax at your rates, Form 8949-style CSV, flow-of-funds graph |
+| Basis | FIFO, LIFO, specific lot; universal pool before 2025, per wallet from 1 Jan 2025 (Rev. Proc. 2024-28), with the split listed, assignable per purchase and confirmed as a dated record; network fee on own transfers treated as a disposal (IRS FAQs 81, 97) or carried into basis; tax years and holding periods in your time zone |
+| Planning | Plan a sale or spend: the coins it would use, gain by term, days until short-term lots turn long-term, and the tax impact; record which coins you chose before the sale (IRS FAQ 82), applied when the sale arrives |
+| Documents | Per tax year: Form 8949 lines in the right box (C/F; G-L for digital assets from 2025) with codes and column (g) adjustments from your exchanges' imported 1099-DAs; income by type; the Form 1040 digital asset answer with its reasons; gifts, donations and losses with what to check; a readiness checklist; and an accountant package (zip) with all of it, lot provenance, transfers, the source files' fingerprints and the proof files you attached to records |
+| Output | Per-year short/long gains, income, capital loss limit and carryover, a rough tax impact at your rates, flow-of-funds graph |
 
 ## Lightning (optional)
 

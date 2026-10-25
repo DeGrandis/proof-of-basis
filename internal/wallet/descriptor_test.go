@@ -13,12 +13,14 @@ import (
 // testdata/core_descriptors.txt was generated on a throwaway regtest node:
 // each line is "descriptor|receive0,receive1,change0" as Bitcoin Core's
 // deriveaddresses computed them. The keys belong to no real wallet.
+// Testdata files may have CRLF endings on Windows checkouts; lines are
+// split after normalising them.
 func TestDescriptorsMatchBitcoinCore(t *testing.T) {
 	b, err := os.ReadFile("testdata/core_descriptors.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(strings.ReplaceAll(string(b), "\r\n", "\n")), "\n") {
 		desc, want, _ := strings.Cut(line, "|")
 		w := strings.Split(want, ",")
 		d, err := Parse(desc, "", true)
@@ -81,7 +83,7 @@ func reversion(t *testing.T, key string, ver [4]byte) string {
 func TestMultisigFromCosignerKeys(t *testing.T) {
 	b, _ := os.ReadFile("testdata/core_descriptors.txt")
 	var desc, want string
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(strings.ReplaceAll(string(b), "\r\n", "\n")), "\n") {
 		if strings.HasPrefix(line, "wsh(sortedmulti(") {
 			desc, want, _ = strings.Cut(line, "|")
 			break

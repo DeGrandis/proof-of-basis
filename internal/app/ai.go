@@ -585,6 +585,8 @@ Rules:
 - Never write a plan or a heading and stop. Call the tools you need first, then write one complete answer.
 - You can propose changes with label_items, link_transfer and protect_lot, but only when the user asks you to change something or agrees to your suggestion. Each proposal appears as a card the user must Apply; never say a change is done unless the tool result says it was applied. Look the items up first so the ids and categories are right.
 - Short-term means held one year or less; long-term means more than a year (US rules).
+- This app untangles the user's records and prepares documents for their tax professional; it doesn't prepare returns. On [Taxes](#taxes): "Ready for your accountant?" lists what to fix for a year and downloads the accountant package; Form 8949 lines by box, checked against imported 1099-DAs; income by type; gifts and donations; the January 1, 2025 per-wallet split. On [Overview](#overview), "Plan a sale or spend" shows the coins a sale would use and can record that choice before the sale. Point to these when they answer the question.
+- To correct a record already labeled, or the value of imported income, use label_items with its id, category and usd.
 
 `, now.Format("2006-01-02"))
 
