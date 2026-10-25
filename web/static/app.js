@@ -791,6 +791,9 @@ const NET_ICON = {
   unknown: ["Not stated", '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><path d="M8 8a2 2 0 1 1 2.5 2c-.5.2-.5.6-.5 1.2M10 14h.01" stroke-linecap="round"/></svg>'],
 };
 const netBadge = (n) => { const k = NET_ICON[n] ? n : "unknown"; return `<span class="net ${k}" title="${NET_ICON[k][0]}">${NET_ICON[k][1]}</span>`; };
+const dirTag = (d) => d === "out"
+  ? '<span class="tag out"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 16V4M5 9l5-5 5 5"/></svg>Out</span>'
+  : '<span class="tag in"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M5 11l5 5 5-5"/></svg>In</span>';
 let reviewSort = { key: "date", dir: 1 };
 $("#review-table thead").addEventListener("click", (e) => {
   const k = e.target.closest("[data-sort]")?.dataset.sort;
@@ -812,7 +815,7 @@ function renderReview() {
       it.Txid && `<span class="mono" title="${esc(it.Txid)}">${esc(it.Txid.slice(0, 12))}…</span>`, it.Note && esc(it.Note)].filter(Boolean).join(" · ");
     const net = it.Network || "unknown";
     return `<tr data-key="${esc(it.Key)}" data-dir="${esc(it.Dir)}" data-value="${it.Value || 0}">
-      <td>${day(it.Time)}</td><td>${esc(it.Account)}</td><td><span class="row">${netBadge(net)}<span class="small">${NET_ICON[net]?.[0] || "Not stated"} · ${it.Dir === "out" ? "Out" : "In"}</span></span></td>
+      <td>${day(it.Time)}</td><td>${esc(it.Account)}</td><td><span class="tags"><span class="tag ${NET_ICON[net] ? net : "unknown"}">${(NET_ICON[net] || NET_ICON.unknown)[1]}${(NET_ICON[net] || NET_ICON.unknown)[0]}</span>${dirTag(it.Dir)}</span></td>
       <td class="num">${btc(it.Sats)}${it.FeeSats ? `<div class="small muted">+${amt(it.FeeSats)} fee</div>` : ""}${it.Value ? `<div class="small muted">≈ ${usd(it.Value)}</div>` : ""}</td>
       <td class="row"><select class="cat"><option value="">Choose…</option>${cats.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
         <span class="extra"></span><button class="save" hidden>Save</button></td>

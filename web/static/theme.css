@@ -24,6 +24,11 @@
   --pos: #3f7a0b;              /* positive deltas as text */
   --neg: #c0392b;              /* losses, tax, warnings */
   --neg-soft: rgba(192, 57, 43, .10);
+  --chain: #2f6bb3;             /* on-chain, in the review type column */
+  --chain-soft: rgba(47, 107, 179, .10);
+  --ln: #8f5b00;                /* lightning */
+  --ln-soft: rgba(214, 150, 20, .14);
+  --pos-soft: rgba(63, 122, 11, .10);
   /* charts */
   --chart-line: #111110;
   --chart-line-2: #8d8b84;
@@ -89,6 +94,11 @@
   --pos: #b9f04a;
   --neg: #ff7466;
   --neg-soft: rgba(255, 116, 102, .12);
+  --chain: #86b4f0;
+  --chain-soft: rgba(134, 180, 240, .13);
+  --ln: #f2c14e;
+  --ln-soft: rgba(242, 193, 78, .13);
+  --pos-soft: rgba(185, 240, 74, .12);
   --chart-line: #f1f0eb;
   --chart-line-2: #8f8d85;
   --chart-grid: rgba(255, 255, 255, .08);
@@ -345,6 +355,13 @@ details summary { cursor: pointer; color: var(--text-2); }
 .net { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
 .net svg { width: 16px; height: 16px; flex: none; }
 .net.unknown { color: var(--muted); }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: var(--pill); font-size: var(--fs-sm); white-space: nowrap; color: var(--text-2); background: var(--panel-2); }
+.tag svg { width: 14px; height: 14px; flex: none; }
+.tag.onchain { color: var(--chain); background: var(--chain-soft); }
+.tag.lightning { color: var(--ln); background: var(--ln-soft); }
+.tag.in { color: var(--pos); background: var(--pos-soft); }
+.tag.out { color: var(--neg); background: var(--neg-soft); }
+.tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .net .lbl { color: var(--text); font-size: var(--fs-sm); }
 .mine { font-weight: 600; background: var(--accent-soft); padding: 0 4px; border-radius: 4px; }
 
