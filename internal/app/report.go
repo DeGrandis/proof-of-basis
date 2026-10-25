@@ -85,6 +85,16 @@ type Report struct {
 	Settings   map[string]string `json:"settings"`
 	History    []HistoryPoint    `json:"history"`
 	Lightning  *LightningView    `json:"lightning,omitempty"`
+	Dips       []DipView         `json:"dips"`
+}
+
+// DipView is the first record that took an account below zero. Key is the
+// record's key in Graph, so the page can open it.
+type DipView struct {
+	Account string `json:"account"`
+	T       int64  `json:"t"`
+	Key     string `json:"key"`
+	Balance int64  `json:"balanceSats"`
 }
 
 // LightningView is the node's state for the Overview and Lightning tab.
@@ -246,6 +256,12 @@ func (s *Server) buildReport() (*Report, error) {
 		Links: tr.Links, Warnings: tr.Warnings, Settings: set}
 	for _, w := range res.Warnings {
 		r.Warnings = append(r.Warnings, w.OpID+": "+w.Message)
+	}
+	r.Dips = []DipView{}
+	for _, d := range res.Dips {
+		// A linked transfer's op is "from>to"; the graph keys it by its outflow.
+		key, _, _ := strings.Cut(d.OpID, ">")
+		r.Dips = append(r.Dips, DipView{d.Account, d.Time.Unix(), key, d.Balance})
 	}
 
 	// Per-year summary.

@@ -393,3 +393,33 @@ func TestExchangeBalanceDrift(t *testing.T) {
 		}
 	}
 }
+
+// A sale bigger than anything bought: the report names the first record
+// that took the account below zero, by a key the Flow page can open.
+// Invented data.
+func TestReportNamesFirstDip(t *testing.T) {
+	st, h := newTest(t)
+	acct, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	st.AddImport(acct, "coinbase", "c.csv", "c", []importers.Event{
+		{Kind: importers.Buy, Time: at("2021-01-01"), Sats: 100_000, FiatCents: 300_00, UID: "c1"},
+		{Kind: importers.Sell, Time: at("2021-02-01"), Sats: 150_000, FiatCents: 500_00, UID: "c2"}, // the 50,000 extra came from nowhere
+		{Kind: importers.Sell, Time: at("2021-03-01"), Sats: 10_000, FiatCents: 40_00, UID: "c3"},
+	}, nil)
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	if len(rep.Dips) != 1 {
+		t.Fatalf("dips %+v", rep.Dips)
+	}
+	d := rep.Dips[0]
+	if d.Account != "Coinbase" || d.Balance != -50_000 || d.T != at("2021-02-01").Unix() {
+		t.Errorf("dip %+v", d)
+	}
+	found := false
+	for _, g := range rep.Graph {
+		found = found || g.Key == d.Key
+	}
+	if !found {
+		t.Errorf("dip key %q is not in the graph", d.Key)
+	}
+}

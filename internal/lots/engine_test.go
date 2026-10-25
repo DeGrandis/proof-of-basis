@@ -218,3 +218,20 @@ func TestProtectedLotsUsedLast(t *testing.T) {
 		t.Errorf("warnings %+v", r.Warnings)
 	}
 }
+
+// Only the first operation that takes an account negative is reported.
+func TestFirstDip(t *testing.T) {
+	d := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	res, err := Run([]Op{
+		{ID: "b", Kind: Acquire, Time: d("2021-01-01"), Account: "a", Sats: 100},
+		{ID: "t", Kind: Transfer, Time: d("2021-02-01"), Account: "a", To: "w", Sats: 90, FeeSats: 20},
+		{ID: "s", Kind: Dispose, Time: d("2021-03-01"), Account: "a", Sats: 5},
+		{ID: "w", Kind: Dispose, Time: d("2021-04-01"), Account: "w", Sats: 90},
+	}, Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Dips) != 1 || res.Dips[0].OpID != "t" || res.Dips[0].Account != "a" || res.Dips[0].Balance != -10 {
+		t.Errorf("dips %+v", res.Dips)
+	}
+}

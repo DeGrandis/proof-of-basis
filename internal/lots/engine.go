@@ -118,6 +118,17 @@ type Result struct {
 	Warnings    []Warning
 	Balances    map[string]int64
 	Allocations []Allocation
+	// Dips: the first operation that took each account below zero, which
+	// points at a record missing or misread just before it.
+	Dips []Dip
+}
+
+// Dip is an account's balance going negative.
+type Dip struct {
+	Account string
+	OpID    string
+	Time    time.Time
+	Balance int64 // right after the operation
 }
 
 type engine struct {
@@ -149,6 +160,7 @@ func Run(ops []Op, cfg Config) (*Result, error) {
 	e := &engine{cfg: cfg, res: &Result{Balances: map[string]int64{}}, splitSeq: map[string]int{}}
 	cut := cfg.Rules.PerAccountFrom()
 	e.perAcct = cut.IsZero()
+	dipped := map[string]bool{}
 	for _, op := range sorted {
 		if op.Sats < 0 || op.FeeSats < 0 {
 			return nil, fmt.Errorf("op %s: negative amount", op.ID)
@@ -167,6 +179,10 @@ func Run(ops []Op, cfg Config) (*Result, error) {
 			e.remove(op)
 		default:
 			return nil, fmt.Errorf("op %s: unknown kind %q", op.ID, op.Kind)
+		}
+		if b := e.res.Balances[op.Account]; b < 0 && !dipped[op.Account] {
+			dipped[op.Account] = true
+			e.res.Dips = append(e.res.Dips, Dip{op.Account, op.ID, op.Time, b})
 		}
 	}
 	if !e.perAcct && !cut.IsZero() && time.Now().After(cut) {

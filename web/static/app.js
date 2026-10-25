@@ -197,8 +197,15 @@ function renderOverview() {
     <td class="num">${a.chainSats == null ? "" : btc(a.chainSats)}${a.chainSats != null && a.chainSats !== a.sats ? ' <span class="warn" title="Traced and on-chain balances differ: something is unlabeled or a scan is stale">!</span>' : ""}</td>
     <td class="num">${usd(a.basis)}</td><td class="num">${pend(a)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No accounts yet.</td></tr>`;
   const nLabel = r.unmatched?.length || 0;
-  $("#warnings").innerHTML = (r.warnings || []).length || nLabel
-    ? `<h2>Warnings</h2><div class="card small">${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
+  // Where each account first went below zero: what it spent before then
+  // never came in, so the missing or misread record is just before this one.
+  const dips = (r.dips || []).map((d) => {
+    const g = (r.graph || []).find((x) => x.key === d.key);
+    const what = !g ? d.key : g.kind === "transfer" && g.account === d.account ? `moved ${amt(g.sats)} to ${g.to}` : `${KIND_NAMES[g.label || g.kind] || g.kind} ${amt(g.sats)}`;
+    return `<div class="warn"><b>${esc(d.account)} first goes below zero on ${day(d.t)}</b>, at ${esc(what)} (balance then ${amt(d.balanceSats)}). Coins it used up to then were never recorded coming in: look for a missing or misread record just before. <a href="#graph" data-flowpick="${esc(d.key)}">Show it on Flow</a></div>`;
+  }).join("");
+  $("#warnings").innerHTML = (r.warnings || []).length || nLabel || dips
+    ? `<h2>Warnings</h2><div class="card small">${dips}${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
   const n = r.unmatched?.length || 0;
   $("#review-count").hidden = !n;
   $("#review-count").textContent = n;
@@ -1106,6 +1113,9 @@ function drawTimeline() {
       d += `L${W - 10},${prevY}`;
       out += `<path class="bal-area" d="${d}L${W - 10},${top + laneH - 8}L${LEFT},${top + laneH - 8}Z"/><path class="bal-line" d="${d}"/>`;
     }
+    // The line stops at zero, so ring the point where it first went below.
+    const dip = pts.find((p) => p.bal < 0);
+    if (dip && visible(posOf(dip.t))) out += `<circle class="dip" cx="${xOf(posOf(dip.t), W)}" cy="${yOf(0)}" r="9"><title>${esc(`Below zero from ${day(dip.t)}: ${amt(dip.bal)}`)}</title></circle>`;
     for (const p of pts) {
       const pp = posOf(p.t);
       if (!visible(pp)) continue;
@@ -1118,7 +1128,7 @@ function drawTimeline() {
   }
   // Lane names and the current balance stay put while the timeline pans.
   labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${top + laneH / 2}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
-    + `<text class="lane-bal" x="16" y="${top + laneH / 2 + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
+    + `<text class="lane-bal${(nowBal[l] || 0) < 0 ? " neg" : ""}" x="16" y="${top + laneH / 2 + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
   out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
