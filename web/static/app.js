@@ -222,7 +222,7 @@ function renderOverview() {
     if (d.uncounted.length) why += ` ${d.uncounted.length} incoming record${d.uncounted.length === 1 ? "" : "s"} for it up to then (${amt(d.uncountedSats)}) ${d.uncounted.length === 1 ? "is" : "are"} still in Review and count${d.uncounted.length === 1 ? "s" : ""} for nothing until labeled: <a href="#review">label ${d.uncounted.length === 1 ? "it" : "them"}</a>.`;
     else if (d.chainSats != null && d.chainSats > d.beforeSats) why += ` None are waiting in Review, so check how its earlier incoming records are labeled or linked on Flow.`;
     else if (d.chainSats == null) why += ` Look for a purchase, deposit or conversion into it that is missing or misread just before.`;
-    return `<div class="warn"><b>${esc(d.account)} first goes below zero on ${day(d.t)}</b>, at ${esc(what)} (balance then ${amt(d.balanceSats)}). ${why} <a href="#graph" data-flowpick="${esc(d.key)}">Show it on Flow</a></div>`;
+    return `<div class="warn"><b>${esc(d.account)} first goes below zero on ${day(d.t)}</b>, at ${esc(what)} (balance then ${amt(d.balanceSats)}). ${why} <a href="${recordLink(d.key)}" data-flowpick="${esc(d.key)}">Open it</a></div>`;
   }).join("");
   $("#warnings").innerHTML = (r.warnings || []).length || nLabel || dips
     ? `<h2>Warnings</h2><div class="card small">${dips}${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
@@ -286,7 +286,7 @@ function renderIdents() {
   const status = { waiting: "Waiting for the sale", applied: "Used for", late: "Recorded after the sale: not used", cancelled: "Cancelled" };
   $("#idents").innerHTML = ids.length ? `<h3>Recorded coin choices</h3><div class="scroll"><table class="small"><thead><tr><th>Recorded</th><th>From</th><th class="num"><span class="unit-name">BTC</span></th><th>Status</th><th></th></tr></thead><tbody>
     ${[...ids].reverse().map((i) => `<tr><td>${esc(when(Math.floor(new Date(i.createdAt) / 1000)))}</td><td>${esc(i.account)}</td><td class="num">${btc(i.sats)}</td>
-      <td class="${i.status === "late" || i.warning ? "warn" : ""}">${esc(status[i.status] || i.status)}${i.appliedTo ? ` <a href="#graph" data-flowpick="${esc(i.appliedTo.split(">")[0])}">the sale</a>` : ""}${i.note ? `<br><span class="muted">${esc(i.note)}</span>` : ""}${i.warning ? `<br>${esc(i.warning)}` : ""}</td>
+      <td class="${i.status === "late" || i.warning ? "warn" : ""}">${esc(status[i.status] || i.status)}${i.appliedTo ? ` <a href="${recordLink(i.appliedTo)}" data-flowpick="${esc(i.appliedTo)}">the sale</a>` : ""}${i.note ? `<br><span class="muted">${esc(i.note)}</span>` : ""}${i.warning ? `<br>${esc(i.warning)}` : ""}</td>
       <td>${i.status === "waiting" ? `<button class="link small ident-cancel" data-id="${i.id}">Cancel</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : "";
 }
 $("#idents").addEventListener("click", async (e) => {
@@ -891,7 +891,7 @@ function renderReview() {
   const byKey = Object.fromEntries((report.graph || []).map((g) => [g.key, g]));
   const unm = Object.fromEntries((report.unmatched || []).map((i) => [i.Key, i]));
   const rec = (k) => { const g = byKey[k]; const i = unm[k]; return g ? `${day(g.t)} ${esc(g.account)} ${amt(g.sats)}` : i ? `${day(i.Time)} ${esc(i.Account)} ${amt(i.Sats)}` : `<span class="mono">${esc(k)}</span>`; };
-  $("#links-table tbody").innerHTML = (report.links || []).map((l) => `<tr><td class="small"><a href="#graph" data-flowpick="${esc(l.From)}">${rec(l.From)}</a></td>
+  $("#links-table tbody").innerHTML = (report.links || []).map((l) => `<tr><td class="small"><a href="${recordLink(l.From)}" data-flowpick="${esc(l.From)}">${rec(l.From)}</a></td>
       <td class="small">${byKey[l.From]?.to ? `${day(byKey[l.From].t)} ${esc(byKey[l.From].to)} ${amt(byKey[l.From].sats)}` : rec(l.To)}</td><td class="num small">${l.FeeSats ? amt(l.FeeSats) : ""}</td><td class="small">${esc(l.Method)}</td>
       <td>${l.Method === "manual" ? `<button class="link" data-unlink="${esc(l.From)}" data-unlink2="${esc(l.To)}">undo</button>` : `<button class="link" data-autounlink="${esc(l.From)}" data-autounlink2="${esc(l.To)}">Unlink</button>`}</td></tr>`).join("")
     || `<tr><td colspan="5" class="muted">No transfers matched yet.</td></tr>`;
@@ -941,7 +941,7 @@ document.addEventListener("click", async (e) => {
     await post("/api/unlink", { From: t.dataset.autounlink || t.dataset.allow, To: t.dataset.autounlink2 || t.dataset.allow2, Allow: allow });
     toast(allow ? "This pair can be matched again" : "Unlinked: both records are back in Review");
     await refresh();
-    if ($("#graph-detail") && !$("#graph-detail").hidden && selected) selectEvent(selected, false);
+    if ($("#graph-detail")?.open && selected) selectEvent(selected, false);
   } catch (err) { toast(err.message); }
 });
 $("#links-table").addEventListener("click", async (e) => {
@@ -984,7 +984,7 @@ function fillForms(f) {
       <td><b>${esc(r.box)}</b></td><td>${esc(r.sold)}</td><td>${esc(r.account)}</td><td class="num">${btc(r.sats)}</td>
       <td class="num">${usd(r.proceeds)}</td><td class="num">${usd(r.basis)}</td><td>${esc(r.code)}</td><td class="num">${r.adjustment ? usd(r.adjustment) : ""}</td>
       <td class="num">${signed(r.gain)}</td>
-      <td class="small${ok(r) && !r.note ? " muted" : " warn"}">${esc(r.status)}${r.note ? `<br>${esc(r.note)}` : ""} <a href="#graph" data-flowpick="${esc(r.record)}">open</a></td></tr>`).join("")
+      <td class="small${ok(r) && !r.note ? " muted" : " warn"}">${esc(r.status)}${r.note ? `<br>${esc(r.note)}` : ""} <a href="${recordLink(r.record)}" data-flowpick="${esc(r.record)}">open</a></td></tr>`).join("")
     + f.daOnly.map((d) => `<tr><td></td><td>${day(d.row.sold)}</td><td>${esc(d.account)}</td><td class="num">${btc(d.row.sats)}</td><td class="num">${usd(d.row.proceeds)}</td>
       <td class="num">${d.row.hasBasis ? usd(d.row.basis) : "not reported"}</td><td></td><td></td><td></td><td class="small warn">Only on the 1099-DA. ${esc(d.note)}</td></tr>`).join("")
     || `<tr><td colspan="10" class="muted">None.</td></tr>`;
@@ -1022,7 +1022,7 @@ function renderAllocation() {
     <td>${day(r.acquired)}</td><td>${esc(r.boughtOn || "")}</td><td class="num">${btc(r.sats)}</td><td class="num">${usd(r.basis)}</td>
     <td><select class="alloc-acct" data-origin="${esc(r.originId)}">${accts.map((n) => `<option${n === r.account ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>
       ${r.assigned ? '<span class="small muted">set by you</span>' : '<span class="small muted">default</span>'}
-      <a href="#graph" data-flowpick="${esc(r.originId)}" class="small">open</a></td></tr>`).join("");
+      <a href="${recordLink(r.originId)}" data-flowpick="${esc(r.originId)}" class="small">open</a></td></tr>`).join("");
 }
 $("#alloc-table").addEventListener("change", async (e) => {
   const sel = e.target.closest(".alloc-acct");
@@ -1449,20 +1449,26 @@ const pageLink = (e) => e.txid ? `#tx/${esc(e.txid)}` : `#tx/rec:${encodeURIComp
 function selectEvent(key, zoom) {
   const box = $("#graph-detail");
   const d = key ? buildDetail(key) : null;
-  if (!d) { const was = !box.hidden; box.hidden = true; document.body.classList.remove("picked"); selected = null; relatedKeys = new Set(); if (was) setTimeout(drawGraph, 220); else highlight(null); return; }
+  if (!d) {
+    const was = box.open;
+    selected = null;
+    relatedKeys = new Set();
+    if (was) box.close();
+    highlight(null);
+    return;
+  }
   const { e, rows, trace, related, sides, byKey } = d;
   selected = key;
-  box.innerHTML = `<h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${amt(e.sats)} <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
+  box.innerHTML = `<div class="detail-inner"><h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${amt(e.sats)} <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
     <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
-    <div id="txflow-wrap"><svg id="txflow" class="txf" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>`;
-  box.insertAdjacentHTML("beforeend", actionsFor(e) + attachBox(e.key));
+    <div id="txflow-wrap"><svg id="txflow" class="txf" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>
+    ${actionsFor(e)}${attachBox(e.key)}</div>`;
   fillAttachments(box);
-  box.hidden = false;
-  document.body.classList.add("picked");
+  if (!box.open) box.showModal();
   lastFlow = sides;
   requestAnimationFrame(() => drawTxFlow(e, lastFlow));
   relatedKeys = related;
-  setTimeout(drawGraph, 220); // the chart gets shorter to make room below
+  highlight(key);
   if (zoom) {
     const ps = [...related].map((k) => byKey[k]).filter(Boolean).map((g) => posOf(g.t));
     let lo = Math.min(...ps), hi = Math.max(...ps);
@@ -1716,7 +1722,7 @@ async function txPage(arg) {
       ["Shape", `${tx.inputs.length} input${tx.inputs.length === 1 ? "" : "s"} → ${tx.outputs.length} output${tx.outputs.length === 1 ? "" : "s"}`],
       ["Source", tx.source === "wallets" ? "your wallets' scans" : tx.source === "fulcrum" ? "your Fulcrum server (not in your wallets)" : "your imported records only"]];
     h += `<div class="card"><dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>${tx.note ? `<p class="small warn">${esc(tx.note)}</p>` : ""}
-      ${recs.length ? `<a href="#graph" data-flowpick="${esc(recs[0].key)}">Show in Flow</a>` : ""}</div>`;
+      ${recs.length ? `<a href="#graph" data-flowshow="${esc(recs[0].key)}">Show in Flow</a>` : ""}</div>`;
     if (tx.inputs.length || tx.outputs.length) {
       h += `<div class="io"><div><h3>Inputs</h3><div class="scroll"><table><thead><tr><th>From</th><th>Address</th><th class="num">${UNIT_NAME[prefs.unit]}</th></tr></thead><tbody>${tx.inputs.map((i) => `<tr>
           <td><a class="mono small" href="#tx/${esc(i.prevTxid)}">${esc(shortTx(i.prevTxid))}:${i.prevVout}</a></td><td class="addr">${i.address ? `<a href="#addr/${encodeURIComponent(i.address)}">${esc(i.address)}</a>` : ""}</td>
@@ -1748,9 +1754,20 @@ async function addressPage(addr) {
     ${recs.length ? `<h3>Your records with this address</h3>${recs.map((r) => `<div><a href="${pageLink(r)}">${esc(KIND_NAMES[r.kind] || r.kind)} ${amt(r.sats)}, ${esc(r.account)}, ${day(r.t)}</a></div>`).join("")}` : ""}
     ${(a.exchange || []).length ? `<h3>Exchange records with this address</h3>${a.exchange.map((x) => `<div>${esc(x.account)} ${esc(x.kind)} ${amt(x.sats)} on ${day(x.t)}</div>`).join("")}` : ""}`;
 }
+// A link to a record opens its own page: the transaction, or the record
+// when it has no txid. "Show in Flow" (data-flowshow) opens it on Flow.
+function recordLink(key) {
+  const rec = String(key).split(">")[0];
+  const g = (report?.graph || []).find((x) => x.key === rec);
+  if (g) return pageLink(g);
+  const t = rec.match(/^tx:([0-9a-f]{64})/);
+  return t ? `#tx/${t[1]}` : `#tx/rec:${encodeURIComponent(rec)}`;
+}
 document.addEventListener("click", (e) => {
+  const show = e.target.closest("[data-flowshow]")?.dataset.flowshow;
+  if (show) { e.preventDefault(); location.hash = "graph"; setTimeout(() => selectEvent(show, true), 50); return; }
   const k = e.target.closest("[data-flowpick]")?.dataset.flowpick;
-  if (k) { e.preventDefault(); location.hash = "graph"; setTimeout(() => selectEvent(k, true), 50); }
+  if (k) { e.preventDefault(); location.hash = recordLink(k); }
 });
 $("#lookup").addEventListener("click", (e) => {
   const k = e.target.closest("[data-pick]")?.dataset.pick || e.target.closest("[data-flowkey]")?.dataset.flowkey;
@@ -1951,3 +1968,8 @@ $("#logout-all-btn").addEventListener("click", async () => {
 });
 
 
+
+// The details dialog closes with Escape (the browser's own), its ✕, or a
+// click outside it; the graph's highlight goes with it.
+$("#graph-detail").addEventListener("close", () => { if (selected) selectEvent(null); });
+$("#graph-detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) selectEvent(null); });

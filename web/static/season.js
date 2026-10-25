@@ -188,7 +188,7 @@ function renderSeasonDetails(year) {
   $("#gifts-table tbody").innerHTML = (report.gifts || []).filter((g) => Number(day(g.t).slice(0, 4)) === year).map((g) => `<tr>
     <td>${day(g.t)}</td><td>${esc(giftName[g.category] || g.category)}</td><td>${esc(g.recipient || "")}</td><td class="num">${btc(g.sats)}</td>
     <td class="num">${usd(g.value)}</td><td class="num">${usd(g.basis)}</td><td>${esc(g.term || "")}</td><td class="num">${g.deduction ? usd(g.deduction) : ""}</td>
-    <td class="small">${g.flags.map((f) => `<div class="warn">${esc(f)}</div>`).join("")} <a href="#graph" data-flowpick="${esc(g.key)}">open</a></td></tr>`).join("")
+    <td class="small">${g.flags.map((f) => `<div class="warn">${esc(f)}</div>`).join("")} <a href="${recordLink(g.key)}" data-flowpick="${esc(g.key)}">open</a></td></tr>`).join("")
     || `<tr><td colspan="9" class="muted">None in ${year}.</td></tr>`;
   $("#season-alloc").hidden = year < 2025 || !(report.allocation?.rows || []).length;
   const ids = (report.identifications || []).filter((i) => Number(day(i.createdAt).slice(0, 4)) === year);

@@ -91,11 +91,15 @@ body.flow #page-head { max-width: none; }
 .graph-bar label.inline { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--fs-sm); color: var(--muted); }
 .graph-bar label.inline select { min-height: 32px; padding: 4px 28px 4px 10px; font-size: var(--fs-sm); }
 .graph-area { position: relative; height: calc(100vh - var(--nav-h) - 150px); min-height: 320px; display: flex; transition: height .2s ease; }
-body.picked .graph-area { height: max(320px, 56vh); }
+
 #graph-wrap { flex: 1; overflow: hidden; border-top: 1px solid var(--line); }
 #flow { display: block; cursor: grab; touch-action: none; user-select: none; }
 #flow.panning { cursor: grabbing; }
-#graph-detail { margin: 0; border-top: 1px solid var(--line); padding-top: var(--s-5); }
+/* Flow's record details: a dialog over the graph. */
+#graph-detail { width: min(920px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0; margin: auto; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto; }
+#graph-detail::backdrop { background: rgba(0, 0, 0, .45); }
+#graph-detail .detail-inner { padding: var(--s-5); }
+@media (max-width: 640px) { #graph-detail { width: 100vw; max-width: 100vw; max-height: 92vh; margin: auto 0 0; border-radius: var(--r-sm) var(--r-sm) 0 0; } #graph-detail .detail-inner { padding: var(--s-4); } }
 .detail-cols { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.3fr); gap: var(--s-2) var(--s-7); }
 @media (max-width: 900px) { .detail-cols { grid-template-columns: 1fr; } }
 #graph-detail h3 { font-size: var(--fs-md); margin: 0 0 var(--s-3); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
