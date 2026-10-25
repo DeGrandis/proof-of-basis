@@ -1,6 +1,7 @@
 package app
 
 import (
+	"btctax/internal/trace"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -272,7 +273,7 @@ func TestLabelIdFallback(t *testing.T) {
 	}
 	srv := New(st, nil)
 	rep, _ := srv.buildReport()
-	tb := &toolbox{s: srv, rep: rep, chatID: 9, historyMatch: `{"direction":"out","account":"Hot wallet"}`}
+	tb := &toolbox{s: srv, rep: rep, chatID: 9, historyMatch: `{"direction":"out","account":"Hot wallet"}`, refersBack: true}
 	want := 0
 	for _, it := range rep.Unmatched {
 		if it.Dir == "out" && it.Account == "Hot wallet" {
@@ -287,5 +288,76 @@ func TestLabelIdFallback(t *testing.T) {
 	json.Unmarshal(lastAction(t, st).Changes, &cs)
 	if len(cs) != want {
 		t.Errorf("labeled %d, want %d", len(cs), want)
+	}
+}
+
+func TestDescriptionTiersSupersede(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, _ := srv.buildReport()
+	// pick an item whose date is unique in Review
+	var it trace.Item
+	days := map[string]int{}
+	for _, x := range rep.Unmatched {
+		days[dayOf(x.Time)]++
+	}
+	for _, x := range rep.Unmatched {
+		if days[dayOf(x.Time)] == 1 {
+			it = x
+			break
+		}
+	}
+	tb := &toolbox{s: srv, rep: rep, chatID: 5}
+	desc := dayOf(it.Time) + " " + it.Account + " out " + btcStr(it.Sats)
+	lk, _ := tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": desc, "category": "spend"}}})
+	if lk.Error != "" {
+		t.Fatalf("by description: %s", lk.Error)
+	}
+	first := lastAction(t, st)
+	var cs []change
+	json.Unmarshal(first.Changes, &cs)
+	if len(cs) != 1 || cs[0].Key != it.Key {
+		t.Fatalf("labeled %v, want %s", cs, it.Key)
+	}
+	// A wrong id is NOT widened to a whole earlier search unless the user said "those".
+	tb2 := &toolbox{s: srv, rep: rep, chatID: 6, historyMatch: `{"direction":"out"}`}
+	if lk, _ := tb2.run("label_items", map[string]any{"items": []any{map[string]any{"id": "nonsense", "category": "spend"}}}); lk.Error == "" {
+		t.Fatal("a bad id was silently widened")
+	}
+	// Tiers split by value; the new card replaces the earlier pending one.
+	var keys []any
+	for _, x := range rep.Unmatched {
+		if x.Dir == "out" && len(keys) < 6 {
+			keys = append(keys, map[string]any{"id": x.Key, "category": "spend"})
+		}
+	}
+	lk, _ = tb.run("label_items", map[string]any{"items": keys, "tiers": []any{map[string]any{"max_usd": 25.0, "category": "spend"}, map[string]any{"category": "donation"}}})
+	if lk.Error != "" {
+		t.Fatalf("tiers: %s", lk.Error)
+	}
+	if a, _ := st.Action(first.ID); a.Status != "dismissed" {
+		t.Errorf("earlier proposal not replaced: %s", a.Status)
+	}
+	second := lastAction(t, st)
+	json.Unmarshal(second.Changes, &cs)
+	for _, c := range cs {
+		var l trace.Label
+		json.Unmarshal(c.After, &l)
+		var v int64
+		for _, x := range rep.Unmatched {
+			if x.Key == c.Key {
+				v = x.Value
+			}
+		}
+		want := trace.Category("spend")
+		if v > 2500 {
+			want = "donation"
+		}
+		if l.Category != want {
+			t.Errorf("%s worth %d got %s, want %s", c.Key, v, l.Category, want)
+		}
 	}
 }

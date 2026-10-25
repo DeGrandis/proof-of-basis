@@ -200,3 +200,23 @@ func TestBulkLabelAndUndoTool(t *testing.T) {
 		t.Error("undoing twice accepted")
 	}
 }
+
+func TestAnalyzeAliases(t *testing.T) {
+	tb, rep, _ := demoToolbox(t)
+	want := 0
+	for _, it := range rep.Unmatched {
+		if it.Dir == "out" && it.Value <= 5000 {
+			want++
+		}
+	}
+	for _, args := range []map[string]any{
+		{"source": "review", "stat": "count", "kind": "out", "max": 50.0, "measure": "usd"},
+		{"source": "review", "stat": "count", "kind": "spend", "max_usd": 50.0},
+		{"source": "review", "stat": "count", "match": map[string]any{"max_usd": 50.0, "direction": "out"}},
+	} {
+		_, out := tb.run("analyze_records", args)
+		if !strings.Contains(out, "count: "+strconv.Itoa(want)) {
+			t.Errorf("%v: want %d, got %s", args, want, out)
+		}
+	}
+}

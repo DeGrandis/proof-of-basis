@@ -248,7 +248,41 @@ type Chart struct {
 var validStats = map[string]bool{"summary": true, "list": true, "count": true, "sum": true, "mean": true, "median": true, "mode": true, "min": true, "max": true,
 	"stddev": true, "percentiles": true, "histogram": true, "top": true, "bottom": true}
 
+// normalizeAnalyzeArgs accepts the label tool's wording too, which small
+// models mix up: a nested match, min_usd/max_usd, min_btc/max_btc,
+// direction and network.
+func normalizeAnalyzeArgs(a map[string]any) {
+	if m, ok := a["match"].(map[string]any); ok {
+		for k, v := range m {
+			if _, set := a[k]; !set {
+				a[k] = v
+			}
+		}
+		delete(a, "match")
+	}
+	for _, unit := range []string{"usd", "btc"} {
+		for _, side := range []string{"min", "max"} {
+			if v, ok := a[side+"_"+unit]; ok {
+				if _, set := a[side]; !set {
+					a[side] = v
+					if argStr(a, "measure") == "" {
+						a["measure"] = unit
+					}
+				}
+				delete(a, side+"_"+unit)
+			}
+		}
+	}
+	if d := argStr(a, "direction"); d != "" && argStr(a, "kind") == "" {
+		a["kind"] = d
+	}
+	if n := argStr(a, "network"); n != "" && argStr(a, "text") == "" {
+		a["text"] = n
+	}
+}
+
 func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error) {
+	normalizeAnalyzeArgs(a)
 	src := strings.ToLower(argStr(a, "source"))
 	m := strings.ToLower(argStr(a, "measure"))
 	stat := strings.ToLower(argStr(a, "stat"))
@@ -304,7 +338,7 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		if acct != "" && !strings.EqualFold(r.acct, acct) {
 			continue
 		}
-		if kind != "" && !kindMatches(kind, r.kind) && !strings.EqualFold(kind, r.kind) {
+		if kind != "" && !kindMatches(kind, r.kind) && !strings.EqualFold(kind, r.kind) && !(src == "review" && reviewDir(kind) == r.kind) {
 			continue
 		}
 		if text != "" && !strings.Contains(r.text, text) {
@@ -350,19 +384,6 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	if len(all) == 0 {
 		b.WriteString("No rows match.\n")
 		return b.String(), summary, nil
-	}
-	if src == "review" && len(all) <= 500 {
-		rs := &ReviewSet{}
-		for _, it := range all {
-			rs.Keys = append(rs.Keys, it.r.key)
-			switch {
-			case rs.Dir == "":
-				rs.Dir = it.r.kind
-			case rs.Dir != it.r.kind:
-				rs.Dir = "mixed"
-			}
-		}
-		lk.Review = rs
 	}
 	if want, _ := a["export"].(bool); want {
 		name, csvData := exportCSV(src, m, func(yield func(statRow, float64)) {
@@ -463,6 +484,7 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		return 0, false
 	}
 
+	var shown []statRow // rows a list printed, for the Label control
 	describe := func(items []item, indent string) {
 		if stat == "list" {
 			sorted := append([]item(nil), items...)
@@ -500,6 +522,7 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 					break
 				}
 				fmt.Fprintf(&b, "%s- %s\n", indent, it.r.line)
+				shown = append(shown, it.r)
 			}
 			return
 		}
@@ -701,6 +724,28 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 			describe(all, "  ")
 		}
 	}
+	if src == "review" {
+		rows := shown
+		if stat != "list" {
+			rows = nil
+			for _, it := range all {
+				rows = append(rows, it.r)
+			}
+		}
+		if len(rows) > 0 && len(rows) <= 500 {
+			rs := &ReviewSet{}
+			for _, r := range rows {
+				rs.Keys = append(rs.Keys, r.key)
+				switch {
+				case rs.Dir == "":
+					rs.Dir = r.kind
+				case rs.Dir != r.kind:
+					rs.Dir = "mixed"
+				}
+			}
+			lk.Review = rs
+		}
+	}
 	if chart != nil {
 		if len(chart.Labels) >= 2 {
 			if len(chart.Labels) > 40 {
@@ -734,4 +779,21 @@ func exportCSV(src, m string, each func(func(statRow, float64))) (string, []byte
 	})
 	w.Flush()
 	return "btctax-" + src + "-" + time.Now().Format("2006-01-02") + ".csv", buf.Bytes()
+}
+
+// reviewDir maps the words people use to a Review item's direction:
+// spends, disposals, sales and sends are outgoing; income and deposits in.
+func reviewDir(kind string) string {
+	k := strings.ToLower(strings.TrimSpace(kind))
+	for _, w := range []string{"out", "outflow", "outgoing", "send", "sent", "spend", "spent", "disposal", "dispose", "sell", "sold", "sale", "payment", "withdrawal", "gift", "donation"} {
+		if strings.HasPrefix(k, w) {
+			return "out"
+		}
+	}
+	for _, w := range []string{"in", "inflow", "incoming", "receive", "received", "deposit", "income", "buy", "purchase", "refund"} {
+		if strings.HasPrefix(k, w) {
+			return "in"
+		}
+	}
+	return ""
 }

@@ -340,7 +340,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		req.Think = &thinking
 	}
 
-	tools := &toolbox{s: s, rep: rep, chatID: id, historyMatch: matchFromHistory(history), refersBack: refersBack(in.Content)}
+	tools := &toolbox{s: s, rep: rep, chatID: id, historyMatch: matchFromHistory(history), historyKeys: keysFromHistory(history), refersBack: refersBack(in.Content)}
 	var lookups []Lookup
 	var answer, reasoning strings.Builder
 	var failMsg string
@@ -395,7 +395,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 			// spelling out the call from the search behind its last answer.
 			answer.Reset()
 			out.send(map[string]any{"type": "reset"})
-			if tools.historyMatch != "" && refersBack(in.Content) && categoryFromText(in.Content) != "" {
+			if (tools.historyMatch != "" || len(tools.historyKeys) > 0) && refersBack(in.Content) && (categoryFromText(in.Content) != "" || tiersFromText(in.Content) != nil) {
 				break // the code after the loop makes this proposal exactly
 			}
 			if corrections >= 2 {
@@ -458,11 +458,26 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	}
 	// A clear request to label the items just listed ("those were all
 	// spends") that ended without a proposal: make it from that list.
-	if failMsg == "" && len(tools.actions) == 0 && tools.historyMatch != "" && refersBack(in.Content) {
-		if cat := categoryFromText(in.Content); cat != "" {
-			var match map[string]any
-			json.Unmarshal([]byte(tools.historyMatch), &match)
-			lk, result := tools.run("label_items", map[string]any{"match": match, "category": cat})
+	if failMsg == "" && len(tools.actions) == 0 && (tools.historyMatch != "" || len(tools.historyKeys) > 0) && refersBack(in.Content) {
+		tiers := tiersFromText(in.Content)
+		cat := categoryFromText(in.Content)
+		if tiers != nil || cat != "" {
+			args := map[string]any{"category": cat}
+			if tiers != nil {
+				args = map[string]any{"category": "", "tiers": tiers}
+				cat = "split by amount"
+			}
+			if items := tools.historyItems("x"); items != nil {
+				for _, it := range items {
+					it.(map[string]any)["category"] = args["category"]
+				}
+				args["items"] = items
+			} else {
+				var match map[string]any
+				json.Unmarshal([]byte(tools.historyMatch), &match)
+				args["match"] = match
+			}
+			lk, result := tools.run("label_items", args)
 			lookups = append(lookups, lk)
 			out.send(map[string]any{"type": "tool", "lookup": lk})
 			answer.Reset()
@@ -901,7 +916,8 @@ type toolbox struct {
 	// historyMatch is the Review search behind the previous answer, as
 	// label_items match filters, for when the model gets the ids wrong.
 	historyMatch string
-	refersBack   bool // the user said "these", "those", "them"…
+	refersBack   bool     // the user said "these", "those", "them"…
+	historyKeys  []string // the Review rows the previous answer showed
 }
 
 func obj(props map[string]any, required ...string) map[string]any {
@@ -1393,7 +1409,7 @@ func holdingsByYear(rep *Report, picked int) string {
 }
 
 var claimRe = regexp.MustCompile(`(?i)\b(i have|i've|i)\s+(just\s+|now\s+|successfully\s+|already\s+)*(re-?)?(proposed|applied|labell?ed|linked|protected|undone|submitted|updated)\b` +
-	`|\bcard\b[^.]*\b(appear|shown|show up|summari[sz]|in the chat)|\b(press|click|tap|hit)(ing)?\s+(the\s+)?apply\b|\bapply (the labels|the changes|to confirm|button)`)
+	`|\bcard\b[^.]*\b(appear|shown|show up|summari[sz]|in the chat)|\b(press|click|tap|hit)(ing)?\s+(the\s+)?apply\b|\bapply (the )?(labels?|changes?|to confirm|button)\b|waiting for you to (apply|confirm)`)
 
 // claimsChange spots an answer saying a change was proposed or made.
 func claimsChange(text string) bool {
@@ -1489,8 +1505,48 @@ func categoryFromText(text string) string {
 	return found
 }
 
-var backRe = regexp.MustCompile(`(?i)\b(these|those|them|they|all of (these|those|them)|the above|that list|each of them)\b`)
+var backRe = regexp.MustCompile(`(?i)\b(these|those|them|they|all of (these|those|them)|the above|that list|each of them|the ones|that one|this one|that (tx|transaction|record|item|send|payment))\b`)
 
 // refersBack reports whether a message points at items from the previous
 // answer.
 func refersBack(text string) bool { return backRe.MatchString(text) }
+
+// keysFromHistory are the Review rows the latest answer showed.
+func keysFromHistory(history []store.ChatMessage) []string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role != "assistant" {
+			continue
+		}
+		var d msgData
+		if json.Unmarshal([]byte(history[i].Data), &d) != nil {
+			return nil
+		}
+		for j := len(d.Lookups) - 1; j >= 0; j-- {
+			if r := d.Lookups[j].Review; r != nil && len(r.Keys) > 0 {
+				return r.Keys
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
+var tierRe = regexp.MustCompile(`(?i)(under|below|less than|up to|<)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(?:dollars)?([^.;]*?)\b(above|over|more|the rest|rest|others|other ones|bigger|larger|higher)\b([^.;]*)`)
+
+// tiersFromText reads "under $25 as spends and the ones above as
+// donations" into two value bands.
+func tiersFromText(text string) []any {
+	m := tierRe.FindStringSubmatch(text)
+	if m == nil {
+		return nil
+	}
+	limit, err := strconv.ParseFloat(strings.ReplaceAll(m[2], ",", ""), 64)
+	if err != nil {
+		return nil
+	}
+	low, high := categoryFromText(m[3]), categoryFromText(m[5])
+	if low == "" || high == "" || low == high {
+		return nil
+	}
+	return []any{map[string]any{"max_usd": limit, "category": low}, map[string]any{"category": high}}
+}

@@ -511,3 +511,27 @@ func TestRefersBack(t *testing.T) {
 		}
 	}
 }
+
+func TestTiersFromText(t *testing.T) {
+	got := tiersFromText("label all the ones under $25 as spends and the ones above as donations")
+	if len(got) != 2 || got[0].(map[string]any)["max_usd"] != 25.0 || got[0].(map[string]any)["category"] != "spend" || got[1].(map[string]any)["category"] != "donation" {
+		t.Fatalf("tiers: %v", got)
+	}
+	if tiersFromText("label those as spends") != nil {
+		t.Error("no tiers expected")
+	}
+	if !refersBack("just label only that one as a spend") || !refersBack("label all the ones under $25") {
+		t.Error("refersBack missed")
+	}
+	if !claimsChange("The proposal card for this single item is waiting for you to apply the label.") {
+		t.Error("claim missed")
+	}
+}
+
+func TestReviewDir(t *testing.T) {
+	for in, want := range map[string]string{"spend": "out", "disposals": "out", "sends": "out", "income": "in", "deposits": "in", "out": "out", "banana": ""} {
+		if got := reviewDir(in); got != want {
+			t.Errorf("%q: %q want %q", in, got, want)
+		}
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -500,6 +501,7 @@ func actionToolSpecs() []ollama.Tool {
 			"items":    map[string]any{"type": "array", "items": item, "description": "the items and their labels"},
 			"match":    map[string]any{"type": "object", "description": "label every Review item matching: account, direction (in/out), network (lightning/onchain), min_usd, max_usd, from, to, text", "properties": map[string]any{"account": str(""), "direction": str(""), "network": str(""), "min_usd": num(""), "max_usd": num(""), "from": str(""), "to": str(""), "text": str("")}},
 			"category": str("with match: the category for all of them"),
+			"tiers":    map[string]any{"type": "array", "description": "instead of one category, a category per value band, checked in order: e.g. [{\"max_usd\":25,\"category\":\"spend\"},{\"category\":\"donation\"}] labels items up to $25 as spends and the rest as donations", "items": map[string]any{"type": "object", "properties": map[string]any{"max_usd": num("upper bound for this band (leave out for everything else)"), "category": str("")}}},
 			"note":     str("with match: a note for all of them (optional)"),
 		})),
 		t("link_transfer", "Propose linking two Review items as one transfer between the user's own accounts (an outflow and the matching inflow). The user confirms with Apply.", obj(map[string]any{
@@ -527,6 +529,11 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 				return it, nil
 			}
 		}
+		// A small model often passes the record as it read it
+		// ("2025-09-11 Hot wallet out 0.04404630 BTC"): match on that.
+		if it, ok := findByDescription(tb.rep, id); ok {
+			return it, nil
+		}
 		for _, g := range tb.rep.Graph {
 			if sameRecord(g.Key, g.Txid, id) {
 				return trace.Item{}, fmt.Errorf("%s (%s) is already labeled, so it isn't waiting in Review. Look the items up again with analyze_records (source review) for their current ids, or call label_items with match (account, direction, network, min_usd, max_usd, from, to) and category", id, recordName(tb.rep, g.Key))
@@ -540,7 +547,7 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		// Wrong ids for items from the previous answer (a small model
 		// copying them badly): label the items that answer listed instead,
 		// when every item got the same category.
-		if len(raw) > 0 && tb.historyMatch != "" {
+		if len(raw) > 0 && tb.refersBack && (len(tb.historyKeys) > 0 || tb.historyMatch != "") {
 			bad, cat := false, ""
 			for _, x := range raw {
 				m, _ := x.(map[string]any)
@@ -555,17 +562,23 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 				}
 			}
 			if bad && cat != "" && cat != "-" {
-				var match map[string]any
-				json.Unmarshal([]byte(tb.historyMatch), &match)
-				args = map[string]any{"match": match, "category": cat}
-				raw = nil
+				raw = tb.historyItems(cat)
+				if raw == nil {
+					var match map[string]any
+					json.Unmarshal([]byte(tb.historyMatch), &match)
+					args = map[string]any{"match": match, "category": cat}
+				}
 			}
 		}
 		// "Label these": the list the previous answer showed, exactly.
-		if _, ok := args["match"].(map[string]any); ok && len(raw) == 0 && tb.refersBack && tb.historyMatch != "" {
-			var match map[string]any
-			json.Unmarshal([]byte(tb.historyMatch), &match)
-			args["match"] = match
+		if _, ok := args["match"].(map[string]any); ok && len(raw) == 0 && tb.refersBack {
+			if items := tb.historyItems(argStr(args, "category")); items != nil {
+				raw = items // exactly the rows that answer showed
+			} else if tb.historyMatch != "" {
+				var match map[string]any
+				json.Unmarshal([]byte(tb.historyMatch), &match)
+				args["match"] = match
+			}
 		}
 		if m, ok := args["match"].(map[string]any); ok && len(raw) == 0 {
 			items, err := tb.matchReview(m)
@@ -576,8 +589,8 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 				return "", true, errors.New("no Review items match that description")
 			}
 			cat := argStr(args, "category")
-			if cat == "" {
-				return "", true, errors.New("give the category to apply")
+			if cat == "" && args["tiers"] == nil {
+				return "", true, errors.New("give the category to apply (or tiers)")
 			}
 			for _, it := range items {
 				raw = append(raw, map[string]any{"id": it.Key, "category": cat, "note": argStr(args, "note")})
@@ -589,6 +602,7 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		if len(raw) > 500 {
 			return "", true, fmt.Errorf("%d items match; narrow it to 500 or fewer", len(raw))
 		}
+		tiers, _ := args["tiers"].([]any)
 		for _, x := range raw {
 			m, _ := x.(map[string]any)
 			it, err := findReview(argStr(m, "id"))
@@ -596,6 +610,12 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 				return "", true, err
 			}
 			cat := trace.Category(strings.ToLower(argStr(m, "category")))
+			if len(tiers) > 0 {
+				cat = tierCategory(tiers, it.Value)
+				if cat == "" {
+					continue // outside every band
+				}
+			}
 			ok := outCats[cat]
 			if it.Dir == trace.In {
 				ok = inCats[cat]
@@ -609,6 +629,9 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 			}
 			b, _ := json.Marshal(l)
 			cs = append(cs, change{Kind: "label", Key: it.Key, After: b})
+		}
+		if len(cs) == 0 {
+			return "", true, errors.New("none of those items fall in the bands you gave")
 		}
 		summary = fmt.Sprintf("Label %d Review item%s", len(cs), map[bool]string{true: "", false: "s"}[len(cs) == 1])
 	case "link_transfer":
@@ -675,6 +698,17 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		}
 	}
 	a := store.Action{Actor: "assistant", Kind: name, Summary: summary, Changes: b, Status: "pending", ChatID: tb.chatID, Undoable: true}
+	// A new proposal replaces any earlier one still waiting in this chat,
+	// so there's only ever one card to act on.
+	var replaced []string
+	if recent, err := tb.s.st.Actions("assistant", 50); err == nil {
+		for _, x := range recent {
+			if x.Status == "pending" && x.ChatID == tb.chatID {
+				tb.s.st.UpdateAction(x.ID, "dismissed", nil)
+				replaced = append(replaced, fmt.Sprintf("#%d", x.ID))
+			}
+		}
+	}
 	id, err := tb.s.st.AddAction(a)
 	if err != nil {
 		return "", true, err
@@ -693,7 +727,11 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		return fmt.Sprintf("Done: %s (activity #%d). The user can undo it from Activity. Tell them what changed.", summary, id), true, nil
 	}
 	lk.Summary = "Proposed: " + summary
-	return fmt.Sprintf("Proposed: %s (activity #%d). Nothing has changed yet: the user must press Apply on the card in the chat. Tell them what you proposed and why, and don't say it's done.", summary, id), true, nil
+	note := ""
+	if len(replaced) > 0 {
+		note = " It replaces the earlier proposal (" + strings.Join(replaced, ", ") + "), which was withdrawn."
+	}
+	return fmt.Sprintf("Proposed: %s (activity #%d).%s Nothing has changed yet: the user must press Apply on the card in the chat. Tell them what you proposed and why, and don't say it's done.", summary, id, note), true, nil
 }
 
 var settingNames = map[string]string{
@@ -805,4 +843,64 @@ func (s *Server) bulkLabel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, s.viewActions([]store.Action{a})[0])
+}
+
+var (
+	descDate = regexp.MustCompile(`\b(\d{4}-\d{2}-\d{2})\b`)
+	descBTC  = regexp.MustCompile(`\b(\d+\.\d{8})\b`)
+)
+
+// findByDescription finds the one Review item a description names by its
+// date, and its account and amount when given.
+func findByDescription(rep *Report, desc string) (trace.Item, bool) {
+	d := descDate.FindString(desc)
+	if d == "" {
+		return trace.Item{}, false
+	}
+	low := strings.ToLower(desc)
+	var sats int64 = -1
+	if m := descBTC.FindString(desc); m != "" {
+		if f, err := strconv.ParseFloat(m, 64); err == nil {
+			sats = int64(f*1e8 + 0.5)
+		}
+	}
+	var hits []trace.Item
+	for _, it := range rep.Unmatched {
+		if dayOf(it.Time) != d {
+			continue
+		}
+		if sats >= 0 && it.Sats != sats {
+			continue
+		}
+		if strings.Contains(low, strings.ToLower(it.Account)) || sats >= 0 {
+			hits = append(hits, it)
+		}
+	}
+	if len(hits) == 1 {
+		return hits[0], true
+	}
+	return trace.Item{}, false
+}
+
+// tierCategory picks the category of the first band an amount fits.
+func tierCategory(tiers []any, cents int64) trace.Category {
+	for _, x := range tiers {
+		m, _ := x.(map[string]any)
+		if _, ok := m["max_usd"]; !ok || float64(cents) <= argNum(m, "max_usd")*100 {
+			return trace.Category(strings.ToLower(argStr(m, "category")))
+		}
+	}
+	return ""
+}
+
+// historyItems are the rows the previous answer showed, as label items.
+func (tb *toolbox) historyItems(cat string) []any {
+	if len(tb.historyKeys) == 0 || cat == "" {
+		return nil
+	}
+	var out []any
+	for _, k := range tb.historyKeys {
+		out = append(out, map[string]any{"id": k, "category": cat})
+	}
+	return out
 }
