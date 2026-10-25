@@ -461,8 +461,16 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, 
 		default:
 			continue
 		}
-		g = append(g, GraphEvent{Key: "ex:" + e.ID, Account: e.Account, Time: e.Time.Unix(), Kind: k, Sats: e.Sats,
-			Cents: e.FiatCents, FeeCents: e.FeeCents, Txid: e.Txid, Address: e.Address, Note: e.Note})
+		ev := GraphEvent{Key: "ex:" + e.ID, Account: e.Account, Time: e.Time.Unix(), Kind: k, Sats: e.Sats,
+			Cents: e.FiatCents, FeeCents: e.FeeCents, Txid: e.Txid, Address: e.Address, Note: e.Note}
+		if k == "income" {
+			// A value the user set replaces the export's; the page offers to undo it.
+			ev.Cents = trace.IncomeValue(e.Event, labels[ev.Key])
+			if l, ok := labels[ev.Key]; ok && l.Category == trace.IncomeIn {
+				ev.Label = string(trace.IncomeIn)
+			}
+		}
+		g = append(g, ev)
 	}
 	for _, l := range tr.Links {
 		f, t := tr.Items[l.From], tr.Items[l.To]

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"btctax/internal/ollama"
 	"btctax/internal/store"
@@ -497,7 +498,7 @@ func actionToolSpecs() []ollama.Tool {
 		"note":     str("a short note (optional)"),
 	}, "required": []string{"id", "category"}}
 	return []ollama.Tool{
-		t("label_items", "Propose labels for items waiting in Review: list them in items, or describe them with match plus one category (for example every Lightning payment under $5 as a spend). The user sees a card and must press Apply (unless they turned confirmation off). Only call this when the user asks you to label something or agrees to your suggestion.", obj(map[string]any{
+		t("label_items", "Propose labels for items waiting in Review: list them in items, or describe them with match plus one category (for example every Lightning payment under $5 as a spend). To correct a record that is already labeled, or the value (cost basis) of imported income, list it in items with its id, the category and usd. The user sees a card and must press Apply (unless they turned confirmation off). Only call this when the user asks you to label something or agrees to your suggestion.", obj(map[string]any{
 			"items":    map[string]any{"type": "array", "items": item, "description": "the items and their labels"},
 			"match":    map[string]any{"type": "object", "description": "label every Review item matching: account, direction (in/out), network (lightning/onchain), min_usd, max_usd, from, to, text", "properties": map[string]any{"account": str(""), "direction": str(""), "network": str(""), "min_usd": num(""), "max_usd": num(""), "from": str(""), "to": str(""), "text": str("")}},
 			"category": str("with match: the category for all of them"),
@@ -540,6 +541,28 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 			}
 		}
 		return trace.Item{}, fmt.Errorf("%q isn't a Review item id. Ids look like [ex:12] or [tx:<txid>:0]; if you don't have them, call label_items again with match (account, direction, network, min_usd, max_usd, from, to) and category instead of items", id)
+	}
+	// findLabelable also takes a record that is already labeled, or imported
+	// income, so a wrong label or value can be corrected.
+	findLabelable := func(id string) (trace.Item, error) {
+		it, err := findReview(id)
+		if err == nil {
+			return it, nil
+		}
+		for _, g := range tb.rep.Graph {
+			if !sameRecord(g.Key, g.Txid, id) {
+				continue
+			}
+			it := trace.Item{Key: g.Key, Account: g.Account, Dir: trace.Dir(g.Dir), Time: time.Unix(g.Time, 0).UTC(), Sats: g.Sats, Value: g.Value}
+			switch {
+			case g.Kind == "income" && strings.HasPrefix(g.Key, "ex:"):
+				it.Dir, it.Value, it.Kind = trace.In, g.Cents, "imported income"
+				return it, nil
+			case g.Label != "" && g.Dir != "":
+				return it, nil
+			}
+		}
+		return trace.Item{}, err
 	}
 	switch name {
 	case "label_items":
@@ -623,11 +646,14 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		tiers, _ := args["tiers"].([]any)
 		for _, x := range raw {
 			m, _ := x.(map[string]any)
-			it, err := findReview(argStr(m, "id"))
+			it, err := findLabelable(argStr(m, "id"))
 			if err != nil {
 				return "", true, err
 			}
 			cat := trace.Category(strings.ToLower(argStr(m, "category")))
+			if it.Kind == "imported income" && cat != trace.IncomeIn {
+				return "", true, fmt.Errorf("%s is imported income: only its value can change (category income with usd)", recordName(tb.rep, it.Key))
+			}
 			if len(tiers) > 0 {
 				cat = tierCategory(tiers, it.Value)
 				if cat == "" {
@@ -651,7 +677,7 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		if len(cs) == 0 {
 			return "", true, errors.New("none of those items fall in the bands you gave")
 		}
-		summary = fmt.Sprintf("Label %d Review item%s", len(cs), map[bool]string{true: "", false: "s"}[len(cs) == 1])
+		summary = fmt.Sprintf("Label %d item%s", len(cs), map[bool]string{true: "", false: "s"}[len(cs) == 1])
 	case "link_transfer":
 		out, err := findReview(argStr(args, "out_id"))
 		if err != nil {

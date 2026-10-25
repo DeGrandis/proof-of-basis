@@ -1416,6 +1416,12 @@ function actionsFor(e) {
       <input class="lb-amt" inputmode="decimal" size="11" hidden placeholder="${e.value ? usd(e.value) : "USD"}">
       <button class="lb-save primary" hidden>Save</button>${e.label ? `<button class="lb-unlabel link">Remove label</button>` : ""}`);
   }
+  if (e.kind === "income" && e.key.startsWith("ex:")) {
+    // Imported income: its value (the basis of these coins) can be corrected.
+    parts.push(`<span>Value received${e.label ? " (you set it)" : ""}:</span>
+      <input class="lb-amt" inputmode="decimal" size="11" placeholder="${e.cents ? usd(e.cents) : "USD"}">
+      <button class="lb-value primary">Save value</button>${e.label ? `<button class="lb-unlabel link">Use the import's value</button>` : ""}`);
+  }
   if (ACQUIRE_KINDS.includes(e.kind) || (e.label && ACQUIRE_KINDS.includes(e.label))) {
     parts.push(e.protected
       ? `<span class="badge prot">Protected: sold last</span><button class="lb-protect link" data-on="0">Stop protecting</button>`
@@ -1433,10 +1439,15 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("click", async (e) => {
   const t = e.target, box = t.closest(".label-box");
-  if (!box || !(t.classList.contains("lb-save") || t.classList.contains("lb-unlabel") || t.classList.contains("lb-protect"))) return;
+  if (!box || !(t.classList.contains("lb-save") || t.classList.contains("lb-value") || t.classList.contains("lb-unlabel") || t.classList.contains("lb-protect"))) return;
   const key = box.dataset.key;
   try {
-    if (t.classList.contains("lb-save")) {
+    if (t.classList.contains("lb-value")) {
+      const amt = Number($(".lb-amt", box).value.replace(/[$,\s]/g, ""));
+      if (!(amt > 0)) { toast("Enter the value in USD"); return; }
+      await post("/api/labels", { Key: key, Category: "income", FiatCents: Math.round(amt * 100) });
+      toast("Value saved");
+    } else if (t.classList.contains("lb-save")) {
       const label = { Key: key, Category: $(".lb-cat", box).value };
       const amt = $(".lb-amt", box).value.replace(/[$,\s]/g, "");
       if (amt) label.FiatCents = Math.round(Number(amt) * 100);

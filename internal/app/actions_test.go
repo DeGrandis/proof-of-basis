@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"btctax/internal/demo"
+	"btctax/internal/importers"
 	"btctax/internal/store"
 )
 
@@ -395,5 +397,68 @@ func TestThoseNarrowed(t *testing.T) {
 	json.Unmarshal(lastAction(t, st).Changes, &cs)
 	if len(cs) != len(shown) {
 		t.Errorf("labeled %d, want all %d", len(cs), len(shown))
+	}
+}
+
+// A wrong value on imported income, and a label already set, can both be
+// corrected: from the page (a label with the value) and by the assistant
+// (a proposal the user applies). Invented data.
+func TestCorrectIncomeValueAndRelabel(t *testing.T) {
+	st, h := newTest(t)
+	acct, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	st.AddImport(acct, "coinbase", "c.csv", "c", []importers.Event{
+		{Kind: importers.Buy, Time: at("2024-01-01"), Sats: 1_000_000, FiatCents: 400_00, UID: "c1"},
+		{Kind: importers.Income, Time: at("2024-02-01"), Sats: 10_000, FiatCents: 5_00, UID: "c2"},
+		{Kind: importers.Withdrawal, Time: at("2024-03-01"), Sats: 20_000, Address: "bc1qsynthetic", UID: "c3"},
+	}, nil)
+	srv := New(st, nil)
+	income := func() (int64, GraphEvent) {
+		rep, _ := srv.buildReport()
+		var v int64
+		for _, in := range rep.Income {
+			if in.Key == "ex:2" {
+				v = in.Cents
+			}
+		}
+		for _, g := range rep.Graph {
+			if g.Key == "ex:2" {
+				return v, g
+			}
+		}
+		return v, GraphEvent{}
+	}
+	if v, _ := income(); v != 5_00 {
+		t.Fatalf("imported value %d", v)
+	}
+	// The assistant proposes the corrected value; the user applies it.
+	rep, _ := srv.buildReport()
+	tb := &toolbox{s: srv, rep: rep, chatID: 1}
+	if lk, _ := tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": "ex:2", "category": "income", "usd": 12.34}}}); lk.Error != "" {
+		t.Fatalf("value proposal refused: %s", lk.Error)
+	}
+	call(h, "POST", "/api/actions/"+strconv.FormatInt(lastAction(t, st).ID, 10)+"/apply", "")
+	if v, g := income(); v != 12_34 || g.Cents != 12_34 || g.Label != "income" {
+		t.Errorf("after correcting: value %d graph %+v", v, g)
+	}
+	// Imported income stays income.
+	if lk, _ := tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": "ex:2", "category": "spend"}}}); lk.Error == "" {
+		t.Error("imported income relabeled as a spend")
+	}
+	// Removing the label goes back to the export's value.
+	call(h, "DELETE", "/api/labels/ex:2", "")
+	if v, _ := income(); v != 5_00 {
+		t.Errorf("after reset: %d", v)
+	}
+	// A label already set can be changed by the assistant too.
+	call(h, "POST", "/api/labels", `{"Key":"ex:3","Category":"spend","FiatCents":900}`)
+	rep, _ = srv.buildReport()
+	tb = &toolbox{s: srv, rep: rep, chatID: 2}
+	if lk, _ := tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": "ex:3", "category": "gift"}}}); lk.Error != "" {
+		t.Fatalf("relabel refused: %s", lk.Error)
+	}
+	call(h, "POST", "/api/actions/"+strconv.FormatInt(lastAction(t, st).ID, 10)+"/apply", "")
+	if !strings.Contains(st.LabelRaw("ex:3"), "gift") {
+		t.Errorf("label now %s", st.LabelRaw("ex:3"))
 	}
 }

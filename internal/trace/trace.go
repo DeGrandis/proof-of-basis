@@ -175,7 +175,7 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 		case importers.Sell:
 			b.op(lots.Op{ID: key, Kind: lots.Dispose, Time: e.Time, Account: e.Account, Sats: e.Sats, Cents: e.FiatCents, FeeCents: e.FeeCents})
 		case importers.Income, importers.Reward:
-			b.income(key, e.Account, e.Time, e.Sats, e.FiatCents, string(e.Kind))
+			b.income(key, e.Account, e.Time, e.Sats, IncomeValue(e.Event, labels[key]), string(e.Kind))
 		case importers.Withdrawal, importers.Deposit:
 			it := Item{Key: key, Source: "exchange", Account: e.Account, Time: e.Time, Sats: e.Sats,
 				FeeSats: e.FeeSats, FeeApprox: e.FeeApprox, Address: e.Address, Txid: e.Txid, Kind: string(e.Kind), Note: e.Note, Dir: In}
@@ -262,6 +262,15 @@ func (b *builder) fmv(key string, t time.Time, sats, given int64) int64 {
 	}
 	b.warn("%s: no price for %s; fair market value set to 0 until a price is imported or entered", key, t.Format("2006-01-02"))
 	return 0
+}
+
+// IncomeValue is what an imported income record is worth: the value the
+// user set on it (an income label with an amount) over the export's.
+func IncomeValue(e importers.Event, l Label) int64 {
+	if l.Category == IncomeIn && l.FiatCents > 0 {
+		return l.FiatCents
+	}
+	return e.FiatCents
 }
 
 func (b *builder) income(key, account string, t time.Time, sats, given int64, kind string) {
