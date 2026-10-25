@@ -226,3 +226,6 @@ dl.facts dd { margin: 0; }
 
 .attach-box { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .attach-box .att-add { cursor: pointer; text-decoration: underline; }
+
+.checklist { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.checklist li { line-height: 1.4; }

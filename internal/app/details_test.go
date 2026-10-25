@@ -212,3 +212,42 @@ func TestUnlinkMatch(t *testing.T) {
 		t.Errorf("allowed again: %+v", r.Links)
 	}
 }
+
+// The readiness check names what's missing and turns ready once fixed.
+func TestReadiness(t *testing.T) {
+	st, h := newTest(t)
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	cb, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	st.AddImport(cb, "coinbase", "c.csv", "c", []importers.Event{
+		{Kind: importers.Buy, Time: at("2025-01-10"), Sats: 100_000, FiatCents: 100_00, UID: "b"},
+		{Kind: importers.Sell, Time: at("2025-03-01"), Sats: 150_000, FiatCents: 160_00, UID: "s"}, // 50,000 never bought
+		{Kind: importers.Withdrawal, Time: at("2025-04-01"), Sats: 10_000, Address: "bc1qsomewhere", UID: "w"},
+		{Kind: importers.Income, Time: at("2025-05-01"), Sats: 1_000, FiatCents: 1_00, UID: "i"},
+	}, nil)
+	get := func() Readiness {
+		var r Readiness
+		json.Unmarshal(call(h, "GET", "/api/readiness?year=2025", "").Body.Bytes(), &r)
+		return r
+	}
+	status := func(r Readiness) map[string]string {
+		m := map[string]string{}
+		for _, c := range r.Checks {
+			m[c.ID] = c.Status
+		}
+		return m
+	}
+	r := get()
+	s := status(r)
+	if r.Ready || s["basis"] != "bad" || s["review"] != "bad" || s["1099da"] != "warn" || s["income-type"] != "warn" || r.KnownBasis != 6666 {
+		t.Errorf("before: ready %v known %d checks %v", r.Ready, r.KnownBasis, s)
+	}
+	// Fix it: the missing purchase, the withdrawal labeled, the income typed.
+	st.AddImport(cb, "coinbase", "c2.csv", "c2", []importers.Event{{Kind: importers.Buy, Time: at("2025-01-20"), Sats: 60_000, FiatCents: 60_00, UID: "b2"}}, nil)
+	call(h, "POST", "/api/labels", `{"Key":"ex:3","Category":"spend","FiatCents":1000}`)
+	call(h, "POST", "/api/labels/ex:4/details", `{"IncomeType":"staking"}`)
+	r = get()
+	s = status(r)
+	if !r.Ready || s["basis"] != "ok" || s["review"] != "ok" || s["income-type"] != "" {
+		t.Errorf("after: ready %v checks %+v", r.Ready, r.Checks)
+	}
+}

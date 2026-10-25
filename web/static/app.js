@@ -960,13 +960,29 @@ $("#protected-table").addEventListener("click", async (e) => {
   if (k) { await post("/api/protect", { key: k, on: false }); refresh(); }
 });
 
+// Is a year ready to hand over: what's complete and what to fix first.
+async function renderReadiness() {
+  const years = [...new Set([...(report.years || []).map((y) => y.year)])].sort((a, b) => b - a);
+  if (!years.includes(formsYear)) formsYear = years.find((y) => y < new Date().getFullYear()) || years[0] || new Date().getFullYear();
+  $("#ready-year").innerHTML = (years.length ? years : [formsYear]).map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
+  let r;
+  try { r = await api(`/api/readiness?year=${formsYear}`); } catch (e) { $("#ready-out").textContent = e.message; return; }
+  const icon = { ok: '<span class="pos">✓</span>', warn: '<span class="warn">!</span>', bad: '<span class="neg">✕</span>' };
+  const order = { bad: 0, warn: 1, ok: 2 };
+  const checks = [...r.checks].sort((a, b) => order[a.status] - order[b.status]);
+  $("#ready-out").innerHTML = `<p>${r.ready ? `<b class="pos">Ready to hand over</b>${checks.some((c) => c.status === "warn") ? ", with a few things worth a look." : "."}`
+      : `<b class="neg">Not ready yet</b>: fix the items marked ✕ first.`} ${(r.knownBasisBP / 100).toFixed(r.knownBasisBP % 100 ? 1 : 0)}% of the BTC sold or spent in ${r.year} has a known purchase.</p>
+    <ul class="checklist">${checks.map((c) => `<li>${icon[c.status]} <b>${esc(c.title)}</b>${c.detail ? `<br><span class="small muted">${esc(c.detail)}</span>` : ""}${c.link && c.status !== "ok" ? ` <a class="small" href="${esc(c.link)}">Go there</a>` : ""}</li>`).join("")}</ul>`;
+}
+$("#ready-year").addEventListener("change", (e) => { formsYear = Number(e.target.value); renderReadiness(); renderForms(); });
+
 // Form 8949 lines for one year, checked against imported 1099-DAs.
 let formsYear = 0;
 async function renderForms() {
-  const years = [...new Set((report.disposals || []).map((d) => Number(day(d.Disposed).slice(0, 4))))].sort((a, b) => b - a);
+  if (!formsYear) formsYear = new Date().getFullYear() - 1;
+  const years = [...new Set([formsYear, ...(report.disposals || []).map((d) => Number(day(d.Disposed).slice(0, 4)))])].sort((a, b) => b - a);
   const sel = $("#forms-year");
-  if (!years.includes(formsYear)) formsYear = years[0] || new Date().getFullYear();
-  sel.innerHTML = (years.length ? years : [formsYear]).map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
+  sel.innerHTML = years.map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
   const exch = (report.accounts || []).filter((a) => a.kind === "exchange");
   $("#da-account").innerHTML = exch.map((a) => `<option>${esc(a.name)}</option>`).join("") || `<option value="">No exchange accounts</option>`;
   let f;
@@ -992,7 +1008,7 @@ async function renderForms() {
       <td class="num">${d.row.hasBasis ? usd(d.row.basis) : "not reported"}</td><td></td><td></td><td></td><td class="small warn">Only on the 1099-DA. ${esc(d.note)}</td></tr>`).join("")
     || `<tr><td colspan="10" class="muted">None.</td></tr>`;
 }
-$("#forms-year").addEventListener("change", (e) => { formsYear = Number(e.target.value); renderForms(); });
+$("#forms-year").addEventListener("change", (e) => { formsYear = Number(e.target.value); renderForms(); renderReadiness(); });
 $("#da-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
@@ -1039,7 +1055,7 @@ $("#alloc-confirm").addEventListener("click", async () => {
 
 function renderTaxes() {
   renderProtected();
-  renderForms();
+  renderReadiness().then(renderForms);
   renderAllocation();
   const types = report.incomeTypes || {};
   const incRows = [];
