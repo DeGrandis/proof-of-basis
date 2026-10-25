@@ -390,6 +390,31 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 			b.warn("tx %s has inputs from outside the tracked wallets (coinjoin or payjoin?); review it", id)
 		}
 		fee := a.fee
+		// With inputs from outside the tracked wallets, part of what left was
+		// never ours: the wallets lose at most what they put in, less their
+		// change. Outputs take from that in order; the rest was someone
+		// else's (or from an address no scan found).
+		budget := int64(-1)
+		if !a.feeSet {
+			budget = 0
+			for _, v := range a.sent {
+				budget += v
+			}
+			for _, o := range t.Outputs {
+				if acct, ours := a.owner[o.Vout]; ours && acct == sender {
+					budget -= o.Sats
+				}
+			}
+			budget = max(budget, 0)
+		}
+		take := func(sats int64) int64 {
+			if budget < 0 {
+				return sats
+			}
+			n := min(sats, budget)
+			budget -= n
+			return n
+		}
 		var internal []lots.Op
 		for _, o := range t.Outputs {
 			acct, ours := a.owner[o.Vout]
@@ -397,11 +422,20 @@ func (b *builder) chainLegs(wallets []WalletTxs) {
 			case ours && acct == sender:
 				// change
 			case ours:
-				internal = append(internal, lots.Op{ID: key(o.Vout), Kind: lots.Transfer, Time: t.Time,
-					Account: sender, To: acct, Sats: o.Sats})
+				if n := take(o.Sats); n > 0 {
+					internal = append(internal, lots.Op{ID: key(o.Vout), Kind: lots.Transfer, Time: t.Time,
+						Account: sender, To: acct, Sats: n})
+				}
 			default:
+				n := take(o.Sats)
+				if n == 0 {
+					continue
+				}
 				it := Item{Key: key(o.Vout), Source: "chain", Account: sender, Dir: Out, Time: t.Time,
-					Sats: o.Sats, Address: o.Address, Txid: id}
+					Sats: n, Address: o.Address, Txid: id}
+				if n < o.Sats {
+					it.Note = fmt.Sprintf("Only %d of this output's %d sats came from your tracked wallets; the rest came from inputs no wallet here owns (an address the scan never found, or a coinjoin)", n, o.Sats)
+				}
 				if fee > 0 { // the first external output carries the whole fee
 					it.FeeSats, fee = fee, 0
 				}

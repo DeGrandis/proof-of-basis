@@ -400,3 +400,43 @@ func TestWithdrawalWithHiddenFee(t *testing.T) {
 		t.Errorf("ambiguous receipts linked: %+v", r.Links)
 	}
 }
+
+// A send that spends the wallet's coins together with inputs the scan
+// doesn't know (an address it never derived, or a coinjoin): the wallet
+// can't lose more than it put in. Invented amounts in the shape of the
+// real case: 0.0696 of ours plus 0.0566 from elsewhere, all to one output.
+func TestMixedInputsCapOutflow(t *testing.T) {
+	const ours, theirs, fee int64 = 6_962_891, 5_700_000, 37_306
+	paid := ours + theirs - fee // 12,625,585
+	ex := []ExEvent{
+		{"1", "coinbase", importers.Event{Kind: importers.Buy, Time: at("2017-06-01T10:00:00Z"), Sats: ours, FiatCents: 200_00}},
+		{"2", "coinbase", importers.Event{Kind: importers.Withdrawal, Time: at("2017-06-02T10:00:00Z"), Sats: ours}},
+	}
+	og := WalletTxs{"OG", []scan.Tx{
+		{Txid: "aa", Height: 100, Time: at("2017-06-02T10:20:00Z"), Inputs: []scan.Input{{PrevTxid: "exchange-hot-wallet"}},
+			Outputs: []scan.Output{{Vout: 0, Address: "og-0", Sats: ours, Ours: true}}, RecvSats: ours},
+		{Txid: "bb", Height: 200, Time: at("2017-12-31T12:00:00Z"),
+			Inputs:   []scan.Input{{PrevTxid: "aa", Sats: ours, Ours: true}, {PrevTxid: "elsewhere"}},
+			Outputs:  []scan.Output{{Vout: 0, Address: "gone", Sats: paid}},
+			SentSats: ours},
+	}}
+	labels := map[string]Label{"tx:bb:0": {Key: "tx:bb:0", Category: Lost}}
+	r := Build(ex, []WalletTxs{og}, labels, Options{})
+	if it := r.Items["tx:bb:0"]; it.Sats != ours {
+		t.Errorf("outflow booked %d, want only the wallet's own %d", it.Sats, ours)
+	}
+	res, err := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Balances["OG"] != 0 || len(res.Dips) != 0 {
+		t.Errorf("OG balance %d, dips %+v", res.Balances["OG"], res.Dips)
+	}
+	var lost int64
+	for _, rm := range res.Removals {
+		lost += rm.Sats
+	}
+	if lost != ours {
+		t.Errorf("lost %d, want %d", lost, ours)
+	}
+}
