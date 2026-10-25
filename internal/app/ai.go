@@ -878,6 +878,10 @@ func sameRecord(key, txid, id string) bool {
 	if id == key || txid != "" && id == txid {
 		return true
 	}
+	// "529" for "ex:529": a bare record number.
+	if _, err := strconv.Atoi(id); err == nil && key == "ex:"+id {
+		return true
+	}
 	if strings.HasPrefix(id, "tx:") {
 		if parts := strings.Split(id, ":"); len(parts) >= 2 && len(parts[1]) == 64 {
 			t := parts[1]

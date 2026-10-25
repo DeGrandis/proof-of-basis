@@ -261,6 +261,9 @@ func TestAssistantTools(t *testing.T) {
 func TestSameRecord(t *testing.T) {
 	tx := strings.Repeat("ab", 32)
 	key := "tx:" + tx + ":0"
+	if !sameRecord("ex:529", "", "529") || sameRecord("ex:5290", "", "529") {
+		t.Error("bare record number")
+	}
 	for _, id := range []string{key, "[" + key + "]", "tx:" + tx, tx, "`" + key + "`"} {
 		if !sameRecord(key, tx, id) {
 			t.Errorf("%q should match", id)
