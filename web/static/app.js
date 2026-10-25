@@ -1415,12 +1415,20 @@ function actionsFor(e) {
       <select class="lb-cat"><option value="">${e.label ? "Change to…" : "Choose…"}</option>${cats.filter(([v]) => v !== "self").map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
       <input class="lb-amt" inputmode="decimal" size="11" hidden placeholder="${e.value ? usd(e.value) : "USD"}">
       <button class="lb-save primary" hidden>Save</button>${e.label ? `<button class="lb-unlabel link">Remove label</button>` : ""}`);
+    // A label that carries a value (income, spend, purchase…): the value is
+    // always shown and can be changed on its own, without relabeling.
+    const valueName = e.label && (MARKET_VALUE[e.label] || needsAmount[e.label]);
+    if (valueName) {
+      parts.push(`<span>${esc(valueName)}:</span>
+        <input class="lb-val" inputmode="decimal" size="11" placeholder="${e.cents ? usd(e.cents) : e.value ? usd(e.value) : "USD"}">
+        <button class="lb-value primary" data-cat="${esc(e.label)}">Save value</button>`);
+    }
   }
   if (e.kind === "income" && e.key.startsWith("ex:")) {
     // Imported income: its value (the basis of these coins) can be corrected.
     parts.push(`<span>Value received${e.label ? " (you set it)" : ""}:</span>
-      <input class="lb-amt" inputmode="decimal" size="11" placeholder="${e.cents ? usd(e.cents) : "USD"}">
-      <button class="lb-value primary">Save value</button>${e.label ? `<button class="lb-unlabel link">Use the import's value</button>` : ""}`);
+      <input class="lb-val" inputmode="decimal" size="11" placeholder="${e.cents ? usd(e.cents) : "USD"}">
+      <button class="lb-value primary" data-cat="income">Save value</button>${e.label ? `<button class="lb-unlabel link">Use the import's value</button>` : ""}`);
   }
   if (ACQUIRE_KINDS.includes(e.kind) || (e.label && ACQUIRE_KINDS.includes(e.label))) {
     parts.push(e.protected
@@ -1443,9 +1451,9 @@ document.addEventListener("click", async (e) => {
   const key = box.dataset.key;
   try {
     if (t.classList.contains("lb-value")) {
-      const amt = Number($(".lb-amt", box).value.replace(/[$,\s]/g, ""));
+      const amt = Number($(".lb-val", box).value.replace(/[$,\s]/g, ""));
       if (!(amt > 0)) { toast("Enter the value in USD"); return; }
-      await post("/api/labels", { Key: key, Category: "income", FiatCents: Math.round(amt * 100) });
+      await post("/api/labels", { Key: key, Category: t.dataset.cat, FiatCents: Math.round(amt * 100) });
       toast("Value saved");
     } else if (t.classList.contains("lb-save")) {
       const label = { Key: key, Category: $(".lb-cat", box).value };
