@@ -268,3 +268,10 @@ a.button.primary { background: var(--ink); color: var(--on-ink); border-color: v
   .step-body { padding: 0 12px 14px; }
   .step-head { padding: 12px; gap: var(--s-2); font-size: var(--fs-sm); }
 }
+
+/* A part of the page a link just pointed at. */
+.flash { animation: flash 1.6s ease-out; border-radius: var(--r-sm); }
+@keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; box-shadow: 0 0 0 3px var(--accent); } }
+/* Leave room for the fixed header when a link scrolls to a part. */
+#season-steps .step, #season-alloc, #income-types-table, #gifts-table, #forms-table, .tf-card, #taxform-other { scroll-margin-top: 84px; }

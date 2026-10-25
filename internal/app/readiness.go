@@ -112,7 +112,7 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 			switch c.Status {
 			case "no form":
 				add(id, "warn", "No 1099-DA from "+c.Account+" yet",
-					"Add the PDF the exchange sent (Taxes, Form 8949 and 1099-DA) and type its total proceeds, so your records can be checked against what the IRS was told.", "#taxes")
+					"Drop the PDF the exchange sent on its card and type its total proceeds, so your records can be checked against what the IRS was told.", "#taxes")
 			case "no totals":
 				add(id, "warn", "Type the total proceeds from "+c.Account+"'s 1099-DA",
 					"With the form's total, the app checks your records against it.", "#taxes")

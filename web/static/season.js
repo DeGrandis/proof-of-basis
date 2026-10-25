@@ -10,6 +10,30 @@ const STEP_CHECKS = {
 };
 const seasonOpen = {}; // year -> step -> open, as the user left it
 
+// Where a check's "Go there" leads when the fix is on this page: the step
+// to open and the part of it to show.
+const CHECK_GOTO = {
+  basis: ["numbers", "#forms-table"],
+  reconcile: ["numbers", "#forms-table"],
+  allocation: ["details", "#season-alloc"],
+  "income-type": ["details", "#income-types-table"],
+  rewards: ["details", "#income-types-table"],
+  gifts: ["details", "#gifts-table"],
+};
+function checkGoto(c) {
+  if (c.id.startsWith("1099da:")) {
+    const acct = c.id.slice(7);
+    return ["forms", `.tf-card[data-account="${CSS.escape(acct)}"], #taxform-other`];
+  }
+  return CHECK_GOTO[c.id];
+}
+function checkLink(c) {
+  if (c.status === "ok") return "";
+  const g = checkGoto(c);
+  if (g) return ` <a class="small" href="#taxes" data-goto-step="${g[0]}" data-goto="${esc(g[1])}">Go there</a>`;
+  return c.link ? ` <a class="small" href="${esc(c.link)}">Go there</a>` : "";
+}
+
 async function renderSeason() {
   if (!report) return;
   const thisYear = new Date().getFullYear();
@@ -32,7 +56,7 @@ async function renderSeason() {
   const states = {};
   for (const [step, test] of Object.entries(STEP_CHECKS)) {
     const checks = r.checks.filter((c) => test(c.id)).sort((a, b) => order[a.status] - order[b.status]);
-    $(`.checklist[data-checks="${step}"]`).innerHTML = checks.map((c) => `<li>${icon[c.status]} <b>${esc(c.title)}</b>${c.detail ? `<br><span class="small muted">${esc(c.detail)}</span>` : ""}${c.link && c.status !== "ok" ? ` <a class="small" href="${esc(c.link)}">Go there</a>` : ""}</li>`).join("");
+    $(`.checklist[data-checks="${step}"]`).innerHTML = checks.map((c) => `<li>${icon[c.status]} <b>${esc(c.title)}</b>${c.detail ? `<br><span class="small muted">${esc(c.detail)}</span>` : ""}${checkLink(c)}</li>`).join("");
     states[step] = stateOf(checks);
   }
   if (year < 2025) states.forms = "na";
@@ -220,4 +244,20 @@ $("#season-steps").addEventListener("click", (e) => {
   li.classList.toggle("open", open);
   head.setAttribute("aria-expanded", open);
   seasonOpen[formsYear] = { ...(seasonOpen[formsYear] || {}), [li.dataset.step]: open };
+});
+
+// "Go there" for a fix on this page: open its step and show the part.
+$("#season-steps").addEventListener("click", (e) => {
+  const a = e.target.closest("[data-goto-step]");
+  if (!a) return;
+  e.preventDefault();
+  const li = $(`.step[data-step="${a.dataset.gotoStep}"]`);
+  li.classList.add("open");
+  $(".step-head", li).setAttribute("aria-expanded", true);
+  seasonOpen[formsYear] = { ...(seasonOpen[formsYear] || {}), [li.dataset.step]: true };
+  const target = $$(a.dataset.goto, li).find((el) => !el.closest("[hidden]")) || li;
+  target.scrollIntoView({ block: "start" });
+  target.classList.remove("flash");
+  void target.offsetWidth; // restart the highlight
+  target.classList.add("flash");
 });
