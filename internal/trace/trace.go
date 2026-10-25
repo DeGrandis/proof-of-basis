@@ -626,14 +626,22 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 			}
 		}
 	}
-	for _, o := range free(outs) {
-		if o.Address == "" {
-			continue
-		}
-		for _, i := range free(ins) {
-			if o.Address == i.Address && (ok(o, i) || slowSend(o, i)) {
-				b.link(o.Key, i.Key, "address")
-				break
+	// Same address: a reused one can have several receipts in the window,
+	// and sends can confirm out of order, so the amount decides: exact
+	// first, then short by a hidden fee, then any receipt no bigger than
+	// what left. Never one where more arrived than left, or two sends to
+	// one address could swap receipts.
+	sameAddr := func(o, i Item) bool {
+		return o.Address != "" && o.Address == i.Address && (ok(o, i) || slowSend(o, i))
+	}
+	covered := func(o, i Item) bool { return i.Sats <= o.Sats+o.FeeSats }
+	for _, fits := range []func(o, i Item) bool{amountFits, hiddenFee, covered} {
+		for _, o := range free(outs) {
+			for _, i := range free(ins) {
+				if sameAddr(o, i) && fits(o, i) {
+					b.link(o.Key, i.Key, "address")
+					break
+				}
 			}
 		}
 	}

@@ -440,3 +440,42 @@ func TestMixedInputsCapOutflow(t *testing.T) {
 		t.Errorf("lost %d, want %d", lost, ours)
 	}
 }
+
+// Two exchange sends to one reused address that confirm in the other
+// order: matching by address alone would give each the other's receipt,
+// crediting the wallet the small amount for the big receipt. The amount
+// decides. Invented amounts.
+func TestReusedAddressReceiptsDoNotSwap(t *testing.T) {
+	const small, big int64 = 1_000_000, 6_700_373
+	ex := []ExEvent{
+		{"1", "coinbase", importers.Event{Kind: importers.Buy, Time: at("2017-01-01T10:00:00Z"), Sats: small + big, FiatCents: 800_00}},
+		{"2", "coinbase", importers.Event{Kind: importers.Withdrawal, Time: at("2017-01-05T09:00:00Z"), Sats: small, Address: "og-reused"}},
+		{"3", "coinbase", importers.Event{Kind: importers.Withdrawal, Time: at("2017-01-05T10:00:00Z"), Sats: big, Address: "og-reused"}},
+	}
+	recv := func(txid, when string, sats int64) scan.Tx {
+		return scan.Tx{Txid: txid, Height: 100, Time: at(when), Inputs: []scan.Input{{PrevTxid: "exchange-hot-wallet"}},
+			Outputs: []scan.Output{{Vout: 0, Address: "og-reused", Sats: sats, Ours: true}}, RecvSats: sats}
+	}
+	og := WalletTxs{"OG", []scan.Tx{
+		recv("bb", "2017-01-05T10:30:00Z", big),   // the later send confirms first
+		recv("aa", "2017-01-05T13:00:00Z", small), // the earlier one waits
+	}}
+	r := Build(ex, []WalletTxs{og}, nil, Options{})
+	got := map[string]string{}
+	for _, l := range r.Links {
+		got[l.From] = l.To
+		if l.FeeSats != 0 {
+			t.Errorf("%s -> %s fee %d, want 0", l.From, l.To, l.FeeSats)
+		}
+	}
+	if got["ex:2"] != "tx:aa:0" || got["ex:3"] != "tx:bb:0" {
+		t.Errorf("links %+v", r.Links)
+	}
+	res, err := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Balances["OG"] != small+big || res.Balances["coinbase"] != 0 {
+		t.Errorf("balances %v", res.Balances)
+	}
+}
