@@ -462,3 +462,20 @@ func TestCorrectIncomeValueAndRelabel(t *testing.T) {
 		t.Errorf("label now %s", st.LabelRaw("ex:3"))
 	}
 }
+
+// Imported income with no USD value shows the value it is counted at.
+func TestIncomeShowsCountedValue(t *testing.T) {
+	st, _ := newTest(t)
+	acct, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	day := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
+	st.AddImport(acct, "coinbase", "c.csv", "c", []importers.Event{
+		{Kind: importers.Buy, Time: day, Sats: 100_000_000, FiatCents: 40_000_00, UID: "c1"}, // sets the day's price
+		{Kind: importers.Income, Time: day, Sats: 10_000, UID: "c2"},
+	}, nil)
+	rep, _ := New(st, nil).buildReport()
+	for _, g := range rep.Graph {
+		if g.Key == "ex:2" && g.Cents != 4_00 {
+			t.Errorf("shown value %d, want the $4.00 it counts at", g.Cents)
+		}
+	}
+}

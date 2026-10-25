@@ -449,6 +449,10 @@ func (r *Report) fillNil() {
 
 func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, lnAcct string) []GraphEvent {
 	var g []GraphEvent
+	incomeCents := map[string]int64{}
+	for _, in := range tr.Income {
+		incomeCents[in.Key] = in.Cents
+	}
 	for _, e := range ex {
 		var k string
 		switch e.Kind {
@@ -464,8 +468,9 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, 
 		ev := GraphEvent{Key: "ex:" + e.ID, Account: e.Account, Time: e.Time.Unix(), Kind: k, Sats: e.Sats,
 			Cents: e.FiatCents, FeeCents: e.FeeCents, Txid: e.Txid, Address: e.Address, Note: e.Note}
 		if k == "income" {
-			// A value the user set replaces the export's; the page offers to undo it.
-			ev.Cents = trace.IncomeValue(e.Event, labels[ev.Key])
+			// The value counted: the user's, else the export's, else the
+			// day's price. The page shows it and offers to change it.
+			ev.Cents = incomeCents[ev.Key]
 			if l, ok := labels[ev.Key]; ok && l.Category == trace.IncomeIn {
 				ev.Label = string(trace.IncomeIn)
 			}
