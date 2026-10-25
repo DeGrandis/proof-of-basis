@@ -1,0 +1,6 @@
+Date,Sent Amount,Sent Currency,Received Amount,Received Currency,Fee Amount,Fee Currency,Tag
+2023-01-05 10:00:00,1000.00,USD,0.05000000,BTC,0.00,USD,Buy
+2023-01-10 10:00:00,0.01000000,BTC,,,0.00000000,BTC,Withdrawal
+2023-01-20 10:00:00,0.01000000,BTC,,,0.00002000,BTC,Withdrawal
+2023-01-30 10:00:00,0.01000000,BTC,,,0.00002000,BTC,Withdrawal
+2023-02-10 13:00:00,,,0.00500000,BTC,,,Deposit

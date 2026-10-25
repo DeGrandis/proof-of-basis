@@ -431,12 +431,8 @@ func graph(ex []trace.ExEvent, tr *trace.Result, labels map[string]trace.Label, 
 		if addr == "" {
 			addr = f.Address
 		}
-		fee := f.Sats + f.FeeSats - t.Sats
-		if f.FeeSats > 0 && t.Sats == f.Sats-f.FeeSats {
-			fee = f.FeeSats
-		}
 		g = append(g, GraphEvent{Key: l.From, Account: f.Account, Time: f.Time.Unix(), Kind: "transfer", Sats: t.Sats, To: t.Account, ToKey: l.To,
-			FeeSats: max(fee, 0), Txid: txid, Address: addr, Note: f.Note, Method: l.Method})
+			FeeSats: l.FeeSats, Txid: txid, Address: addr, Note: f.Note, Method: l.Method})
 	}
 	for _, op := range tr.Ops {
 		if op.Kind == lots.Transfer && op.Account == op.To && strings.HasSuffix(op.ID, ":fee") {

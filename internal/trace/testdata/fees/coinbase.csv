@@ -1,0 +1,10 @@
+
+Transactions
+User,Synthetic Person,00000000-0000-0000-0000-000000000000
+ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes,Sender Address,Recipient Address
+cb-buy,2017-11-01 10:00:00 UTC,Buy,BTC,0.10000000,USD,$7000.00,$700.00,$710.00,$10.00,Bought 0.1 BTC,,
+cb-c1,2017-11-10 10:00:00 UTC,Send,BTC,-0.01000000,USD,$7000.00,-$70.00,-$70.00,$0.00,Coinbase paid the fee,,cold-c1
+cb-c2,2017-12-20 10:00:00 UTC,Send,BTC,-0.00090000,USD,$17000.00,-$15.30,-$15.30,$0.00,Fee folded into the amount and not reported,,cold-c2
+cb-c3,2018-01-10 10:00:00 UTC,Send,BTC,-0.02000000,USD,$15000.00,-$300.00,-$303.00,$3.00,Fee on top reported in USD,,cold-c3
+cb-c4,2018-02-10 10:00:00 UTC,Send,BTC,-0.03000000,USD,"$43,217.55",-$1296.53,-$1296.53,$3.17,Fee inside the amount reported in USD,,cold-c4
+cb-c5,2018-03-10 10:00:00 UTC,Send,BTC,-0.00100000,USD,$10000.00,-$10.00,-$12.50,$2.50,Paid a merchant; fee on top,,bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq

@@ -128,6 +128,7 @@ func (coinbase) Parse(t *Table) ([]Event, []Warning, error) {
 				ev.Address = findAddress(notes)
 			}
 			ev.Txid = findTxid(notes)
+			ev.FeeSats, ev.FeeApprox = usdFeeSats(fees, cell(row, iPrice))
 		case lt == "receive", strings.Contains(lt, "deposit"):
 			ev.Kind = Deposit
 			ev.Txid = findTxid(notes)
@@ -160,6 +161,17 @@ func firstErr(errs ...error) error {
 		}
 	}
 	return nil
+}
+
+// usdFeeSats converts a send's network fee given only in USD to sats at
+// the row's BTC price. Whether the fee came out of the amount or on top is
+// settled later against the chain receipt.
+func usdFeeSats(feeCents int64, price string) (int64, bool) {
+	p, err := Cents(price)
+	if feeCents <= 0 || err != nil || p == 0 {
+		return 0, false
+	}
+	return mulRound(feeCents, 100_000_000, abs(p)), true
 }
 
 // mulRound returns a*b/c rounded half away from zero, without overflow.

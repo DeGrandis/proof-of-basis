@@ -132,6 +132,9 @@ func (s signedSpec) Parse(t *Table) ([]Event, []Warning, error) {
 		if !ok {
 			continue
 		}
+		if ev.Kind == Withdrawal && ev.FeeSats == 0 && r.feeFiat > 0 && price > 0 {
+			ev.FeeSats, ev.FeeApprox = mulRound(r.feeFiat, 100_000_000, price), true
+		}
 		if (ev.Kind == Reward || ev.Kind == Income) && ev.FiatCents == 0 && price > 0 {
 			ev.FiatCents = mulRound(price, ev.Sats, 100_000_000)
 		}

@@ -1,0 +1,8 @@
+"Account ID","00000000-synthetic"
+"Name","Synthetic Person"
+
+Reference ID,Date (UTC),Transaction Type,Description,Asset,Amount (BTC),Price per Coin (USD),Subtotal (USD),Fee (USD),Total (USD),Transaction ID
+syn-f-buy,2025-02-01 10:00:00+00:00,Purchase,Buy,BTC,0.01000000,50000.00,-500.00,-5.00,-505.00,syn-f-buy-id
+syn-f-1,2025-02-10 10:00:00+00:00,Withdrawal,Fold paid the fee,BTC,0.00300000,50000.00,,,,
+syn-f-2,2025-02-20 10:00:00+00:00,Withdrawal,Fee on top reported in USD,BTC,0.00300000,50000.00,,1.50,,
+"Bitcoin services are provided by a synthetic disclaimer for testing."

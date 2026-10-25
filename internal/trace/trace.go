@@ -44,12 +44,15 @@ type Item struct {
 	Time    time.Time
 	Sats    int64
 	FeeSats int64
-	Address string
-	Txid    string
-	Kind    string // importer kind for exchange items
-	Note    string
-	Network string // "onchain", "lightning", or "" when the record doesn't say
-	Value   int64  // market value in USD cents at the day's price, 0 if unknown
+	// FeeApprox: FeeSats is the export's USD fee in sats, which the chain
+	// receipt shows to be on top of the amount or inside it.
+	FeeApprox bool
+	Address   string
+	Txid      string
+	Kind      string // importer kind for exchange items
+	Note      string
+	Network   string // "onchain", "lightning", or "" when the record doesn't say
+	Value     int64  // market value in USD cents at the day's price, 0 if unknown
 	// Default is how an unmatched item counts when the user hasn't labeled
 	// it (Lightning payments are spends, receipts income); empty means it
 	// waits in Review.
@@ -77,6 +80,7 @@ func network(it Item) string {
 type Link struct {
 	From, To string // item keys; From is the outflow
 	Method   string // txid | address | amount | internal | manual
+	FeeSats  int64  // network fee the transfer paid: what left less what arrived
 }
 
 // Category is what the user says an unmatched item was.
@@ -174,7 +178,7 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 			b.income(key, e.Account, e.Time, e.Sats, e.FiatCents, string(e.Kind))
 		case importers.Withdrawal, importers.Deposit:
 			it := Item{Key: key, Source: "exchange", Account: e.Account, Time: e.Time, Sats: e.Sats,
-				FeeSats: e.FeeSats, Address: e.Address, Txid: e.Txid, Kind: string(e.Kind), Note: e.Note, Dir: In}
+				FeeSats: e.FeeSats, FeeApprox: e.FeeApprox, Address: e.Address, Txid: e.Txid, Kind: string(e.Kind), Note: e.Note, Dir: In}
 			if e.Kind == importers.Withdrawal {
 				it.Dir = Out
 				withdrawals = append(withdrawals, key)
@@ -576,7 +580,40 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 			b.link(o.Key, cands[0].Key, "amount")
 		}
 	}
+	// Last resort: some exports (old Coinbase sends) give the amount debited
+	// with the network fee folded in and no fee of their own, so the receipt
+	// is smaller by an unknown fee, which in a fee spike can exceed what
+	// arrived. A fee given only in USD may sit inside the amount the same
+	// way, off by rounding. Accept one receipt short by at most maxHiddenFee,
+	// if it is the only fit both ways; the difference becomes the fee.
+	hiddenFee := func(o, i Item) bool {
+		return o.Source == "exchange" && (o.FeeSats == 0 || o.FeeApprox) && i.Sats < o.Sats && o.Sats-i.Sats <= maxHiddenFee
+	}
+	for _, o := range free(outs) {
+		var cands []Item
+		for _, i := range free(ins) {
+			if ok(o, i) && hiddenFee(o, i) {
+				cands = append(cands, i)
+			}
+		}
+		if len(cands) != 1 {
+			continue
+		}
+		back := 0
+		for _, o2 := range free(outs) {
+			if ok(o2, cands[0]) && hiddenFee(o2, cands[0]) {
+				back++
+			}
+		}
+		if back == 1 {
+			b.link(o.Key, cands[0].Key, "amount less network fee")
+		}
+	}
 }
+
+// maxHiddenFee bounds the fee inferred when a withdrawal's amount includes
+// it: 0.01 BTC, above any per-transaction fee seen even in the 2017 spike.
+const maxHiddenFee = 1_000_000
 
 func (b *builder) link(from, to, method string) {
 	o, ok1 := b.res.Items[from]
@@ -588,10 +625,12 @@ func (b *builder) link(from, to, method string) {
 		o, i = i, o
 	}
 	b.linked[o.Key], b.linked[i.Key] = true, true
-	b.res.Links = append(b.res.Links, Link{o.Key, i.Key, method})
 	debit := o.Sats + o.FeeSats
 	if o.FeeSats > 0 && i.Sats == o.Sats-o.FeeSats {
 		debit = o.Sats // the platform's amount already included the fee
+	}
+	if o.FeeApprox && i.Sats < o.Sats {
+		debit = o.Sats // a fee known only in USD came out of the amount
 	}
 	fee := debit - i.Sats
 	if fee < 0 {
@@ -599,6 +638,7 @@ func (b *builder) link(from, to, method string) {
 		fee = 0
 	}
 	sats := min(i.Sats, debit)
+	b.res.Links = append(b.res.Links, Link{o.Key, i.Key, method, fee})
 	b.op(lots.Op{ID: o.Key + ">" + i.Key, Kind: lots.Transfer, Time: o.Time, Account: o.Account, To: i.Account, Sats: sats, FeeSats: fee})
 }
 

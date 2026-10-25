@@ -35,6 +35,9 @@ type Event struct {
 	FiatCents int64
 	FeeCents  int64
 	FeeSats   int64 // BTC network or platform fee on a withdrawal
+	// FeeApprox: FeeSats was converted from a fee the export gives only in
+	// USD, so it is near but not exact, and may sit inside the amount.
+	FeeApprox bool
 	Currency  string
 	Txid      string
 	Address   string

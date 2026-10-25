@@ -1,0 +1,5 @@
+Reference,Date & Time (UTC),Transaction Type,Amount USD,Fee USD,Amount BTC,Fee BTC,BTC Price,Cost Basis (USD),Destination,Description,Transaction Hash,Note
+syn-s-buy,Jan 05 2024 14:00:00,Purchase,-900.00,0.00,0.02000000,,45000.00,,,,,
+syn-s-1,Jan 10 2024 09:00:00,Send,,,-0.00500000,0.00001500,46000.00,,cold-s1,Fee on top,5151515151515151515151515151515151515151515151515151515151515151,
+syn-s-2,Jan 20 2024 09:00:00,Send,,,-0.00500000,0.00001500,46000.00,,,Fee inside the amount,,
+syn-s-3,Jan 30 2024 09:00:00,Send,,,-0.00200000,0.00000000,46000.00,,,Strike paid the fee,,

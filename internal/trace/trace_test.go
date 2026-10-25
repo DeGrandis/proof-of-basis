@@ -354,3 +354,49 @@ func TestSoldDefaultsToMarketValue(t *testing.T) {
 		}
 	}
 }
+
+// An exchange withdrawal whose amount includes a network fee it does not
+// report, with no txid: in a fee spike the fee (70k) exceeds what arrived
+// (20k). The receipt must still link, or spending it drives the wallet
+// negative.
+func TestWithdrawalWithHiddenFee(t *testing.T) {
+	const got, fee = 20_000, 70_000
+	ex := []ExEvent{
+		{"1", "coinbase", importers.Event{Kind: importers.Buy, Time: at("2017-12-01T10:00:00Z"), Sats: got + fee, FiatCents: 100_00}},
+		{"2", "coinbase", importers.Event{Kind: importers.Withdrawal, Time: at("2017-12-20T10:00:00Z"), Sats: got + fee}},
+	}
+	receipt := func(txid string, sats int64) scan.Tx {
+		return scan.Tx{Txid: txid, Height: 100, Time: at("2017-12-20T10:20:00Z"),
+			Inputs:   []scan.Input{{PrevTxid: "ff"}},
+			Outputs:  []scan.Output{{Vout: 0, Address: "cb-change", Sats: 5_000_000}, {Vout: 1, Address: "cold-0", Sats: sats, Ours: true}},
+			RecvSats: sats}
+	}
+	spend := scan.Tx{Txid: "bb", Height: 200, Time: at("2017-12-21T12:00:00Z"),
+		Inputs:   []scan.Input{{PrevTxid: "aa", PrevVout: 1, Sats: got, Ours: true}},
+		Outputs:  []scan.Output{{Vout: 0, Address: "shop", Sats: got - 1_000}},
+		SentSats: got, FeeSats: 1_000}
+	labels := map[string]Label{"tx:bb:0": {Key: "tx:bb:0", Category: Spend, FiatCents: 1_00}}
+
+	r := Build(ex, []WalletTxs{{"cold", []scan.Tx{receipt("aa", got), spend}}}, labels, Options{})
+	if len(r.Links) != 1 || r.Links[0].To != "tx:aa:1" || len(r.Unmatched) != 0 {
+		t.Fatalf("links %+v unmatched %+v", r.Links, r.Unmatched)
+	}
+	res, err := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Balances["coinbase"] != 0 || res.Balances["cold"] != 0 {
+		t.Errorf("balances %v", res.Balances)
+	}
+	for _, op := range r.Ops {
+		if op.ID == "ex:2>tx:aa:1" && (op.Sats != got || op.FeeSats != fee) {
+			t.Errorf("transfer %+v", op)
+		}
+	}
+
+	// Two receipts that could both be it: no guess.
+	r = Build(ex, []WalletTxs{{"cold", []scan.Tx{receipt("aa", got), receipt("cc", got+5_000)}}}, nil, Options{})
+	if len(r.Links) != 0 {
+		t.Errorf("ambiguous receipts linked: %+v", r.Links)
+	}
+}
