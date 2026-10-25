@@ -351,6 +351,19 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		b.WriteString("No rows match.\n")
 		return b.String(), summary, nil
 	}
+	if src == "review" && len(all) <= 500 {
+		rs := &ReviewSet{}
+		for _, it := range all {
+			rs.Keys = append(rs.Keys, it.r.key)
+			switch {
+			case rs.Dir == "":
+				rs.Dir = it.r.kind
+			case rs.Dir != it.r.kind:
+				rs.Dir = "mixed"
+			}
+		}
+		lk.Review = rs
+	}
 	if want, _ := a["export"].(bool); want {
 		name, csvData := exportCSV(src, m, func(yield func(statRow, float64)) {
 			for _, it := range all {

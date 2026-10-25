@@ -230,3 +230,62 @@ func TestAssistantProposals(t *testing.T) {
 	}
 	_ = in
 }
+
+func TestBulkLabelEndpoint(t *testing.T) {
+	st, h := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	var keys []string
+	for _, it := range rep.Unmatched {
+		if it.Dir == "out" && len(keys) < 5 {
+			keys = append(keys, `"`+it.Key+`"`)
+		}
+	}
+	w := call(h, "POST", "/api/labels/bulk", `{"keys":[`+strings.Join(keys, ",")+`],"category":"spend"}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Labeled 5 Review items") {
+		t.Fatalf("bulk: %d %s", w.Code, w.Body.String())
+	}
+	a := lastAction(t, st)
+	var cs []change
+	json.Unmarshal(a.Changes, &cs)
+	if len(cs) != 5 || a.Actor != "user" {
+		t.Fatalf("logged %d changes by %s", len(cs), a.Actor)
+	}
+	call(h, "POST", "/api/actions/"+strconv.FormatInt(a.ID, 10)+"/undo", "")
+	var after Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &after)
+	if len(after.Unmatched) != len(rep.Unmatched) {
+		t.Fatalf("undo left %d of %d in Review", len(after.Unmatched), len(rep.Unmatched))
+	}
+	if w := call(h, "POST", "/api/labels/bulk", `{"keys":[`+keys[0]+`],"category":"income"}`); w.Code != 400 {
+		t.Errorf("income on an outflow: %d", w.Code)
+	}
+}
+
+func TestLabelIdFallback(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, _ := srv.buildReport()
+	tb := &toolbox{s: srv, rep: rep, chatID: 9, historyMatch: `{"direction":"out","account":"Hot wallet"}`}
+	want := 0
+	for _, it := range rep.Unmatched {
+		if it.Dir == "out" && it.Account == "Hot wallet" {
+			want++
+		}
+	}
+	lk, msg := tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": "2026-08-11", "category": "spend"}, map[string]any{"id": "made-up", "category": "spend"}}})
+	if lk.Error != "" || !strings.Contains(msg, "must press Apply") {
+		t.Fatalf("fallback: %q %s", lk.Error, msg)
+	}
+	var cs []change
+	json.Unmarshal(lastAction(t, st).Changes, &cs)
+	if len(cs) != want {
+		t.Errorf("labeled %d, want %d", len(cs), want)
+	}
+}

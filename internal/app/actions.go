@@ -527,11 +527,46 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 				return it, nil
 			}
 		}
+		for _, g := range tb.rep.Graph {
+			if sameRecord(g.Key, g.Txid, id) {
+				return trace.Item{}, fmt.Errorf("%s (%s) is already labeled, so it isn't waiting in Review. Look the items up again with analyze_records (source review) for their current ids, or call label_items with match (account, direction, network, min_usd, max_usd, from, to) and category", id, recordName(tb.rep, g.Key))
+			}
+		}
 		return trace.Item{}, fmt.Errorf("%q isn't a Review item id. Ids look like [ex:12] or [tx:<txid>:0]; if you don't have them, call label_items again with match (account, direction, network, min_usd, max_usd, from, to) and category instead of items", id)
 	}
 	switch name {
 	case "label_items":
 		raw, _ := args["items"].([]any)
+		// Wrong ids for items from the previous answer (a small model
+		// copying them badly): label the items that answer listed instead,
+		// when every item got the same category.
+		if len(raw) > 0 && tb.historyMatch != "" {
+			bad, cat := false, ""
+			for _, x := range raw {
+				m, _ := x.(map[string]any)
+				if _, err := findReview(argStr(m, "id")); err != nil {
+					bad = true
+				}
+				c := argStr(m, "category")
+				if cat != "" && c != cat {
+					cat = "-"
+				} else if cat == "" {
+					cat = c
+				}
+			}
+			if bad && cat != "" && cat != "-" {
+				var match map[string]any
+				json.Unmarshal([]byte(tb.historyMatch), &match)
+				args = map[string]any{"match": match, "category": cat}
+				raw = nil
+			}
+		}
+		// "Label these": the list the previous answer showed, exactly.
+		if _, ok := args["match"].(map[string]any); ok && len(raw) == 0 && tb.refersBack && tb.historyMatch != "" {
+			var match map[string]any
+			json.Unmarshal([]byte(tb.historyMatch), &match)
+			args["match"] = match
+		}
 		if m, ok := args["match"].(map[string]any); ok && len(raw) == 0 {
 			items, err := tb.matchReview(m)
 			if err != nil {
@@ -708,4 +743,66 @@ func pastTense(s string) string {
 		}
 	}
 	return s
+}
+
+// bulkLabel labels many Review items at once, as one undoable action.
+func (s *Server) bulkLabel(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Keys     []string `json:"keys"`
+		Category string   `json:"category"`
+		Note     string   `json:"note"`
+	}
+	if err := decode(r, &in); err != nil || len(in.Keys) == 0 || len(in.Keys) > 500 {
+		fail(w, 400, errors.New("send 1 to 500 keys and a category"))
+		return
+	}
+	rep, err := s.buildReport()
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	review := map[string]trace.Item{}
+	for _, it := range rep.Unmatched {
+		review[it.Key] = it
+	}
+	cat := trace.Category(in.Category)
+	var cs []change
+	for _, k := range in.Keys {
+		it, ok := review[k]
+		if !ok {
+			continue // labeled since: skip
+		}
+		fits := outCats[cat]
+		if it.Dir == trace.In {
+			fits = inCats[cat]
+		}
+		if !fits {
+			fail(w, 400, fmt.Errorf("%q doesn't fit %s, which is an %s", cat, recordName(rep, k), it.Dir))
+			return
+		}
+		cs = append(cs, change{Kind: "label", Key: k})
+	}
+	if len(cs) == 0 {
+		fail(w, 400, errors.New("none of these items are waiting in Review any more"))
+		return
+	}
+	summary := fmt.Sprintf("Labeled %d Review item%s as %s", len(cs), map[bool]string{true: "", false: "s"}[len(cs) == 1], categoryNames[cat])
+	id, err := s.record("user", "label", summary, 0, cs, func() error {
+		for _, c := range cs {
+			if err := s.st.SetLabel(trace.Label{Key: c.Key, Category: cat, Note: clip(in.Note, 200)}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	a, err := s.st.Action(id)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	writeJSON(w, s.viewActions([]store.Action{a})[0])
 }

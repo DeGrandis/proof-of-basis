@@ -541,3 +541,6 @@ a.ai-chip:hover { border-color: var(--line-2); color: var(--text); }
 .ai-file-meta b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-file-meta small { color: var(--muted); font-size: var(--fs-xs); }
 .ai-file-dl { flex: none; font-size: var(--fs-sm); font-weight: 600; padding: 6px 12px; border-radius: var(--pill); background: var(--ink); color: var(--on-ink); }
+.ai-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: var(--r-sm); font-size: var(--fs-sm); }
+.ai-bulk select { padding: 6px 10px; border-radius: var(--pill); }
+.ai-bulk button { padding: 6px 14px; border-radius: var(--pill); }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"btctax/internal/store"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -458,7 +459,10 @@ func TestAnalyzeMath(t *testing.T) {
 }
 
 func TestClaimsChange(t *testing.T) {
-	for _, s := range []string{"I have proposed labeling all 8 of those as spends.", "A card has appeared in the chat", "Please press Apply to confirm", "I've applied the labels", "I labeled them"} {
+	for _, s := range []string{"I have proposed labeling all 8 of those as spends.", "A card has appeared in the chat", "Please press Apply to confirm", "I've applied the labels", "I labeled them",
+		"I have re-submitted the proposal to label all 8 of those 2026 outflows as **spends**.",
+		"You should see a card summarizing the 8 items and asking you to **Apply** the labels.",
+		"I have successfully submitted the proposal", "Please **press Apply** on the card"} {
 		if !claimsChange(s) {
 			t.Errorf("missed: %q", s)
 		}
@@ -471,5 +475,39 @@ func TestClaimsChange(t *testing.T) {
 	note := lookupNote(`{"lookups":[{"name":"analyze_records","args":{"source":"review","from":"2026-01-01"},"summary":"x"}]}`)
 	if !strings.Contains(note, `"source":"review"`) {
 		t.Errorf("note: %s", note)
+	}
+}
+
+func TestMatchFromHistory(t *testing.T) {
+	h := []store.ChatMessage{
+		{Role: "user", Content: "what unlabeled txs this year"},
+		{Role: "assistant", Content: "8 items", Data: `{"lookups":[{"name":"analyze_records","args":{"source":"review","from":"2026-01-01","to":"2026-12-31","kind":"out","measure":"usd","max":10,"stat":"list"},"summary":"x"}]}`},
+		{Role: "user", Content: "those were all spends"},
+	}
+	got := matchFromHistory(h)
+	for _, want := range []string{`"from":"2026-01-01"`, `"to":"2026-12-31"`, `"direction":"out"`, `"max_usd":10`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s missing from %s", want, got)
+		}
+	}
+	if matchFromHistory(h[:1]) != "" {
+		t.Error("no lookup should give no match")
+	}
+}
+
+func TestCategoryFromText(t *testing.T) {
+	for in, want := range map[string]string{"those were all spends": "spend", "they are gifts to my brother": "gift", "label them as income": "income",
+		"those were sold to a friend": "sold", "can you try again": "", "spends and gifts": ""} {
+		if got := categoryFromText(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRefersBack(t *testing.T) {
+	for in, want := range map[string]bool{"those were all spends": true, "ok label all of these as spends": true, "label them as gifts": true, "label the 2019 send as a spend": false, "what do I hold?": false} {
+		if refersBack(in) != want {
+			t.Errorf("%q: %v", in, !want)
+		}
 	}
 }

@@ -197,6 +197,13 @@ type Lookup struct {
 	Error   string         `json:"error,omitempty"`
 	Chart   *Chart         `json:"chart,omitempty"`
 	File    *FileRef       `json:"file,omitempty"`
+	Review  *ReviewSet     `json:"review,omitempty"`
+}
+
+// ReviewSet is the Review items an answer listed, for the Label control.
+type ReviewSet struct {
+	Keys []string `json:"keys"`
+	Dir  string   `json:"dir"` // in, out or mixed
 }
 
 // FileRef is a file the assistant made, shown as a download under the answer.
@@ -333,13 +340,13 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		req.Think = &thinking
 	}
 
-	tools := &toolbox{s: s, rep: rep, chatID: id}
+	tools := &toolbox{s: s, rep: rep, chatID: id, historyMatch: matchFromHistory(history), refersBack: refersBack(in.Content)}
 	var lookups []Lookup
 	var answer, reasoning strings.Builder
 	var failMsg string
 	var thinkTime time.Duration
 	var thinkStart time.Time
-	corrected := false
+	corrections := 0
 	for round := 0; ; round++ {
 		// Out of lookups: one last turn without tools so there is always
 		// an answer, never a plan that stops mid-sentence.
@@ -382,14 +389,50 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		answer.WriteString(reply.Content)
-		if len(reply.ToolCalls) == 0 && !corrected && req.Tools != nil && len(tools.actions) == 0 && claimsChange(answer.String()) {
+		if len(reply.ToolCalls) == 0 && req.Tools != nil && len(tools.actions) == 0 && claimsChange(answer.String()) {
 			// It said it changed or proposed something but called no tool,
-			// so nothing happened. Take the claim back and make it act.
-			corrected = true
+			// so nothing happened. Take the claim back and make it act,
+			// spelling out the call from the search behind its last answer.
 			answer.Reset()
 			out.send(map[string]any{"type": "reset"})
-			msgs = append(msgs, reply, ollama.Message{Role: "system", Content: "Correction: you told the user you proposed or made a change, but you called no tool, so nothing was proposed and no card exists. " +
-				"Call the right tool now. For items from an earlier answer, use label_items with match and the same filters as that earlier lookup (shown after your earlier answer). If you can't, tell the user plainly that no change was made."})
+			if tools.historyMatch != "" && refersBack(in.Content) && categoryFromText(in.Content) != "" {
+				break // the code after the loop makes this proposal exactly
+			}
+			if corrections >= 2 {
+				// The model won't call the tool: make the proposal from the
+				// search behind its last answer and the category the user
+				// named, or say plainly that nothing happened.
+				msg := "I didn't actually make that change: no proposal was created. Use the Label button under my earlier list, or ask again in one sentence, for example \"label the 8 unlabeled 2026 outflows as spends\"."
+				if m := matchFromHistory(history); m != "" {
+					if cat := categoryFromText(in.Content); cat != "" {
+						var match map[string]any
+						json.Unmarshal([]byte(m), &match)
+						lk, result := tools.run("label_items", map[string]any{"match": match, "category": cat})
+						lookups = append(lookups, lk)
+						out.send(map[string]any{"type": "tool", "lookup": lk})
+						if len(tools.actions) > 0 {
+							if a, err := s.st.Action(tools.actions[len(tools.actions)-1]); err == nil {
+								out.send(map[string]any{"type": "action", "action": s.viewActions([]store.Action{a})[0]})
+								msg = fmt.Sprintf("Here's the proposal: %s from my earlier list as %s. Press Apply on the card to make the change.", strings.ToLower(a.Summary[:1])+a.Summary[1:], cat)
+							}
+						} else {
+							msg = "I couldn't make that proposal: " + strings.TrimPrefix(result, "Error: ")
+						}
+					}
+				}
+				answer.WriteString(msg)
+				out.send(map[string]any{"type": "delta", "text": msg})
+				break
+			}
+			corrections++
+			hint := "Correction: you told the user you proposed or made a change, but you called no tool, so nothing was proposed and no card exists. Call the tool now, in this reply. "
+			if m := matchFromHistory(history); m != "" {
+				hint += "To label the items from your earlier answer, call label_items with match " + m + " and the category the user gave."
+			} else {
+				hint += "For items from an earlier answer, call label_items with match using the same filters as that earlier lookup."
+			}
+			hint += " If you truly can't, say plainly that no change was made."
+			msgs = append(msgs, reply, ollama.Message{Role: "system", Content: hint})
 			continue
 		}
 		if len(reply.ToolCalls) == 0 || round >= maxToolRounds {
@@ -411,6 +454,28 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		if answer.Len() > 0 {
 			answer.WriteString("\n\n")
 			out.send(map[string]any{"type": "delta", "text": "\n\n"})
+		}
+	}
+	// A clear request to label the items just listed ("those were all
+	// spends") that ended without a proposal: make it from that list.
+	if failMsg == "" && len(tools.actions) == 0 && tools.historyMatch != "" && refersBack(in.Content) {
+		if cat := categoryFromText(in.Content); cat != "" {
+			var match map[string]any
+			json.Unmarshal([]byte(tools.historyMatch), &match)
+			lk, result := tools.run("label_items", map[string]any{"match": match, "category": cat})
+			lookups = append(lookups, lk)
+			out.send(map[string]any{"type": "tool", "lookup": lk})
+			answer.Reset()
+			out.send(map[string]any{"type": "reset"})
+			msg := "I couldn't make that proposal: " + strings.TrimPrefix(result, "Error: ")
+			if len(tools.actions) > 0 {
+				if a, err := s.st.Action(tools.actions[len(tools.actions)-1]); err == nil {
+					out.send(map[string]any{"type": "action", "action": s.viewActions([]store.Action{a})[0]})
+					msg = fmt.Sprintf("Here's the proposal: %s from my earlier list as %s. Press Apply on the card to make the change.", strings.ToLower(a.Summary[:1])+a.Summary[1:], cat)
+				}
+			}
+			answer.WriteString(msg)
+			out.send(map[string]any{"type": "delta", "text": msg})
 		}
 	}
 	text := strings.TrimSpace(answer.String())
@@ -833,6 +898,10 @@ type toolbox struct {
 	rep     *Report
 	chatID  int64
 	actions []int64 // changes proposed or applied during this answer
+	// historyMatch is the Review search behind the previous answer, as
+	// label_items match filters, for when the model gets the ids wrong.
+	historyMatch string
+	refersBack   bool // the user said "these", "those", "them"…
 }
 
 func obj(props map[string]any, required ...string) map[string]any {
@@ -1323,10 +1392,13 @@ func holdingsByYear(rep *Report, picked int) string {
 	return b.String()
 }
 
-var claimRe = regexp.MustCompile(`(?i)\b(i have|i've|i)\s+(just\s+)?(successfully\s+)?(proposed|applied|labell?ed|linked|protected|undone|submitted|updated)\b|card (has )?(appeared|is shown)|press(ing)? (the )?apply|click (the )?apply`)
+var claimRe = regexp.MustCompile(`(?i)\b(i have|i've|i)\s+(just\s+|now\s+|successfully\s+|already\s+)*(re-?)?(proposed|applied|labell?ed|linked|protected|undone|submitted|updated)\b` +
+	`|\bcard\b[^.]*\b(appear|shown|show up|summari[sz]|in the chat)|\b(press|click|tap|hit)(ing)?\s+(the\s+)?apply\b|\bapply (the labels|the changes|to confirm|button)`)
 
 // claimsChange spots an answer saying a change was proposed or made.
-func claimsChange(text string) bool { return claimRe.MatchString(text) }
+func claimsChange(text string) bool {
+	return claimRe.MatchString(strings.NewReplacer("**", "", "__", "", "*", "", "`", "").Replace(text))
+}
 
 // lookupNote tells the model which lookups an earlier answer used, so a
 // follow-up like "label those" can repeat the same filters.
@@ -1348,3 +1420,77 @@ func lookupNote(data string) string {
 	}
 	return "\n\n[Lookups behind this answer: " + strings.Join(parts, "; ") + "]"
 }
+
+// matchFromHistory turns the Review search behind the latest answer into
+// label_items match filters, so a "label those" follow-up can be exact.
+func matchFromHistory(history []store.ChatMessage) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		m := history[i]
+		if m.Role != "assistant" {
+			continue
+		}
+		var d msgData
+		if json.Unmarshal([]byte(m.Data), &d) != nil {
+			return ""
+		}
+		for j := len(d.Lookups) - 1; j >= 0; j-- {
+			lk := d.Lookups[j]
+			if lk.Name != "analyze_records" || lk.Error != "" || argStr(lk.Args, "source") != "review" {
+				continue
+			}
+			match := map[string]any{}
+			for _, k := range []string{"account", "from", "to", "text"} {
+				if v := argStr(lk.Args, k); v != "" {
+					match[k] = v
+				}
+			}
+			if k := strings.ToLower(argStr(lk.Args, "kind")); k == "in" || k == "out" {
+				match["direction"] = k
+			}
+			if m := argStr(lk.Args, "measure"); m == "" || m == "usd" {
+				if _, ok := lk.Args["min"]; ok {
+					match["min_usd"] = argNum(lk.Args, "min")
+				}
+				if _, ok := lk.Args["max"]; ok {
+					match["max_usd"] = argNum(lk.Args, "max")
+				}
+			}
+			b, _ := json.Marshal(match)
+			return string(b)
+		}
+		return "" // only the latest answer counts
+	}
+	return ""
+}
+
+// categoryFromText finds the one label category a user's message names.
+func categoryFromText(text string) string {
+	t := " " + strings.ToLower(text) + " "
+	words := map[string][]string{
+		"spend":         {" spend", " spent", "purchase of", " paid for", " payment"},
+		"gift":          {" gift"},
+		"donation":      {" donat"},
+		"lost":          {" lost", " stolen"},
+		"sold":          {" sold", " sale"},
+		"income":        {" income", " earned", " salary", " reward"},
+		"self-transfer": {"my own wallet", "my wallet", "self transfer", "self-transfer", "transfer to me"},
+	}
+	found := ""
+	for cat, ws := range words {
+		for _, w := range ws {
+			if strings.Contains(t, w) {
+				if found != "" && found != cat {
+					return "" // more than one: don't guess
+				}
+				found = cat
+			}
+		}
+	}
+	return found
+}
+
+var backRe = regexp.MustCompile(`(?i)\b(these|those|them|they|all of (these|those|them)|the above|that list|each of them)\b`)
+
+// refersBack reports whether a message points at items from the previous
+// answer.
+func refersBack(text string) bool { return backRe.MatchString(text) }

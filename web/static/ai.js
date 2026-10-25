@@ -170,12 +170,38 @@ function aiFileHTML(f) {
   return `<a class="ai-file" href="${esc(f.url)}" download="${esc(f.name)}"><span class="ai-file-icon">${FILE_ICON}</span><span class="ai-file-meta"><b>${esc(f.name)}</b><small>${kind} · ${f.rows.toLocaleString("en-US")} row${f.rows === 1 ? "" : "s"}</small></span><span class="ai-file-dl">Download</span></a>`;
 }
 const aiFiles = (lookups) => (lookups || []).map((l) => aiFileHTML(l.file)).join("");
+// Under a list of Review items: label them all in one go.
+const BULK_CATS = {
+  out: [["spend", "Spends"], ["sold", "Sold to a person"], ["gift", "Gifts"], ["donation", "Donations"], ["lost", "Lost or stolen"], ["self-transfer", "Moved to my own wallet"]],
+  in: [["income", "Income"], ["purchase", "Bought from a person"], ["gift-in", "Gifts received"], ["refund", "Refunds"], ["self-transfer", "From my own wallet"]],
+  mixed: [["self-transfer", "Moves between my own wallets"]],
+};
+function aiBulkHTML(lookups) {
+  const rs = [...(lookups || [])].reverse().find((l) => l.review && l.review.keys.length)?.review;
+  if (!rs) return "";
+  const cats = BULK_CATS[rs.dir] || BULK_CATS.mixed, n = rs.keys.length;
+  return `<div class="ai-bulk" data-keys="${esc(rs.keys.join("\n"))}"><span>Label ${n === 1 ? "this item" : `these ${n} items`} as</span>
+    <select aria-label="Category">${cats.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select>
+    <button type="button" class="primary ai-bulk-go">Label</button></div>`;
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest(".ai-bulk-go");
+  if (!b) return;
+  const box = b.closest(".ai-bulk"), keys = box.dataset.keys.split("\n"), category = $("select", box).value;
+  b.disabled = true;
+  try {
+    const a = await post("/api/labels/bulk", { keys, category });
+    box.outerHTML = actionHTML(a, true);
+    toast(a.summary);
+    if (typeof refresh === "function") refresh();
+  } catch (err) { toast(err.message); b.disabled = false; }
+});
 
 function aiMsgHTML(m) {
   let data = {};
   try { data = m.data ? JSON.parse(m.data) : {}; } catch {}
   if (m.role === "user") return `<div class="ai-msg user"><div class="ai-bubble">${esc(m.content).replace(/\n/g, "<br>")}</div></div>`;
-  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${aiFiles(data.lookups)}${aiCharts(data.lookups)}${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
+  return `<div class="ai-msg bot">${aiThinkHTML(data.thinking, data.thinkSecs)}${aiChips(data.lookups)}${(data.actions || []).map((id) => `<div class="act compact loading" data-action="${id}"></div>`).join("")}<div class="ai-text">${aiMd(m.content)}</div>${aiFiles(data.lookups)}${aiCharts(data.lookups)}${(data.actions || []).length ? "" : aiBulkHTML(data.lookups)}${data.error && data.error !== "stopped" ? `<div class="ai-err">${esc(data.error)}</div>` : ""}${data.error === "stopped" ? `<div class="ai-note">Stopped.</div>` : ""}</div>`;
 }
 
 // Change cards in saved chats show their current state (applied, undone…).
