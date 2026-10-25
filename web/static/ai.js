@@ -339,6 +339,7 @@ async function aiSend() {
         let ev; try { ev = JSON.parse(line); } catch { continue; }
         if (ev.type === "thinking") { if (!thinkAt) thinkAt = Date.now(); thought += ev.text; drawThink(); aiScroll(); }
         else if (ev.type === "delta") { endThink(); answer += ev.text; draw(); }
+        else if (ev.type === "reset") { answer = ""; draw(); } // a claim the server took back
         else if (ev.type === "action") { actions.push(ev.action.id); $(".ai-acts", live).insertAdjacentHTML("beforeend", actionHTML(ev.action, true)); aiScroll(); }
         else if (ev.type === "tool") {
           endThink(); lookups.push(ev.lookup); chipBox.innerHTML = aiChipItems(lookups);

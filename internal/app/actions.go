@@ -527,7 +527,7 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 				return it, nil
 			}
 		}
-		return trace.Item{}, fmt.Errorf("%q isn't waiting in Review", id)
+		return trace.Item{}, fmt.Errorf("%q isn't a Review item id. Ids look like [ex:12] or [tx:<txid>:0]; if you don't have them, call label_items again with match (account, direction, network, min_usd, max_usd, from, to) and category instead of items", id)
 	}
 	switch name {
 	case "label_items":
@@ -624,6 +624,21 @@ func (tb *toolbox) propose(name string, args map[string]any, lk *Lookup) (string
 		return "", false, nil
 	}
 	b, _ := json.Marshal(cs)
+	// The same proposal twice in one chat is one card.
+	if recent, err := tb.s.st.Actions("assistant", 50); err == nil {
+		for _, x := range recent {
+			if x.Status == "pending" && x.ChatID == tb.chatID && sameState(x.Changes, b) {
+				for _, id := range tb.actions {
+					if id == x.ID {
+						return fmt.Sprintf("Already proposed: %s (activity #%d). The card is in the chat; the user must press Apply.", x.Summary, x.ID), true, nil
+					}
+				}
+				tb.actions = append(tb.actions, x.ID)
+				lk.Summary, lk.Link = "Proposed: "+x.Summary, "#activity"
+				return fmt.Sprintf("Proposed: %s (activity #%d). The user must press Apply on the card.", x.Summary, x.ID), true, nil
+			}
+		}
+	}
 	a := store.Action{Actor: "assistant", Kind: name, Summary: summary, Changes: b, Status: "pending", ChatID: tb.chatID, Undoable: true}
 	id, err := tb.s.st.AddAction(a)
 	if err != nil {

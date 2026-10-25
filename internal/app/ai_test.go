@@ -456,3 +456,20 @@ func TestAnalyzeMath(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func TestClaimsChange(t *testing.T) {
+	for _, s := range []string{"I have proposed labeling all 8 of those as spends.", "A card has appeared in the chat", "Please press Apply to confirm", "I've applied the labels", "I labeled them"} {
+		if !claimsChange(s) {
+			t.Errorf("missed: %q", s)
+		}
+	}
+	for _, s := range []string{"You have 8 unlabeled items.", "Would you like me to propose labels?", "Your biggest sale was in October."} {
+		if claimsChange(s) {
+			t.Errorf("false alarm: %q", s)
+		}
+	}
+	note := lookupNote(`{"lookups":[{"name":"analyze_records","args":{"source":"review","from":"2026-01-01"},"summary":"x"}]}`)
+	if !strings.Contains(note, `"source":"review"`) {
+		t.Errorf("note: %s", note)
+	}
+}

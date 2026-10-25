@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -313,7 +314,11 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, m := range history {
 		if m.Role == "user" || m.Role == "assistant" {
-			msgs = append(msgs, ollama.Message{Role: m.Role, Content: clip(m.Content, historyChars)})
+			content := clip(m.Content, historyChars)
+			if m.Role == "assistant" {
+				content += lookupNote(m.Data)
+			}
+			msgs = append(msgs, ollama.Message{Role: m.Role, Content: content})
 		}
 	}
 	msgs = append(msgs, ollama.Message{Role: "user", Content: in.Content})
@@ -334,6 +339,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	var failMsg string
 	var thinkTime time.Duration
 	var thinkStart time.Time
+	corrected := false
 	for round := 0; ; round++ {
 		// Out of lookups: one last turn without tools so there is always
 		// an answer, never a plan that stops mid-sentence.
@@ -376,6 +382,16 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		answer.WriteString(reply.Content)
+		if len(reply.ToolCalls) == 0 && !corrected && req.Tools != nil && len(tools.actions) == 0 && claimsChange(answer.String()) {
+			// It said it changed or proposed something but called no tool,
+			// so nothing happened. Take the claim back and make it act.
+			corrected = true
+			answer.Reset()
+			out.send(map[string]any{"type": "reset"})
+			msgs = append(msgs, reply, ollama.Message{Role: "system", Content: "Correction: you told the user you proposed or made a change, but you called no tool, so nothing was proposed and no card exists. " +
+				"Call the right tool now. For items from an earlier answer, use label_items with match and the same filters as that earlier lookup (shown after your earlier answer). If you can't, tell the user plainly that no change was made."})
+			continue
+		}
 		if len(reply.ToolCalls) == 0 || round >= maxToolRounds {
 			break
 		}
@@ -1305,4 +1321,30 @@ func holdingsByYear(rep *Report, picked int) string {
 		fmt.Fprintf(&b, "- %d: start %s, end %s (change %s); bought %s, income %s, sold or spent %s%s\n", y, btcStr(v.start), btcStr(v.end), btcStr(v.end-v.start), btcStr(v.bought), btcStr(v.income), btcStr(v.sold), mark)
 	}
 	return b.String()
+}
+
+var claimRe = regexp.MustCompile(`(?i)\b(i have|i've|i)\s+(just\s+)?(successfully\s+)?(proposed|applied|labell?ed|linked|protected|undone|submitted|updated)\b|card (has )?(appeared|is shown)|press(ing)? (the )?apply|click (the )?apply`)
+
+// claimsChange spots an answer saying a change was proposed or made.
+func claimsChange(text string) bool { return claimRe.MatchString(text) }
+
+// lookupNote tells the model which lookups an earlier answer used, so a
+// follow-up like "label those" can repeat the same filters.
+func lookupNote(data string) string {
+	var d msgData
+	if json.Unmarshal([]byte(data), &d) != nil || len(d.Lookups) == 0 {
+		return ""
+	}
+	var parts []string
+	for i, lk := range d.Lookups {
+		if i >= 3 || lk.Error != "" {
+			continue
+		}
+		b, _ := json.Marshal(lk.Args)
+		parts = append(parts, lk.Name+" "+clip(string(b), 300))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\n\n[Lookups behind this answer: " + strings.Join(parts, "; ") + "]"
 }

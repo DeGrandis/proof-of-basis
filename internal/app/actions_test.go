@@ -194,6 +194,14 @@ func TestAssistantProposals(t *testing.T) {
 	if w := call(h, "POST", "/api/actions/"+id+"/undo", ""); w.Code != 200 || st.LabelRaw(key) != "" {
 		t.Fatalf("undo applied proposal: %d", w.Code)
 	}
+	// Asking twice in one chat gives one card.
+	tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": key, "category": "gift"}}})
+	n1, _ := st.Actions("assistant", 100)
+	tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": key, "category": "gift"}}})
+	n2, _ := st.Actions("assistant", 100)
+	if len(n2) != len(n1) {
+		t.Errorf("duplicate proposal created")
+	}
 	// A category that doesn't fit the direction is refused.
 	if lk, _ := tb.run("label_items", map[string]any{"items": []any{map[string]any{"id": out, "category": "income"}}}); lk.Error == "" {
 		t.Error("income on an outflow accepted")
