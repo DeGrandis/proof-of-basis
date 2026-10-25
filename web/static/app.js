@@ -992,6 +992,8 @@ async function renderForms() {
   sel.innerHTML = years.map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
   const exch = (report.accounts || []).filter((a) => a.kind === "exchange");
   $("#da-account").innerHTML = exch.map((a) => `<option>${esc(a.name)}</option>`).join("") || `<option value="">No exchange accounts</option>`;
+  $("#taxform-account").innerHTML = $("#da-account").innerHTML;
+  $("#taxform-form").hidden = formsYear < 2025;
   let f;
   try { f = await api(`/api/forms?year=${formsYear}`); } catch (e) { $("#forms-summary").textContent = e.message; return; }
   const boxes = Object.keys(f.boxes).sort();
@@ -1000,8 +1002,24 @@ async function renderForms() {
       + (f.forms.length || f.year >= 2025 ? ` · <a href="/api/export/1099da-reconciliation.csv?year=${f.year}">1099-DA reconciliation</a>` : "")
     : "";
   $("#da-list").innerHTML = f.forms.length
-    ? "1099-DAs for " + f.year + ": " + f.forms.map((x) => `${esc(x.account)} <span class="muted">(${esc(x.filename)})</span> <button class="link small da-del" data-id="${x.id}">Remove</button>`).join(" · ")
-    : f.year >= 2025 ? `<span class="muted">No 1099-DA imported for ${f.year} yet. Exchange sales are assumed to be reported without basis (H/K) until one is.</span>` : "";
+    ? "Lines imported for " + f.year + ": " + f.forms.map((x) => `${esc(x.account)} <span class="muted">(${esc(x.filename)})</span> <button class="link small da-del" data-id="${x.id}">Remove</button>`).join(" · ")
+    : "";
+  // Each exchange's form, its totals, and how they compare.
+  const status = {
+    "no form": (c) => `<span class="warn">No 1099-DA added yet.</span>`,
+    "no totals": (c) => `<span class="warn">Type the form's total proceeds to check it.</span>`,
+    match: (c) => `<span class="pos">✓ The form's total proceeds match your records (${usd(c.proceeds)}).</span>`,
+    differs: (c) => `<span class="neg">✕ The form shows ${usd(c.formProceeds)}; your records show ${usd(c.proceeds)}: the form is ${usd(Math.abs(c.diff))} ${c.diff < 0 ? "less" : "more"}.</span>`,
+    lines: (c) => `<span class="pos">Checked sale by sale against the imported lines.</span>`,
+  };
+  $("#taxform-list").innerHTML = (f.checks || []).map((c) => `<div class="card taxform">
+      <b>${esc(c.account)}</b> <span class="small muted">${c.sales} sale${c.sales === 1 ? "" : "s"} in your records, proceeds ${usd(c.proceeds)}</span><br>
+      <span class="small">${status[c.status](c)}</span>
+      ${c.forms.map((x) => `<div class="row small"><a href="/api/taxforms/${x.id}">${esc(x.filename)}</a>
+        <label>Proceeds <input class="tf-p" data-id="${x.id}" inputmode="decimal" size="11" value="${x.totals.proceeds != null ? (x.totals.proceeds / 100).toFixed(2) : ""}"></label>
+        <label>Basis <input class="tf-b" data-id="${x.id}" inputmode="decimal" size="11" value="${x.totals.basis != null ? (x.totals.basis / 100).toFixed(2) : ""}" placeholder="if shown"></label>
+        <button class="tf-save" data-id="${x.id}">Save</button><button class="link tf-del" data-id="${x.id}">Remove</button></div>`).join("")}
+    </div>`).join("");
   $("#forms-summary").innerHTML = f.issues
     ? `<p class="warn">${f.issues} line${f.issues === 1 ? "" : "s"} to look at: differences from a 1099-DA, sales a 1099-DA should cover but doesn't, 1099-DA lines with no sale, or coins with no known purchase.</p>`
     : f.rows.length ? `<p class="pos">Every line is accounted for.</p>` : `<p class="muted">No sales or spends in ${f.year}.</p>`;
@@ -1993,4 +2011,32 @@ document.addEventListener("change", (e) => {
   if (e.target.id !== "ready-onchain") return;
   const a = $("#ready-pkg");
   a.href = a.getAttribute("href").split("?")[0] + (e.target.checked ? "?onchain=1" : "");
+});
+
+$("#taxform-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  fd.append("year", formsYear);
+  try {
+    await api("/api/taxforms", { method: "POST", body: fd });
+    toast("1099-DA added");
+    e.target.reset();
+    renderForms();
+    renderReadiness();
+  } catch (err) { toast(err.message); }
+});
+$("#taxform-list").addEventListener("click", async (e) => {
+  const id = e.target.dataset.id;
+  if (!id) return;
+  try {
+    if (e.target.classList.contains("tf-save")) {
+      const box = e.target.closest(".row");
+      await post(`/api/taxforms/${id}`, { Proceeds: $(".tf-p", box).value, Basis: $(".tf-b", box).value });
+      toast("Totals saved");
+    } else if (e.target.classList.contains("tf-del")) {
+      await api(`/api/taxforms/${id}`, { method: "DELETE" });
+    } else return;
+    renderForms();
+    renderReadiness();
+  } catch (err) { toast(err.message); }
 });

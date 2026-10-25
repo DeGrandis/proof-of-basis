@@ -7,12 +7,14 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"btctax/internal/importers"
 	"btctax/internal/scan"
+	"btctax/internal/store"
 )
 
 // The accountant package for a year: every file there, provenance traced
@@ -79,7 +81,7 @@ func TestAccountantPackage(t *testing.T) {
 		t.Errorf("income:\n%s", i)
 	}
 	readme := files["README.txt"]
-	for _, want := range []string{"tax year 2025", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA imported", "lots-sold-2025.csv"} {
+	for _, want := range []string{"tax year 2025", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River yet", "lots-sold-2025.csv"} {
 		if !strings.Contains(readme, want) {
 			t.Errorf("README lacks %q:\n%s", want, readme)
 		}
@@ -184,5 +186,88 @@ func TestExportsHaveNoOnchainData(t *testing.T) {
 	all := unzip(call(h, "GET", "/api/package/2025.zip?onchain=1", "").Body.Bytes())
 	if !strings.Contains(all["btc-tax-2025/form8949-2025.csv"], spendTx) {
 		t.Error("onchain=1 left the txid out")
+	}
+}
+
+// A 1099-DA PDF, checked by the totals typed from it, bundled into the
+// package with a README that says how it was checked. Invented data.
+func TestTaxFormPDF(t *testing.T) {
+	st, h := newTest(t)
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	rv, _ := st.ExchangeAccount("River", "river")
+	st.AddImport(rv, "river", "r.csv", "r", []importers.Event{
+		{Kind: importers.Buy, Time: at("2025-01-05"), Sats: 1_000_000, FiatCents: 900_00, UID: "b"},
+		{Kind: importers.Sell, Time: at("2025-03-01"), Sats: 400_000, FiatCents: 400_00, FeeCents: 2_00, UID: "s1"},
+		{Kind: importers.Sell, Time: at("2025-06-01"), Sats: 300_000, FiatCents: 330_00, UID: "s2"},
+	}, nil)
+	// River's proceeds: 398.00 + 330.00 = 728.00, net of the fee.
+	upload := func(proceeds string) {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		mw.WriteField("account", "River")
+		mw.WriteField("year", "2025")
+		mw.WriteField("proceeds", proceeds)
+		fw, _ := mw.CreateFormFile("file", "River 1099-DA 2025.pdf")
+		fw.Write([]byte("%PDF-1.7 synthetic 1099-DA"))
+		mw.Close()
+		req := httptest.NewRequest("POST", "/api/taxforms", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("upload: %d %s", w.Code, w.Body.String())
+		}
+	}
+	check := func() (Readiness, string) {
+		var r Readiness
+		json.Unmarshal(call(h, "GET", "/api/readiness?year=2025", "").Body.Bytes(), &r)
+		for _, c := range r.Checks {
+			if c.ID == "1099da:River" {
+				return r, c.Status + " " + c.Title
+			}
+		}
+		return r, ""
+	}
+	if _, c := check(); !strings.HasPrefix(c, "warn No 1099-DA from River") {
+		t.Errorf("before any form: %q", c)
+	}
+	upload("$1,000.00")
+	if r, c := check(); !strings.HasPrefix(c, "bad River's 1099-DA shows proceeds of $1,000.00; your records show $728.00") || r.Ready {
+		t.Errorf("wrong total: %q (ready %v)", c, r.Ready)
+	}
+	var forms []store.TaxForm
+	json.Unmarshal(call(h, "GET", "/api/taxforms?year=2025", "").Body.Bytes(), &forms)
+	if len(forms) != 1 {
+		t.Fatalf("forms %+v", forms)
+	}
+	call(h, "POST", "/api/taxforms/"+strconv.FormatInt(forms[0].ID, 10), `{"Proceeds":"728.00"}`)
+	if _, c := check(); !strings.HasPrefix(c, "ok River's 1099-DA total matches") {
+		t.Errorf("right total: %q", c)
+	}
+	w := call(h, "GET", "/api/package/2025.zip", "")
+	zr, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		rc.Close()
+		files[strings.TrimPrefix(f.Name, "btc-tax-2025/")] = string(b)
+	}
+	if files["1099-DA/River/River_1099-DA_2025.pdf"] != "%PDF-1.7 synthetic 1099-DA" {
+		names := []string{}
+		for n := range files {
+			names = append(names, n)
+		}
+		t.Errorf("form not bundled: %v", names)
+	}
+	readme := files["README.txt"]
+	for _, want := range []string{"FORMS 1099-DA", "Form: 1099-DA/River/River_1099-DA_2025.pdf", "These records: 2 sales, proceeds $728.00",
+		"match these records. Checked by totals, not line by line", "confirm box 2"} {
+		if !strings.Contains(readme, want) {
+			t.Errorf("README lacks %q:\n%s", want, readme)
+		}
 	}
 }

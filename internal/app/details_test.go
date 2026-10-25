@@ -238,7 +238,7 @@ func TestReadiness(t *testing.T) {
 	}
 	r := get()
 	s := status(r)
-	if r.Ready || s["basis"] != "bad" || s["review"] != "bad" || s["1099da"] != "warn" || s["income-type"] != "warn" || r.KnownBasis != 6666 {
+	if r.Ready || s["basis"] != "bad" || s["review"] != "bad" || s["1099da:Coinbase"] != "warn" || s["income-type"] != "warn" || r.KnownBasis != 6666 {
 		t.Errorf("before: ready %v known %d checks %v", r.Ready, r.KnownBasis, s)
 	}
 	// Fix it: the missing purchase, the withdrawal labeled, the income typed.

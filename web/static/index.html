@@ -230,12 +230,24 @@
     <div class="card" id="forms-card">
       <div class="row"><label>Tax year <select id="forms-year"></select></label><span class="spacer"></span><span id="forms-downloads" class="small"></span></div>
       <p class="small muted">Each sale or spend as a Form 8949 line, in the box the IRS asks for: C and F before 2025; from 2025, G/J when your exchange's 1099-DA reported basis, H/K when it didn't, I/L for sales no 1099-DA covers (your own wallets, Lightning). Import each exchange's 1099-DA to check every line against it: differences get the code and column (g) adjustment that keep the gain your records support.</p>
-      <form id="da-form" class="row">
-        <label>1099-DA for <select name="account" id="da-account"></select></label>
-        <input type="file" name="file" accept=".csv,text/csv" required>
-        <button type="submit">Import 1099-DA</button>
+      <h3>Your exchanges' Forms 1099-DA</h3>
+      <p class="small muted">Add the PDF each exchange sent and type its total proceeds (and total basis, if the form shows one). The form goes into your accountant package, and the totals are checked against your records for that exchange.</p>
+      <form id="taxform-form" class="row">
+        <label>From <select name="account" id="taxform-account"></select></label>
+        <input type="file" name="file" accept=".pdf,application/pdf,image/*" required>
+        <label>Total proceeds <input name="proceeds" inputmode="decimal" size="11" placeholder="$0.00"></label>
+        <label>Total basis <input name="basis" inputmode="decimal" size="11" placeholder="if shown"></label>
+        <button type="submit" class="primary">Add 1099-DA</button>
       </form>
-      <div id="da-list" class="small"></div>
+      <div id="taxform-list"></div>
+      <details class="small"><summary>Import 1099-DA lines from a CSV (if your exchange offers one), to check sale by sale</summary>
+        <form id="da-form" class="row">
+          <label>Lines for <select name="account" id="da-account"></select></label>
+          <input type="file" name="file" accept=".csv,text/csv" required>
+          <button type="submit">Import lines</button>
+        </form>
+        <div id="da-list"></div>
+      </details>
       <div id="forms-summary" class="small"></div>
       <div class="scroll"><table id="forms-table"><thead><tr><th>Box</th><th>Sold</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">(d) Proceeds</th><th class="num">(e) Basis</th><th>(f)</th><th class="num">(g)</th><th class="num">(h) Gain</th><th>1099-DA check</th></tr></thead><tbody></tbody></table></div>
     </div>

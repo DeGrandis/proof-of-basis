@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS attachments (
   data TEXT NOT NULL -- base64, so backups (all text) keep it intact
 );
 CREATE INDEX IF NOT EXISTS attachments_key ON attachments(key);
+CREATE TABLE IF NOT EXISTS tax_forms (
+  id INTEGER PRIMARY KEY,
+  account TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  added_at TEXT NOT NULL,
+  totals TEXT NOT NULL DEFAULT '{}', -- what the user typed from the form
+  data TEXT NOT NULL -- base64, so backups (all text) keep it intact
+);
 `
 
 // DAForm is one uploaded 1099-DA export for one account.
@@ -227,5 +239,88 @@ func (s *Store) AttachmentData(id int64) (Attachment, []byte, error) {
 
 func (s *Store) DeleteAttachment(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM attachments WHERE id=?`, id)
+	return err
+}
+
+// TaxForm is a broker's Form 1099-DA as the broker sent it (usually a
+// PDF), for one account and tax year, with the totals the user typed from
+// it so the records can be checked against what the IRS was told.
+type TaxForm struct {
+	ID       int64     `json:"id"`
+	Account  string    `json:"account"`
+	Year     int       `json:"year"`
+	Filename string    `json:"filename"`
+	Mime     string    `json:"mime"`
+	Size     int64     `json:"size"`
+	SHA256   string    `json:"sha256"`
+	AddedAt  string    `json:"addedAt"`
+	Totals   FormTotal `json:"totals"`
+}
+
+// FormTotal is the form's own totals, in cents; nil when not entered.
+type FormTotal struct {
+	Proceeds *int64 `json:"proceeds,omitempty"`
+	Basis    *int64 `json:"basis,omitempty"`
+}
+
+func (s *Store) AddTaxForm(f TaxForm, data []byte) (TaxForm, error) {
+	sum := sha256.Sum256(data)
+	f.Size, f.SHA256, f.AddedAt = int64(len(data)), hex.EncodeToString(sum[:]), time.Now().UTC().Format(time.RFC3339)
+	t, _ := json.Marshal(f.Totals)
+	r, err := s.db.Exec(`INSERT INTO tax_forms(account, year, filename, mime, size, sha256, added_at, totals, data) VALUES(?,?,?,?,?,?,?,?,?)`,
+		f.Account, f.Year, f.Filename, f.Mime, f.Size, f.SHA256, f.AddedAt, string(t), base64.StdEncoding.EncodeToString(data))
+	if err != nil {
+		return f, err
+	}
+	f.ID, _ = r.LastInsertId()
+	return f, nil
+}
+
+// TaxForms lists the forms (without their contents) for a year, or all
+// when year is 0.
+func (s *Store) TaxForms(year int) ([]TaxForm, error) {
+	q, args := `SELECT id, account, year, filename, mime, size, sha256, added_at, totals FROM tax_forms ORDER BY year, account, id`, []any{}
+	if year != 0 {
+		q, args = `SELECT id, account, year, filename, mime, size, sha256, added_at, totals FROM tax_forms WHERE year=? ORDER BY account, id`, []any{year}
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []TaxForm{}
+	for rows.Next() {
+		var f TaxForm
+		var t string
+		if err := rows.Scan(&f.ID, &f.Account, &f.Year, &f.Filename, &f.Mime, &f.Size, &f.SHA256, &f.AddedAt, &t); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(t), &f.Totals)
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) TaxFormData(id int64) (TaxForm, []byte, error) {
+	var f TaxForm
+	var t, enc string
+	err := s.db.QueryRow(`SELECT id, account, year, filename, mime, size, sha256, added_at, totals, data FROM tax_forms WHERE id=?`, id).
+		Scan(&f.ID, &f.Account, &f.Year, &f.Filename, &f.Mime, &f.Size, &f.SHA256, &f.AddedAt, &t, &enc)
+	if err != nil {
+		return f, nil, err
+	}
+	json.Unmarshal([]byte(t), &f.Totals)
+	data, err := base64.StdEncoding.DecodeString(enc)
+	return f, data, err
+}
+
+func (s *Store) SetTaxFormTotals(id int64, t FormTotal) error {
+	b, _ := json.Marshal(t)
+	_, err := s.db.Exec(`UPDATE tax_forms SET totals=? WHERE id=?`, string(b), id)
+	return err
+}
+
+func (s *Store) DeleteTaxForm(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM tax_forms WHERE id=?`, id)
 	return err
 }

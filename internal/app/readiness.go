@@ -103,23 +103,25 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		return nil, err
 	}
 	if year >= 2025 {
-		var noDA []string
-		seen := map[string]bool{}
-		for _, r := range f.Rows {
-			if r.Status == statusNoDA && !seen[r.Account] {
-				seen[r.Account] = true
-				noDA = append(noDA, r.Account)
+		for _, c := range f.Checks {
+			id := "1099da:" + c.Account
+			switch c.Status {
+			case "no form":
+				add(id, "warn", "No 1099-DA from "+c.Account+" yet",
+					"Add the PDF the exchange sent (Taxes, Form 8949 and 1099-DA) and type its total proceeds, so your records can be checked against what the IRS was told.", "#taxes")
+			case "no totals":
+				add(id, "warn", "Type the total proceeds from "+c.Account+"'s 1099-DA",
+					"With the form's total, the app checks your records against it.", "#taxes")
+			case "differs":
+				add(id, "bad", fmt.Sprintf("%s's 1099-DA shows proceeds of %s; your records show %s", c.Account, usdText(*c.FormProceeds), usdText(c.Proceeds)),
+					fmt.Sprintf("The form shows %s than your records: a missing import, a sale recorded on another date or amount, or a broker error. Your tax professional will need it explained.", moreLess(c.Diff)), "#taxes")
+			case "match":
+				add(id, "ok", c.Account+"'s 1099-DA total matches your records", "", "")
 			}
-		}
-		if len(noDA) > 0 {
-			add("1099da", "warn", "No 1099-DA imported for "+strings.Join(noDA, ", "),
-				"Import each exchange's 1099-DA so every sale can be checked against what it reported to the IRS.", "#taxes")
 		}
 		if n := f.Issues; n > 0 {
 			add("reconcile", "warn", fmt.Sprintf("%d Form 8949 line%s to look at", n, plural(n)),
-				"Differences from a 1099-DA, sales missing from one, or 1099-DA lines with no sale.", "#taxes")
-		} else if len(f.Rows) > 0 && len(noDA) == 0 {
-			add("reconcile", "ok", "Every Form 8949 line is accounted for", "", "")
+				"Differences from imported 1099-DA lines, sales missing from them, lines with no sale, or coins with no known purchase.", "#taxes")
 		}
 	}
 

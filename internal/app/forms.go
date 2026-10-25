@@ -60,6 +60,8 @@ type Forms struct {
 	Rows   []F8949Row     `json:"rows"`
 	DAOnly []DAOnly       `json:"daOnly"`
 	Forms  []store.DAForm `json:"forms"`
+	// Checks compares each exchange's 1099-DA with the records (from 2025).
+	Checks []FormCheck    `json:"checks"`
 	Boxes  map[string]int `json:"boxes"`
 	Issues int            `json:"issues"`
 }
@@ -68,7 +70,7 @@ const (
 	statusMatched  = "matches the 1099-DA"
 	statusDiffers  = "on the 1099-DA, amounts differ"
 	statusNotOnDA  = "not on the 1099-DA you imported"
-	statusNoDA     = "no 1099-DA imported yet"
+	statusNoDA     = "not checked line by line"
 	statusNoBroker = "not a broker account: no 1099-DA expected"
 	statusPre2025  = "before 1099-DA reporting"
 )
@@ -237,7 +239,9 @@ func (s *Server) forms(rep *Report, year int) (*Forms, error) {
 			r.Code = strings.Join(codes, "")
 			r.Status = statusDiffers
 		}
-		if r.Status == statusDiffers || r.Status == statusNotOnDA || r.Status == statusNoDA || g.missing > 0 {
+		// Exchange sales checked only by the form's totals count there,
+		// not as lines to look at.
+		if r.Status == statusDiffers || r.Status == statusNotOnDA || g.missing > 0 {
 			f.Issues++
 		}
 		f.Boxes[r.Box]++
@@ -253,6 +257,9 @@ func (s *Server) forms(rep *Report, year int) (*Forms, error) {
 		}
 	}
 	sort.SliceStable(f.DAOnly, func(i, j int) bool { return f.DAOnly[i].Row.Sold.Before(f.DAOnly[j].Row.Sold) })
+	if f.Checks, err = s.formChecks(f, year); err != nil {
+		return nil, err
+	}
 	return f, nil
 }
 

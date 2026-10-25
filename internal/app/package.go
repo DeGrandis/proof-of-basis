@@ -262,6 +262,24 @@ func (s *Server) writePackage(out io.Writer, year int, ids exportIDs) error {
 		note(fmt.Sprintf("coin-choices-%d.csv", year), "which coins were chosen, recorded before each sale (IRS FAQ 82)")
 	}
 
+	// The exchanges' 1099-DAs as they sent them.
+	pdfs, _ := s.st.TaxForms(year)
+	for _, tf := range pdfs {
+		_, data, err := s.st.TaxFormData(tf.ID)
+		if err != nil {
+			continue
+		}
+		name := fmt.Sprintf("1099-DA/%s/%s", safeName(tf.Account), safeName(tf.Filename))
+		w, err := file(name)
+		if err != nil {
+			return err
+		}
+		w.Write(data)
+	}
+	if len(pdfs) > 0 {
+		note("1099-DA/", fmt.Sprintf("the %d Form%s 1099-DA the exchanges sent", len(pdfs), plural(len(pdfs))))
+	}
+
 	// Where the records came from.
 	imps, _ := s.st.Imports()
 	accts, _ := s.st.Accounts()
@@ -316,7 +334,7 @@ func (s *Server) writePackage(out io.Writer, year int, ids exportIDs) error {
 	if err != nil {
 		return err
 	}
-	io.WriteString(w, packageReadme(rep, rd, year, files, s, ids.onchain))
+	io.WriteString(w, packageReadme(rep, rd, f, year, files, s, ids.onchain))
 	return zw.Close()
 }
 
@@ -342,7 +360,7 @@ func txidOf(key string) string {
 	return ""
 }
 
-func packageReadme(rep *Report, rd *Readiness, year int, files []string, s *Server, onchain bool) string {
+func packageReadme(rep *Report, rd *Readiness, f *Forms, year int, files []string, s *Server, onchain bool) string {
 	var b strings.Builder
 	set := rep.Settings
 	fmt.Fprintf(&b, "Bitcoin records for tax year %d\n", year)
@@ -384,6 +402,47 @@ func packageReadme(rep *Report, rd *Readiness, year int, files []string, s *Serv
 	b.WriteString("\n")
 	for _, a := range y.DigitalAsset.Ask {
 		fmt.Fprintf(&b, "  To ask: %s\n", a)
+	}
+
+	if len(f.Checks) > 0 {
+		b.WriteString("\nFORMS 1099-DA\n")
+		for _, c := range f.Checks {
+			fmt.Fprintf(&b, "  %s\n", c.Account)
+			if len(c.Forms) == 0 {
+				b.WriteString("    No 1099-DA from this exchange is included.\n")
+			}
+			for _, tf := range c.Forms {
+				fmt.Fprintf(&b, "    Form: 1099-DA/%s/%s\n", safeName(tf.Account), safeName(tf.Filename))
+			}
+			boxes := make([]string, 0, len(c.ByBox))
+			for bx := range c.ByBox {
+				boxes = append(boxes, bx)
+			}
+			sort.Strings(boxes)
+			parts := make([]string, 0, len(boxes))
+			for _, bx := range boxes {
+				parts = append(parts, fmt.Sprintf("box %s %s", bx, usdText(c.ByBox[bx][0])))
+			}
+			fmt.Fprintf(&b, "    These records: %d sale%s, proceeds %s (%s), basis %s\n", c.Sales, plural(c.Sales), usdText(c.Proceeds), strings.Join(parts, ", "), usdText(c.Basis))
+			switch c.Status {
+			case "lines":
+				b.WriteString("    Checked line by line against the 1099-DA lines imported; see the reconciliation file.\n")
+			case "match":
+				fmt.Fprintf(&b, "    The form's total proceeds, %s, match these records. Checked by totals, not line by line.\n", usdText(*c.FormProceeds))
+			case "differs":
+				fmt.Fprintf(&b, "    The form's total proceeds are %s: %s than these records. Not yet explained.\n", usdText(*c.FormProceeds), moreLess(c.Diff))
+			case "no totals":
+				b.WriteString("    The form's totals weren't entered, so it hasn't been checked against these records.\n")
+			case "no form":
+				b.WriteString("    Not checked: no form yet.\n")
+			}
+			if c.FormBasis != nil {
+				fmt.Fprintf(&b, "    The form reports total basis of %s; these records show %s.\n", usdText(*c.FormBasis), usdText(c.Basis))
+			}
+		}
+		b.WriteString("  Sales without imported 1099-DA lines are placed in box H or K (reported without basis), which is right\n")
+		b.WriteString("  for most 2025 forms. Please confirm box 2 (\"Check if basis reported to IRS\") on each form: where it is\n")
+		b.WriteString("  checked, those sales belong in box G or J instead, with the basis the form shows.\n")
 	}
 
 	b.WriteString("\nHOW THE NUMBERS WERE WORKED OUT\n")
