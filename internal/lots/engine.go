@@ -64,6 +64,10 @@ type Config struct {
 	// used only when nothing else in the account is left. Specific picks
 	// still take them when asked.
 	Protected func(originID string) bool
+	// AllocationPrefs assigns pooled purchases (by origin op id) to an
+	// account at the switch to per-account tracking (Rev. Proc. 2024-28),
+	// before the default fill.
+	AllocationPrefs map[string]string
 }
 
 type Lot struct {
@@ -100,8 +104,9 @@ type Warning struct {
 // Allocation records how the universal pool was assigned to accounts when
 // per-account tracking began.
 type Allocation struct {
-	LotID, Account string
-	Sats, Basis    int64
+	LotID, OriginID, Account string
+	Acquired                 time.Time
+	Sats, Basis              int64
 }
 
 // Removal is basis that left without a sale (gift, donation, loss).
@@ -385,10 +390,10 @@ func (e *engine) transfer(op Op) {
 	}
 }
 
-// switchToPerAccount assigns the universal pool to accounts, oldest lots
-// first, filling accounts in name order up to their actual balances. This
-// is a deterministic default for the Rev. Proc. 2024-28 transition; users
-// can override it with a specific allocation later.
+// switchToPerAccount assigns the universal pool to accounts at the
+// Rev. Proc. 2024-28 transition, up to each account's actual balance:
+// first the purchases the user assigned (AllocationPrefs), then the
+// default, oldest lots first, filling accounts in name order.
 func (e *engine) switchToPerAccount() {
 	e.perAcct = true
 	var pool []*Lot
@@ -399,9 +404,11 @@ func (e *engine) switchToPerAccount() {
 	}
 	sort.SliceStable(pool, func(i, j int) bool { return pool[i].Acquired.Before(pool[j].Acquired) })
 	var accts []string
+	need := map[string]int64{}
 	for a, bal := range e.res.Balances {
 		if bal > 0 {
 			accts = append(accts, a)
+			need[a] = bal
 		}
 	}
 	sort.Strings(accts)
@@ -411,22 +418,33 @@ func (e *engine) switchToPerAccount() {
 			kept = append(kept, l)
 		}
 	}
+	assign := func(l *Lot, a string) {
+		n := min(need[a], l.Sats)
+		if n <= 0 {
+			return
+		}
+		b := mulDiv(l.Basis, n, l.Sats)
+		e.splitSeq[l.OriginID]++
+		nl := &Lot{ID: fmt.Sprintf("%s/%d", l.OriginID, e.splitSeq[l.OriginID]), OriginID: l.OriginID,
+			Account: a, Acquired: l.Acquired, Sats: n, Basis: b}
+		kept = append(kept, nl)
+		e.res.Allocations = append(e.res.Allocations, Allocation{nl.ID, nl.OriginID, a, nl.Acquired, n, b})
+		l.Sats -= n
+		l.Basis -= b
+		need[a] -= n
+	}
+	for _, l := range pool {
+		if a, ok := e.cfg.AllocationPrefs[l.OriginID]; ok && need[a] > 0 {
+			assign(l, a)
+		}
+	}
 	for _, a := range accts {
-		need := e.res.Balances[a]
-		for need > 0 && len(pool) > 0 {
-			l := pool[0]
-			n := min(need, l.Sats)
-			b := mulDiv(l.Basis, n, l.Sats)
-			e.splitSeq[l.OriginID]++
-			nl := &Lot{ID: fmt.Sprintf("%s/%d", l.OriginID, e.splitSeq[l.OriginID]), OriginID: l.OriginID,
-				Account: a, Acquired: l.Acquired, Sats: n, Basis: b}
-			kept = append(kept, nl)
-			e.res.Allocations = append(e.res.Allocations, Allocation{nl.ID, a, n, b})
-			l.Sats -= n
-			l.Basis -= b
-			need -= n
-			if l.Sats == 0 {
-				pool = pool[1:]
+		for _, l := range pool {
+			if need[a] == 0 {
+				break
+			}
+			if l.Sats > 0 {
+				assign(l, a)
 			}
 		}
 	}

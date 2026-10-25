@@ -948,9 +948,39 @@ $("#da-list").addEventListener("click", async (e) => {
   try { await api(`/api/1099da/${id}`, { method: "DELETE" }); renderForms(); } catch (err) { toast(err.message); }
 });
 
+// The January 2025 split of pooled basis across accounts.
+function renderAllocation() {
+  const a = report.allocation || { rows: [] };
+  const card = $("#alloc-card");
+  card.hidden = !a.rows.length;
+  if (!a.rows.length) return;
+  const accts = [...new Set([...(report.accounts || []).filter((x) => x.kind !== "pool").map((x) => x.name), ...a.rows.map((r) => r.account)])].sort();
+  $("#alloc-status").innerHTML = a.confirmed
+    ? (a.changed ? `<p class="warn">Changed since you confirmed it on ${day(a.confirmed)}: confirm again to keep a record of the new split.</p>`
+                 : `<p class="pos">Confirmed on ${day(a.confirmed)}. This split is in your accountant package.</p>`)
+    : `<p class="warn">Not confirmed yet.</p>`;
+  const tot = {};
+  for (const r of a.rows) { tot[r.account] ||= [0, 0]; tot[r.account][0] += r.sats; tot[r.account][1] += r.basis; }
+  $("#alloc-status").innerHTML += `<p>${Object.entries(tot).sort().map(([n, [sats, basis]]) => `<b>${esc(n)}</b> ${amt(sats)}, basis ${usd(basis)}`).join(" · ")}</p>`;
+  $("#alloc-table tbody").innerHTML = a.rows.map((r) => `<tr>
+    <td>${day(r.acquired)}</td><td>${esc(r.boughtOn || "")}</td><td class="num">${btc(r.sats)}</td><td class="num">${usd(r.basis)}</td>
+    <td><select class="alloc-acct" data-origin="${esc(r.originId)}">${accts.map((n) => `<option${n === r.account ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>
+      ${r.assigned ? '<span class="small muted">set by you</span>' : '<span class="small muted">default</span>'}
+      <a href="#graph" data-flowpick="${esc(r.originId)}" class="small">open</a></td></tr>`).join("");
+}
+$("#alloc-table").addEventListener("change", async (e) => {
+  const sel = e.target.closest(".alloc-acct");
+  if (!sel) return;
+  try { await post("/api/allocation", { OriginID: sel.dataset.origin, Account: sel.value }); toast("Split updated"); refresh(); } catch (err) { toast(err.message); }
+});
+$("#alloc-confirm").addEventListener("click", async () => {
+  try { await post("/api/allocation/confirm", {}); toast("Split confirmed and recorded"); refresh(); } catch (err) { toast(err.message); }
+});
+
 function renderTaxes() {
   renderProtected();
   renderForms();
+  renderAllocation();
   const types = report.incomeTypes || {};
   const incRows = [];
   for (const y of [...(report.years || [])].reverse()) {

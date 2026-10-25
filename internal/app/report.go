@@ -107,6 +107,9 @@ type Report struct {
 	Gifts      []GiftRow         `json:"gifts"`
 	// IncomeTypes names each income type and where it usually goes.
 	IncomeTypes map[string]string `json:"incomeTypes"`
+	// Allocation is how pooled basis was split across accounts on
+	// January 1, 2025.
+	Allocation AllocationView `json:"allocation"`
 }
 
 // DipView is the first record that took an account below zero. Key is the
@@ -240,7 +243,8 @@ func (s *Server) pipeline() (*pipeline, error) {
 			}
 			return tax.Method(set["method"])
 		},
-		Protected: func(id string) bool { return prot[id] },
+		Protected:       func(id string) bool { return prot[id] },
+		AllocationPrefs: s.allocationPrefs(),
 	}
 	return &pipeline{ex, labels, prices, tr, set, cfg, prot, lnEvents, wal}, nil
 }
@@ -315,6 +319,7 @@ func (s *Server) buildReport() (*Report, error) {
 
 	r.Years = summarize(res.Disposals, tr.Income, set, time.Now().In(loc(set)).Year())
 	documentYears(r, p, res)
+	r.Allocation = s.allocationView(res, tr.Ops)
 	r.IncomeTypes = trace.IncomeTypes
 
 	// Accounts: engine balance and basis, plus chain balance for wallets.

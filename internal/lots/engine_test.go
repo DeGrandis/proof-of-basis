@@ -235,3 +235,37 @@ func TestFirstDip(t *testing.T) {
 		t.Errorf("dips %+v", res.Dips)
 	}
 }
+
+// At the per-account switch, purchases the user assigned go to their
+// account first; the rest fills oldest-first in name order.
+func TestAllocationPrefs(t *testing.T) {
+	d := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	ops := []Op{
+		{ID: "old", Kind: Acquire, Time: d("2020-01-01"), Account: "b-exchange", Sats: 100, Cents: 1_000},
+		{ID: "new", Kind: Acquire, Time: d("2023-01-01"), Account: "a-wallet", Sats: 100, Cents: 5_000},
+		{ID: "after", Kind: Dispose, Time: d("2025-06-01"), Account: "b-exchange", Sats: 100, Cents: 9_000},
+	}
+	run := func(prefs map[string]string) *Result {
+		res, err := Run(ops, Config{Rules: tax.US{}, AllocationPrefs: prefs})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	// Default: "a-wallet" sorts first and takes the oldest lot.
+	if res := run(nil); res.Disposals[0].OriginID != "new" {
+		t.Errorf("default: b-exchange sold %s", res.Disposals[0].OriginID)
+	}
+	// Assigned: each account keeps its own purchase.
+	res := run(map[string]string{"old": "b-exchange"})
+	if res.Disposals[0].OriginID != "old" || res.Disposals[0].Basis != 1_000 {
+		t.Errorf("assigned: %+v", res.Disposals[0])
+	}
+	got := map[string]string{}
+	for _, a := range res.Allocations {
+		got[a.OriginID] = a.Account
+	}
+	if got["old"] != "b-exchange" || got["new"] != "a-wallet" {
+		t.Errorf("allocations %+v", res.Allocations)
+	}
+}

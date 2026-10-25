@@ -114,6 +114,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/export/8949.csv", s.export8949)
 	mux.HandleFunc("GET /api/export/1099da-reconciliation.csv", s.exportReconciliation)
 	mux.HandleFunc("GET /api/forms", s.getForms)
+	mux.HandleFunc("POST /api/allocation", s.postAllocation)
+	mux.HandleFunc("POST /api/allocation/confirm", s.confirmAllocation)
 	mux.HandleFunc("GET /api/1099da", s.list1099DA)
 	mux.HandleFunc("POST /api/1099da", s.noted("import", "Imported a Form 1099-DA", s.post1099DA))
 	mux.HandleFunc("DELETE /api/1099da/{id}", s.noted("import", "Removed a Form 1099-DA", s.delete1099DA))

@@ -84,3 +84,45 @@ func TestYearDocuments(t *testing.T) {
 		}
 	}
 }
+
+// The January 2025 split: the default, a purchase assigned to its own
+// account, and a confirmed record that notices later changes.
+func TestAllocationSplit(t *testing.T) {
+	st, h := newTest(t)
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	cb, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	rv, _ := st.ExchangeAccount("River", "river")
+	st.AddImport(rv, "river", "r.csv", "r", []importers.Event{{Kind: importers.Buy, Time: at("2020-01-01"), Sats: 100_000, FiatCents: 100_00, UID: "r1"}}, nil)
+	st.AddImport(cb, "coinbase", "c.csv", "c", []importers.Event{{Kind: importers.Buy, Time: at("2023-01-01"), Sats: 100_000, FiatCents: 500_00, UID: "c1"}}, nil)
+	report := func() Report {
+		var r Report
+		json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &r)
+		return r
+	}
+	owner := func(r Report) map[string]string {
+		m := map[string]string{}
+		for _, a := range r.Allocation.Rows {
+			m[a.BoughtOn] = a.Account
+		}
+		return m
+	}
+	// Default: Coinbase sorts first and takes River's older coins.
+	if o := owner(report()); o["River"] != "Coinbase" {
+		t.Fatalf("default split %v", o)
+	}
+	if w := call(h, "POST", "/api/allocation/confirm", ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if r := report(); r.Allocation.Confirmed == "" || r.Allocation.Changed {
+		t.Errorf("confirmed %+v", r.Allocation)
+	}
+	// Each account keeps its own purchase once one is assigned.
+	call(h, "POST", "/api/allocation", `{"OriginID":"ex:1","Account":"River"}`)
+	r := report()
+	if o := owner(r); o["River"] != "River" || o["Coinbase"] != "Coinbase" {
+		t.Errorf("assigned split %v", o)
+	}
+	if !r.Allocation.Changed {
+		t.Error("a change after confirming isn't flagged")
+	}
+}
