@@ -105,7 +105,9 @@ func TestLightningNode(t *testing.T) {
 			coffeeDisposal += d.Proceeds
 		}
 	}
-	if paid != 50_010 || coffeeDisposal != 50_00 {
+	// 50,010 paid, plus the 2,000-sat network fee on a transfer between the
+	// user's own accounts, a disposal by default (IRS FAQs 81 and 97).
+	if paid != 52_010 || coffeeDisposal != 50_00 {
 		t.Errorf("payment disposal: %d sats, $%d", paid, coffeeDisposal)
 	}
 	var income int64

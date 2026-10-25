@@ -37,7 +37,14 @@ const usd = (cents) => {
 function setUnitLabels() { $$(".unit-name").forEach((el) => (el.textContent = UNIT_NAME[prefs.unit])); }
 const signed = (cents) => `<span class="${cents < 0 ? "neg" : cents > 0 ? "pos" : ""}">${usd(cents)}</span>`;
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; // theme color, for canvas drawing
-const day = (t) => new Date(typeof t === "number" ? t * 1000 : t).toISOString().slice(0, 10);
+// Dates follow the time zone in Settings, like the tax years do.
+const tzName = () => report?.settings?.timezone || "UTC";
+const dayFmt = {};
+const day = (t) => {
+  const z = tzName();
+  dayFmt[z] ||= new Intl.DateTimeFormat("en-CA", { timeZone: z, year: "numeric", month: "2-digit", day: "2-digit" });
+  return dayFmt[z].format(new Date(typeof t === "number" ? t * 1000 : t));
+};
 
 let report = null;
 
@@ -896,10 +903,14 @@ $("#protected-table").addEventListener("click", async (e) => {
 function renderTaxes() {
   renderProtected();
   const sales = {};
-  for (const d of report.disposals || []) { const yr = new Date(d.Disposed).getUTCFullYear(); sales[yr] = (sales[yr] || 0) + 1; }
+  for (const d of report.disposals || []) { const yr = Number(day(d.Disposed).slice(0, 4)); sales[yr] = (sales[yr] || 0) + 1; }
   $("#years-table tbody").innerHTML = (report.years || []).map((y) => `<tr><td>${y.year}</td>
     <td class="num">${signed(y.shortProceeds - y.shortBasis)}</td><td class="num">${signed(y.longProceeds - y.longBasis)}</td>
-    <td class="num">${usd(y.income)}</td><td class="num">${usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${amt(y.missingBasisSats)} sold with no known basis">!</span>` : ""}</td>
+    <td class="num">${usd(y.income)}</td>
+    <td class="num">${y.carryInShort || y.carryInLong ? usd(y.carryInShort + y.carryInLong) : '<span class="muted">–</span>'}</td>
+    <td class="num">${y.lossDeducted ? usd(y.lossDeducted) : '<span class="muted">–</span>'}</td>
+    <td class="num">${y.carryOutShort || y.carryOutLong ? `<span title="${usd(y.carryOutShort)} short-term, ${usd(y.carryOutLong)} long-term">${usd(y.carryOutShort + y.carryOutLong)}</span>` : '<span class="muted">–</span>'}</td>
+    <td class="num">${y.estimatedTax < 0 ? `<span class="pos" title="Losses lower this year's tax">saves ${usd(-y.estimatedTax)}</span>` : usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${amt(y.missingBasisSats)} sold with no known basis">!</span>` : ""}</td>
     <td>${sales[y.year] ? `<a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a> <span class="small muted">${sales[y.year]} sales</span>` : `<span class="small muted" title="Form 8949 lists sales and spends. This year only has income, which is reported elsewhere.">No sales to report</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
   $("#disposals-table tbody").innerHTML = (report.disposals || []).map((d) => `<tr>
     <td>${day(d.Disposed)}</td><td>${d.Missing ? '<span class="warn">unknown</span>' : day(d.Acquired)}</td><td>${esc(d.Account)}</td>
@@ -1222,7 +1233,12 @@ function route(from, t0, to, t1) {
 }
 const tsec = (iso) => Math.floor(new Date(iso).getTime() / 1000);
 const routeText = (from, hops) => hops.length ? `<div class="small muted">Route: ${[from, ...hops.map((h) => h.to)].map(esc).join(" → ")}</div>` : "";
-const when = (t) => new Date(t * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+const whenFmt = {};
+const when = (t) => {
+  const z = tzName();
+  whenFmt[z] ||= new Intl.DateTimeFormat("en-CA", { timeZone: z, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" });
+  return whenFmt[z].format(new Date(t * 1000)).replace(",", "");
+};
 const pickKey = (k) => `<button class="link" data-pick="${esc(k)}">`;
 let relatedKeys = new Set();
 
@@ -1240,6 +1256,7 @@ function buildDetail(key) {
   const rows = [["When", when(e.t)], ["Account", esc(e.account) + (e.to ? ` → ${esc(e.to)}` : "")], ["Amount", `${amt(e.sats)}`]];
   if (e.cents) rows.push([e.kind === "sell" || e.kind === "sold" ? "Proceeds" : e.kind === "buy" ? "Cost" : "Value", usd(e.cents) + (e.sats ? ` <span class="muted small">(${usd(Math.round(e.cents * 1e8 / e.sats))}/BTC)</span>` : "")]);
   else if (e.value) rows.push(["Market value", usd(e.value) + ` <span class="muted small">at that day's price</span>`]);
+  if (e.valueSource) rows.push(["Value from", esc(e.valueSource)]);
   if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
   if (e.feeSats) rows.push(["Network fee", `${amt(e.feeSats)}`]);
   if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);

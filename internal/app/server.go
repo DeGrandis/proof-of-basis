@@ -64,7 +64,11 @@ var defaults = map[string]string{
 	"regtest":      "false",
 	"jurisdiction": "us",
 	"method":       string(tax.FIFO),
-	"feeMode":      string(lots.FeeCarry),
+	// IRS FAQs 81 and 97 (2025): BTC spent on a network fee, even moving
+	// coins between your own wallets, is a disposal of those coins.
+	"feeMode":      string(lots.FeeAsDisposal),
+	"timezone":     "UTC",
+	"filingStatus": "single",
 	"rateShort":    "24",
 	"rateLong":     "15",
 	"priceSource":  "yahoo",
@@ -242,6 +246,16 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		case "feeMode":
 			if v != string(lots.FeeCarry) && v != string(lots.FeeAsDisposal) {
 				fail(w, 400, fmt.Errorf("feeMode must be carry or dispose"))
+				return
+			}
+		case "timezone":
+			if _, err := time.LoadLocation(v); err != nil || v == "" {
+				fail(w, 400, fmt.Errorf("unknown time zone %q; use a name like America/New_York", v))
+				return
+			}
+		case "filingStatus":
+			if _, ok := lossLimit[v]; !ok {
+				fail(w, 400, errors.New("filingStatus must be single, mfj, mfs or hoh"))
 				return
 			}
 		case "aiUrl":
@@ -632,7 +646,7 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 		cfg := p.cfg
 		yearMethod := cfg.Method
 		cfg.Method = func(y int) tax.Method {
-			if y == time.Now().UTC().Year() {
+			if y == time.Now().In(loc(p.set)).Year() {
 				return tax.Specific
 			}
 			return yearMethod(y)
@@ -662,7 +676,7 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 		cfg := p.cfg
 		yearMethod := cfg.Method
 		cfg.Method = func(y int) tax.Method {
-			if y == time.Now().UTC().Year() {
+			if y == time.Now().In(loc(p.set)).Year() {
 				return tax.Specific
 			}
 			return yearMethod(y)
@@ -677,7 +691,7 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, fmt.Errorf("%s holds %s BTC, less than that", in.Account, satsStr(have)))
 		return
 	}
-	now := time.Now().UTC()
+	now := time.Now().In(loc(p.set))
 	ops := append(append([]lots.Op(nil), p.tr.Ops...), lots.Op{ID: "whatif", Kind: lots.Dispose, Time: now, Account: in.Account,
 		Sats: sats, Cents: lots.MulDiv(price, sats, 100_000_000), Picks: picks})
 	res, err := lots.Run(ops, p.cfg)
@@ -692,22 +706,6 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 	}
 	var short, long side
 	var missing int64
-	// The year's other results, to estimate the extra tax this sale causes.
-	var yst, ylt int64
-	for _, d := range base.Disposals {
-		if d.Disposed.Year() == now.Year() {
-			if d.LongTerm {
-				ylt += d.Gain()
-			} else {
-				yst += d.Gain()
-			}
-		}
-	}
-	for _, inc := range p.tr.Income {
-		if inc.Time.Year() == now.Year() {
-			yst += inc.Cents
-		}
-	}
 	for _, d := range res.Disposals {
 		if d.OpID != "whatif" {
 			continue
@@ -729,9 +727,18 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 			warns = append(warns, wv.Message)
 		}
 	}
-	sbp, lbp := rateBP(p.set, "rateShort"), rateBP(p.set, "rateLong")
-	before := yearTax(yst, ylt, sbp, lbp)
-	after := yearTax(yst+short.Proceeds-short.Basis, ylt+long.Proceeds-long.Basis, sbp, lbp)
+	// The extra tax this sale causes: this year's impact with and without
+	// it, with earlier years' carried losses applied.
+	thisYear := func(ys []YearSummary) int64 {
+		for _, y := range ys {
+			if y.Year == now.Year() {
+				return y.EstimatedTax
+			}
+		}
+		return 0
+	}
+	before := thisYear(summarize(base.Disposals, p.tr.Income, p.set, now.Year()))
+	after := thisYear(summarize(res.Disposals, p.tr.Income, p.set, now.Year()))
 	writeJSON(w, map[string]any{"sats": sats, "price": price, "priceDay": day, "proceeds": short.Proceeds + long.Proceeds,
 		"short": short, "long": long, "missingSats": missing, "extraTax": after - before, "warnings": warns,
 		"method": string(p.cfg.Method(now.Year()))})

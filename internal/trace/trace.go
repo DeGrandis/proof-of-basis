@@ -123,11 +123,12 @@ type Label struct {
 type PriceFunc func(day time.Time) (int64, bool)
 
 type IncomeRow struct {
-	Key   string
-	Time  time.Time
-	Sats  int64
-	Cents int64
-	Kind  string
+	Key     string
+	Time    time.Time
+	Sats    int64
+	Cents   int64
+	Kind    string
+	Account string
 }
 
 // TxInfo is the shape of an on-chain transaction, for display.
@@ -145,12 +146,18 @@ type Result struct {
 	Ops       []lots.Op
 	Income    []IncomeRow
 	Warnings  []string
+	// ValueSource says where each valued record's USD amount came from:
+	// entered by the user, the export's, or a day's BTC price.
+	ValueSource map[string]string
 }
 
 type Options struct {
 	// Window is how far apart a withdrawal and its on-chain receipt may be.
 	Window time.Duration
 	Price  PriceFunc
+	// PriceSource describes the price Price gives for a day, for the
+	// documents ("BTC close 2024-02-01, built-in history").
+	PriceSource func(day time.Time) string
 	// Lightning is a Core Lightning node's bookkeeper history, tracked as
 	// one account named LightningAccount.
 	Lightning        []lightning.Event
@@ -164,7 +171,7 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 	if opt.Price == nil {
 		opt.Price = func(time.Time) (int64, bool) { return 0, false }
 	}
-	b := &builder{res: &Result{Items: map[string]Item{}, Txs: map[string]TxInfo{}, Defaults: map[string]Category{}}, opt: opt, linked: map[string]bool{}}
+	b := &builder{res: &Result{Items: map[string]Item{}, Txs: map[string]TxInfo{}, Defaults: map[string]Category{}, ValueSource: map[string]string{}}, opt: opt, linked: map[string]bool{}}
 	b.chainLegs(wallets)
 	var withdrawals, deposits []string
 	for _, e := range ex {
@@ -175,7 +182,11 @@ func Build(ex []ExEvent, wallets []WalletTxs, labels map[string]Label, opt Optio
 		case importers.Sell:
 			b.op(lots.Op{ID: key, Kind: lots.Dispose, Time: e.Time, Account: e.Account, Sats: e.Sats, Cents: e.FiatCents, FeeCents: e.FeeCents})
 		case importers.Income, importers.Reward:
-			b.income(key, e.Account, e.Time, e.Sats, IncomeValue(e.Event, labels[key]), string(e.Kind))
+			v, from := IncomeValue(e.Event, labels[key]), "from the export"
+			if l := labels[key]; l.Category == IncomeIn && l.FiatCents > 0 {
+				from = "entered by you"
+			}
+			b.income(key, e.Account, e.Time, e.Sats, v, from, string(e.Kind))
 		case importers.Withdrawal, importers.Deposit:
 			it := Item{Key: key, Source: "exchange", Account: e.Account, Time: e.Time, Sats: e.Sats,
 				FeeSats: e.FeeSats, FeeApprox: e.FeeApprox, Address: e.Address, Txid: e.Txid, Kind: string(e.Kind), Note: e.Note, Dir: In}
@@ -253,13 +264,22 @@ func (b *builder) warn(f string, a ...any) {
 	b.res.Warnings = append(b.res.Warnings, fmt.Sprintf(f, a...))
 }
 
-func (b *builder) fmv(key string, t time.Time, sats, given int64) int64 {
+// fmv values a record: the amount given (from givenFrom) or the day's
+// price, and notes which in ValueSource.
+func (b *builder) fmv(key string, t time.Time, sats, given int64, givenFrom string) int64 {
 	if given > 0 {
+		b.res.ValueSource[key] = givenFrom
 		return given
 	}
 	if p, ok := b.opt.Price(t); ok {
+		src := "BTC price on " + t.Format("2006-01-02")
+		if b.opt.PriceSource != nil {
+			src = b.opt.PriceSource(t)
+		}
+		b.res.ValueSource[key] = src
 		return mulDiv(p, sats, 100_000_000)
 	}
+	b.res.ValueSource[key] = "no price found: valued at $0"
 	b.warn("%s: no price for %s; fair market value set to 0 until a price is imported or entered", key, t.Format("2006-01-02"))
 	return 0
 }
@@ -273,10 +293,10 @@ func IncomeValue(e importers.Event, l Label) int64 {
 	return e.FiatCents
 }
 
-func (b *builder) income(key, account string, t time.Time, sats, given int64, kind string) {
-	v := b.fmv(key, t, sats, given)
+func (b *builder) income(key, account string, t time.Time, sats, given int64, givenFrom, kind string) {
+	v := b.fmv(key, t, sats, given, givenFrom)
 	b.op(lots.Op{ID: key, Kind: lots.Acquire, Time: t, Account: account, Sats: sats, Cents: v})
-	b.res.Income = append(b.res.Income, IncomeRow{key, t, sats, v, kind})
+	b.res.Income = append(b.res.Income, IncomeRow{Key: key, Time: t, Sats: sats, Cents: v, Kind: kind, Account: account})
 }
 
 // chainLegs splits every wallet transaction into internal transfers
@@ -509,7 +529,7 @@ func (b *builder) lightningItems(evs []lightning.Event, acct string) (withdrawal
 				b.op(lots.Op{ID: key, Kind: lots.Transfer, Time: t, Account: acct, To: acct, FeeSats: e.DebitSats})
 			}
 		case (e.Tag == "routed" || e.Tag == "lease_fee") && e.CreditSats > 0:
-			b.income(key, acct, t, e.CreditSats, 0, "routing")
+			b.income(key, acct, t, e.CreditSats, 0, "", "routing")
 		case e.DebitSats > 0 && strings.HasSuffix(e.Tag, "fee"):
 			b.op(lots.Op{ID: key, Kind: lots.Transfer, Time: t, Account: acct, To: acct, FeeSats: e.DebitSats})
 		case e.CreditSats > 0 || e.DebitSats > 0:
@@ -704,10 +724,10 @@ func (b *builder) applyLabel(it Item, l Label) {
 	case Out:
 		switch l.Category {
 		case Spend:
-			op.Kind, op.Cents = lots.Dispose, b.fmv(it.Key, it.Time, it.Sats, l.FiatCents)
+			op.Kind, op.Cents = lots.Dispose, b.fmv(it.Key, it.Time, it.Sats, l.FiatCents, "entered by you")
 		case Sold:
 			// Proceeds are what the buyer paid when given, else market value.
-			op.Kind, op.Cents = lots.Dispose, b.fmv(it.Key, it.Time, it.Sats, l.FiatCents)
+			op.Kind, op.Cents = lots.Dispose, b.fmv(it.Key, it.Time, it.Sats, l.FiatCents, "entered by you")
 		case Gift, Donation, Lost:
 			op.Kind = lots.Remove
 		case Untracked, SelfTransfer:
@@ -721,7 +741,7 @@ func (b *builder) applyLabel(it Item, l Label) {
 		op.Sats = it.Sats
 		switch l.Category {
 		case IncomeIn:
-			b.income(it.Key, it.Account, it.Time, it.Sats, l.FiatCents, "income")
+			b.income(it.Key, it.Account, it.Time, it.Sats, l.FiatCents, "entered by you", "income")
 			return
 		case GiftIn:
 			// Carryover basis and holding period from the donor. (US rule for

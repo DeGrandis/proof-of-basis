@@ -209,8 +209,8 @@
 
   <section id="taxes" class="tab">
     <h2>By tax year</h2>
-    <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num">Estimated tax</th><th></th></tr></thead><tbody></tbody></table></div>
-    <p class="small muted">An estimate using the rates in Settings, not tax advice. Loss carryforwards and the $3,000 ordinary-income offset are not applied yet.</p>
+    <div class="scroll"><table id="years-table"><thead><tr><th>Year</th><th class="num">Short-term gain</th><th class="num">Long-term gain</th><th class="num">Income</th><th class="num" title="Capital loss carried in from earlier years">Loss carried in</th><th class="num" title="Net capital loss deducted from other income this year">Loss deducted</th><th class="num" title="Capital loss carried to next year">Carried out</th><th class="num">Impact estimate</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p class="small muted">A rough impact at the rates and filing status in Settings, to see what something would do before you do it. It is not your return: your tax professional prepares that. Net losses are deducted up to the yearly limit and the rest is carried forward.</p>
     <h2>Protected purchases</h2>
     <p class="small muted">Coins from these are sold last: your method skips them until nothing else is left in that account. Protect a purchase from its details in Flow.</p>
     <div class="scroll"><table id="protected-table"><thead><tr><th>Acquired</th><th>Account</th><th class="num"><span class="unit-name">BTC</span></th><th></th></tr></thead><tbody></tbody></table></div>
@@ -242,7 +242,10 @@
       <h3 class="wide">Tax</h3>
       <label>Jurisdiction <select name="jurisdiction"><option value="us">United States</option></select></label>
       <label>Cost basis method <select name="method"><option value="fifo">FIFO</option><option value="lifo">LIFO</option><option value="specific">Specific lot</option></select></label>
-      <label>Network fees on own transfers <select name="feeMode"><option value="carry">Add to basis (no gain)</option><option value="dispose">Treat as a small sale</option></select></label>
+      <label>Network fees on own transfers <select name="feeMode"><option value="dispose">Treat as a small sale (the IRS position)</option><option value="carry">Add to basis (no gain)</option></select></label>
+      <label>Filing status <select name="filingStatus"><option value="single">Single</option><option value="mfj">Married filing jointly</option><option value="hoh">Head of household</option><option value="mfs">Married filing separately</option></select></label>
+      <label>Time zone <input name="timezone" list="tz-list" placeholder="America/New_York"><datalist id="tz-list"><option value="UTC"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Phoenix"><option value="America/Los_Angeles"><option value="America/Anchorage"><option value="Pacific/Honolulu"></datalist></label>
+      <div class="wide small muted">The IRS treats BTC spent on a network fee as a disposal, even when moving coins between your own wallets (FAQs 81 and 97). Filing status sets how much net capital loss a year can deduct ($3,000, or $1,500 married filing separately); the rest carries forward. Tax years and holding periods follow your time zone's calendar.</div>
       <label>Short-term rate % <input name="rateShort" inputmode="decimal"></label>
       <label>Long-term rate % <input name="rateLong" inputmode="decimal"></label>
       <h3 class="wide">Prices</h3>

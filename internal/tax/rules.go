@@ -31,11 +31,12 @@ func (US) ID() string { return "us" }
 
 // LongTerm: held more than one year. A unit sold on the anniversary of its
 // purchase is still short-term; the day after is long-term.
+// Dates are calendar days in the acquisition's time zone (the user's).
 func (US) LongTerm(acquired, disposed time.Time) bool {
-	a := acquired.UTC()
-	d := disposed.UTC()
-	anniv := time.Date(a.Year()+1, a.Month(), a.Day(), 0, 0, 0, 0, time.UTC)
-	day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+	a := acquired
+	d := disposed.In(a.Location())
+	anniv := time.Date(a.Year()+1, a.Month(), a.Day(), 0, 0, 0, 0, a.Location())
+	day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, a.Location())
 	return day.After(anniv)
 }
 

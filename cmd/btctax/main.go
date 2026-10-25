@@ -2,6 +2,7 @@
 package main
 
 import (
+	_ "time/tzdata" // time zones for the tax calendar, even in a minimal image
 	"context"
 	"flag"
 	"fmt"

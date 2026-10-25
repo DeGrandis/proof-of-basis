@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +23,16 @@ type YearSummary struct {
 	LongBasis     int64 `json:"longBasis"`
 	Income        int64 `json:"income"`
 	MissingBasis  int64 `json:"missingBasisSats"`
-	EstimatedTax  int64 `json:"estimatedTax"`
+	// Capital loss brought in from earlier years, deducted from other
+	// income this year (up to the limit), and carried to the next year.
+	CarryInShort  int64 `json:"carryInShort,omitempty"`
+	CarryInLong   int64 `json:"carryInLong,omitempty"`
+	LossDeducted  int64 `json:"lossDeducted,omitempty"`
+	CarryOutShort int64 `json:"carryOutShort,omitempty"`
+	CarryOutLong  int64 `json:"carryOutLong,omitempty"`
+	// EstimatedTax is a rough impact at the user's own rates, not a
+	// return: negative when the year's losses lower tax.
+	EstimatedTax int64 `json:"estimatedTax"`
 }
 
 type AccountView struct {
@@ -65,6 +75,9 @@ type GraphEvent struct {
 	Value     int64  `json:"value,omitempty"`
 	Label     string `json:"label,omitempty"`
 	Protected bool   `json:"protected,omitempty"`
+	// ValueSource says where Cents came from: entered, the export's, or a
+	// named day's price.
+	ValueSource string `json:"valueSource,omitempty"`
 }
 
 type Report struct {
@@ -198,8 +211,16 @@ func (s *Server) pipeline() (*pipeline, error) {
 	if err != nil {
 		return nil, err
 	}
-	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup, Lightning: lnEvents, LightningAccount: s.lnAccount()})
+	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup, PriceSource: prices.describe, Lightning: lnEvents, LightningAccount: s.lnAccount()})
 	set := s.settings()
+	// Tax years and holding periods follow the user's calendar.
+	z := loc(set)
+	for i := range tr.Ops {
+		tr.Ops[i].Time = tr.Ops[i].Time.In(z)
+	}
+	for i := range tr.Income {
+		tr.Income[i].Time = tr.Income[i].Time.In(z)
+	}
 	rules, _ := tax.ByID(set["jurisdiction"])
 	prot := s.protected()
 	cfg := lots.Config{
@@ -229,20 +250,13 @@ func (s *Server) protected() map[string]bool {
 	return out
 }
 
-// yearTax nets short and long results the way the report does and applies
-// the user's rates (basis points).
+// yearTax is a quick impact estimate for one year on its own: short and
+// long results netted, a net loss deducted up to the single filer's limit,
+// at the user's rates (basis points). The report and the what-if use
+// summarize, which also carries losses between years.
 func yearTax(st, lt, shortBP, longBP int64) int64 {
-	if st+lt <= 0 {
-		return 0
-	}
-	if lt < 0 {
-		st += lt
-		lt = 0
-	} else if st < 0 {
-		lt += st
-		st = 0
-	}
-	return lots.MulDiv(max(st, 0), shortBP, 10000) + lots.MulDiv(max(lt, 0), longBP, 10000)
+	tst, tlt, ded, _ := netYear(st, lt, carry{}, lossLimit["single"])
+	return lots.MulDiv(tst, shortBP, 10000) + lots.MulDiv(tlt, longBP, 10000) - lots.MulDiv(ded, shortBP, 10000)
 }
 
 func rateBP(set map[string]string, k string) int64 {
@@ -291,37 +305,7 @@ func (s *Server) buildReport() (*Report, error) {
 		r.Dips = append(r.Dips, dv)
 	}
 
-	// Per-year summary.
-	years := map[int]*YearSummary{}
-	y := func(t time.Time) *YearSummary {
-		if years[t.Year()] == nil {
-			years[t.Year()] = &YearSummary{Year: t.Year()}
-		}
-		return years[t.Year()]
-	}
-	for _, d := range res.Disposals {
-		ys := y(d.Disposed)
-		if d.LongTerm {
-			ys.LongProceeds += d.Proceeds
-			ys.LongBasis += d.Basis
-		} else {
-			ys.ShortProceeds += d.Proceeds
-			ys.ShortBasis += d.Basis
-		}
-		if d.Missing {
-			ys.MissingBasis += d.Sats
-		}
-	}
-	for _, in := range tr.Income {
-		y(in.Time).Income += in.Cents
-	}
-	for _, ys := range years {
-		// Net losses offset gains; the US $3,000 ordinary offset and
-		// carryforwards are not modelled yet.
-		ys.EstimatedTax = yearTax(ys.ShortProceeds-ys.ShortBasis+ys.Income, ys.LongProceeds-ys.LongBasis, rateBP(set, "rateShort"), rateBP(set, "rateLong"))
-		r.Years = append(r.Years, *ys)
-	}
-	sort.Slice(r.Years, func(i, j int) bool { return r.Years[i].Year < r.Years[j].Year })
+	r.Years = summarize(res.Disposals, tr.Income, set, time.Now().In(loc(set)).Year())
 
 	// Accounts: engine balance and basis, plus chain balance for wallets.
 	accts, err := s.st.Accounts()
@@ -403,6 +387,7 @@ func (s *Server) buildReport() (*Report, error) {
 	r.Graph = graph(ex, tr, labels, s.lnAccount())
 	for i := range r.Graph {
 		r.Graph[i].Protected = p.prot[r.Graph[i].Key]
+		r.Graph[i].ValueSource = tr.ValueSource[r.Graph[i].Key]
 	}
 	r.History = history(tr.Ops, prices.lookup)
 	r.fillNil()
@@ -575,7 +560,12 @@ func containsGT(s string) bool {
 
 // prices combines imported daily prices with prices implied by exchange
 // trades. Nothing is fetched from the internet.
-type priceTable struct{ days map[string]int64 }
+// priceTable is a daily BTC/USD close for every known day, and where each
+// came from, so a value in the documents can name its price.
+type priceTable struct {
+	days map[string]int64
+	from map[string]string
+}
 
 func (s *Server) priceTable(ex []trace.ExEvent) (*priceTable, error) {
 	imported, err := s.st.Prices()
@@ -596,17 +586,45 @@ func (s *Server) priceTable(ex []trace.ExEvent) (*priceTable, error) {
 	}
 	// Lowest priority first: prices implied by the user's own trades, then
 	// the history baked into the binary, then imported or fetched prices.
-	p := &priceTable{days: map[string]int64{}}
+	p := &priceTable{days: map[string]int64{}, from: map[string]string{}}
 	for d, a := range implied {
-		p.days[d] = lots.MulDiv(a.cents, 100_000_000, a.sats)
+		p.days[d], p.from[d] = lots.MulDiv(a.cents, 100_000_000, a.sats), "implied by your own trades that day"
 	}
 	for d, c := range s.bundled {
-		p.days[d] = c
+		p.days[d], p.from[d] = c, "built-in daily close history"
 	}
 	for d, c := range imported {
-		p.days[d] = c
+		p.days[d], p.from[d] = c, "prices you imported or updated"
 	}
 	return p, nil
+}
+
+// describe names the price lookup uses for a day, for the documents.
+func (p *priceTable) describe(t time.Time) string {
+	for i := 0; i < 7; i++ {
+		d := t.AddDate(0, 0, -i).Format("2006-01-02")
+		if c, ok := p.days[d]; ok {
+			s := fmt.Sprintf("BTC close %s of %s (%s)", d, usdText(c), p.from[d])
+			if i > 0 {
+				s += ", the closest earlier day with a price"
+			}
+			return s
+		}
+	}
+	return "no price"
+}
+
+// usdText formats cents as $1,234.56.
+func usdText(c int64) string {
+	sign := ""
+	if c < 0 {
+		sign, c = "-", -c
+	}
+	whole := strconv.FormatInt(c/100, 10)
+	for i := len(whole) - 3; i > 0; i -= 3 {
+		whole = whole[:i] + "," + whole[i:]
+	}
+	return fmt.Sprintf("%s$%s.%02d", sign, whole, c%100)
 }
 
 // lookup returns the price on the day, or the closest earlier day within a week.
