@@ -21,9 +21,12 @@ const (
 	Remove   Kind = "remove"   // gift sent, donation, loss: lots leave with no gain
 )
 
+// Pick selects coins for a sale: a lot by id, or by the acquisition it
+// came from (OriginID), which stays the same however the lot is split.
 type Pick struct {
-	LotID string
-	Sats  int64
+	LotID    string
+	OriginID string `json:",omitempty"`
+	Sats     int64
 }
 
 // Op is one normalised event fed to the engine.
@@ -256,20 +259,28 @@ func (e *engine) take(op Op, account string, sats int64, picks []Pick) []piece {
 		out = append(out, piece{l, n, b})
 	}
 	method := e.cfg.Method(op.Time.Year())
+	// Coins the user identified come first, whatever the year's method.
+	for _, p := range picks {
+		want := p.Sats
+		for _, l := range e.lots {
+			if remaining == 0 || want == 0 {
+				break
+			}
+			if l.Account != key || l.Sats == 0 || l.Acquired.After(op.Time) {
+				continue
+			}
+			if (p.LotID != "" && l.ID == p.LotID) || (p.OriginID != "" && l.OriginID == p.OriginID) {
+				before := remaining
+				consume(l, min(want, remaining))
+				want -= before - remaining
+			}
+		}
+	}
+	if remaining > 0 && len(picks) > 0 {
+		e.warn(op.ID, "the coins identified covered only part of the amount; the rest followed the year's method")
+	}
 	if method == tax.Specific {
-		for _, p := range picks {
-			for _, l := range e.lots {
-				if l.ID == p.LotID && l.Account == key && remaining > 0 {
-					consume(l, min(p.Sats, remaining))
-				}
-			}
-		}
-		if remaining > 0 {
-			if len(picks) > 0 {
-				e.warn(op.ID, "specific lots covered only part of the amount; the rest used FIFO")
-			}
-			method = tax.FIFO
-		}
+		method = tax.FIFO // nothing identified: first in, first out
 	}
 	cand := make([]*Lot, 0, len(e.lots))
 	for _, l := range e.lots {

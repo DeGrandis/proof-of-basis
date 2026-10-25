@@ -115,6 +115,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/export/1099da-reconciliation.csv", s.exportReconciliation)
 	mux.HandleFunc("GET /api/forms", s.getForms)
 	mux.HandleFunc("POST /api/allocation", s.postAllocation)
+	mux.HandleFunc("POST /api/identifications", s.postIdentification)
+	mux.HandleFunc("POST /api/identifications/{id}", s.patchIdentification)
 	mux.HandleFunc("POST /api/allocation/confirm", s.confirmAllocation)
 	mux.HandleFunc("GET /api/1099da", s.list1099DA)
 	mux.HandleFunc("POST /api/1099da", s.noted("import", "Imported a Form 1099-DA", s.post1099DA))
@@ -728,6 +730,31 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 			missing += d.Sats
 		}
 	}
+	// The lots this sale would use, for the planner and for recording the
+	// choice; short-term ones say how long until they turn long-term.
+	type lotUse struct {
+		OriginID   string `json:"originId"`
+		Acquired   int64  `json:"acquired"`
+		Sats       int64  `json:"sats"`
+		Basis      int64  `json:"basis"`
+		Proceeds   int64  `json:"proceeds"`
+		LongTerm   bool   `json:"longTerm"`
+		LongTermIn int    `json:"longTermIn,omitempty"` // days
+		Missing    bool   `json:"missing,omitempty"`
+	}
+	uses := []lotUse{}
+	for _, d := range res.Disposals {
+		if d.OpID != "whatif" {
+			continue
+		}
+		u := lotUse{OriginID: d.OriginID, Acquired: d.Acquired.Unix(), Sats: d.Sats, Basis: d.Basis, Proceeds: d.Proceeds, LongTerm: d.LongTerm, Missing: d.Missing}
+		if !d.LongTerm && !d.Missing {
+			a := d.Acquired.In(loc(p.set))
+			first := time.Date(a.Year()+1, a.Month(), a.Day()+1, 0, 0, 0, 0, a.Location())
+			u.LongTermIn = int(first.Sub(now).Hours()/24) + 1
+		}
+		uses = append(uses, u)
+	}
 	var warns []string
 	for _, wv := range res.Warnings {
 		if wv.OpID == "whatif" {
@@ -747,8 +774,9 @@ func (s *Server) whatIf(w http.ResponseWriter, r *http.Request) {
 	before := thisYear(summarize(base.Disposals, p.tr.Income, p.set, now.Year()))
 	after := thisYear(summarize(res.Disposals, p.tr.Income, p.set, now.Year()))
 	writeJSON(w, map[string]any{"sats": sats, "price": price, "priceDay": day, "proceeds": short.Proceeds + long.Proceeds,
-		"short": short, "long": long, "missingSats": missing, "extraTax": after - before, "warnings": warns,
-		"method": string(p.cfg.Method(now.Year()))})
+		"short": short, "long": long, "missingSats": missing, "extraTax": after - before, "warnings": warns, "lots": uses, "account": in.Account,
+		"strategy": in.Strategy,
+		"method":   string(p.cfg.Method(now.Year()))})
 }
 
 // wipe deletes all data. The body must be {"confirm":"WIPE"} so a stray

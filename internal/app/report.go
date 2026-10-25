@@ -110,6 +110,8 @@ type Report struct {
 	// Allocation is how pooled basis was split across accounts on
 	// January 1, 2025.
 	Allocation AllocationView `json:"allocation"`
+	// Identifications are coins chosen before a sale, and their status.
+	Identifications []IdentView `json:"identifications"`
 }
 
 // DipView is the first record that took an account below zero. Key is the
@@ -199,6 +201,7 @@ type pipeline struct {
 	prot   map[string]bool
 	ln     []lightning.Event
 	wal    []trace.WalletTxs
+	idents []IdentView
 }
 
 func (s *Server) pipeline() (*pipeline, error) {
@@ -232,6 +235,20 @@ func (s *Server) pipeline() (*pipeline, error) {
 	for i := range tr.Income {
 		tr.Income[i].Time = tr.Income[i].Time.In(z)
 	}
+	// Coins the user chose before a sale go to that sale.
+	ids, err := s.st.Identifications()
+	if err != nil {
+		return nil, err
+	}
+	accts, err := s.st.Accounts()
+	if err != nil {
+		return nil, err
+	}
+	kind := map[string]string{}
+	for _, a := range accts {
+		kind[a.Name] = a.Kind
+	}
+	idents := applyIdentifications(tr.Ops, ids, kind)
 	rules, _ := tax.ByID(set["jurisdiction"])
 	prot := s.protected()
 	cfg := lots.Config{
@@ -246,7 +263,7 @@ func (s *Server) pipeline() (*pipeline, error) {
 		Protected:       func(id string) bool { return prot[id] },
 		AllocationPrefs: s.allocationPrefs(),
 	}
-	return &pipeline{ex, labels, prices, tr, set, cfg, prot, lnEvents, wal}, nil
+	return &pipeline{ex, labels, prices, tr, set, cfg, prot, lnEvents, wal, idents}, nil
 }
 
 func (s *Server) lnAccount() string { return s.st.Setting("clnName", "Lightning node") }
@@ -320,6 +337,7 @@ func (s *Server) buildReport() (*Report, error) {
 	r.Years = summarize(res.Disposals, tr.Income, set, time.Now().In(loc(set)).Year())
 	documentYears(r, p, res)
 	r.Allocation = s.allocationView(res, tr.Ops)
+	r.Identifications = p.idents
 	r.IncomeTypes = trace.IncomeTypes
 
 	// Accounts: engine balance and basis, plus chain balance for wallets.

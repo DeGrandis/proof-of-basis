@@ -77,14 +77,16 @@
       <div id="warnings"></div>
     </section>
     <section class="ov-card" data-card="whatif">
-      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>What would I owe?</b></div>
+      <div class="ov-head"><span class="ov-grip" title="Drag to move this card">⋮⋮</span><b>Plan a sale or spend</b></div>
       <form id="whatif-form" class="grid">
         <label>Sell or spend <span class="row"><input name="amount" inputmode="decimal" placeholder="0.1" size="12" required>
           <select name="unit"><option value="btc">BTC</option><option value="usd">USD</option></select></span></label>
         <label>From <select name="account" id="whatif-account"></select></label>
+        <label>Which coins <select name="strategy"><option value="">Your method (Settings)</option><option value="highest_cost">Highest cost first (smallest gain)</option><option value="long_term_first">Long-term first</option><option value="lowest_cost">Lowest cost first</option><option value="oldest">Oldest first</option><option value="newest">Newest first</option></select></label>
         <div class="row"><button type="submit" class="primary">Estimate</button></div>
         <div id="whatif-out" class="wide"></div>
       </form>
+      <div id="idents"></div>
     </section>
     </div>
   </section>

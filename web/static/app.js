@@ -227,30 +227,69 @@ function renderOverview() {
   $("#review-count").hidden = !n;
   $("#review-count").textContent = n;
   $("#setup-hint").hidden = !!r.settings.fulcrumHost;
+  renderIdents();
   drawHistory();
   if (typeof drawSummary === "function") drawSummary();
 }
 
 // What would I owe: a sale today from one account, at the latest price,
 // with the chosen method and protected purchases honoured. Nothing is saved.
+// Plan a sale or spend: the coins it would use, the gain, the tax impact,
+// and a way to record that choice before it happens.
+let lastPlan = null;
 $("#whatif-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = new FormData(e.target), n = Number(String(f.get("amount")).replace(/[$,\s]/g, ""));
   const out = $("#whatif-out");
   try {
-    const r = await post("/api/whatif", { account: f.get("account"), [f.get("unit")]: n });
+    const r = await post("/api/whatif", { account: f.get("account"), [f.get("unit")]: n, strategy: f.get("strategy") || "" });
+    lastPlan = r;
     const g = (s) => s.proceeds - s.basis;
     const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+    const soon = (r.lots || []).filter((l) => l.longTermIn > 0).sort((a, b) => a.longTermIn - b.longTermIn);
     out.innerHTML = `<div class="whatif-grid">
       ${tile("Selling", `${amt(r.sats)}`, `for ${usd(r.proceeds)} at ${usd(r.price)}`)}
       ${tile("Short-term gain", signed(g(r.short)), r.short.sats ? `${amt(r.short.sats)} held a year or less` : "none")}
       ${tile("Long-term gain", signed(g(r.long)), r.long.sats ? `${amt(r.long.sats)} held over a year` : "none")}
-      ${tile("Extra tax this year", usd(Math.max(r.extraTax, 0)), r.extraTax < 0 ? `lowers this year's estimate by ${usd(-r.extraTax)}` : `at your rates, after this year's other results`)}
+      ${tile("Tax impact this year", usd(Math.max(r.extraTax, 0)), r.extraTax < 0 ? `lowers this year's estimate by ${usd(-r.extraTax)}` : `at your rates, after this year's other results`)}
     </div>
-    <p class="small muted">Lots picked by ${esc(r.method.toUpperCase())}, skipping protected purchases unless nothing else is left. Price from ${esc(r.priceDay)}. An estimate, not tax advice.</p>`
+    ${soon.length ? `<p class="small">${amt(soon[0].sats)} of these coins turn long-term in ${soon[0].longTermIn} day${soon[0].longTermIn === 1 ? "" : "s"}${soon.length > 1 ? `; all the short-term ones within ${soon.at(-1).longTermIn} days` : ""}. Waiting would tax that part at the long-term rate.</p>` : ""}
+    <details><summary class="small">The coins this would use (${(r.lots || []).length})</summary>
+      <div class="scroll"><table class="small"><thead><tr><th>Bought</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">Basis</th><th class="num">Gain</th><th>Held</th></tr></thead><tbody>
+      ${(r.lots || []).map((l) => `<tr><td>${l.missing ? '<span class="warn">unknown</span>' : day(l.acquired)}</td><td class="num">${btc(l.sats)}</td><td class="num">${usd(l.basis)}</td><td class="num">${signed(l.proceeds - l.basis)}</td>
+        <td>${l.longTerm ? "long" : `short${l.longTermIn ? ` (long in ${l.longTermIn} d)` : ""}`}</td></tr>`).join("")}</tbody></table></div></details>
+    <p class="small muted">Coins picked by ${r.strategy ? esc(r.strategy.replaceAll("_", " ")) : esc(r.method.toUpperCase())}, skipping protected purchases unless nothing else is left. Price from ${esc(r.priceDay)}. An estimate for planning; your tax professional prepares the return.</p>`
       + (r.missingSats ? `<p class="warn small">${amt(r.missingSats)} of this has no known purchase; its basis is counted as zero.</p>` : "")
-      + (r.warnings || []).map((w) => `<p class="warn small">${esc(w)}</p>`).join("");
+      + (r.warnings || []).map((w) => `<p class="warn small">${esc(w)}</p>`).join("")
+      + ((r.lots || []).some((l) => !l.missing) ? `<div class="row"><input id="ident-note" placeholder="Note (optional): what this is for" size="28">
+        <button type="button" id="ident-record" class="primary">Record this choice</button></div>
+        <p class="small muted">Recording keeps a dated note of exactly which coins this sale or spend uses, made before it happens, as the IRS asks (FAQ 82). When the sale shows up, these are the coins counted.</p>` : "");
   } catch (err) { out.innerHTML = `<p class="warn">${esc(err.message)}</p>`; }
+});
+$("#whatif-out").addEventListener("click", async (e) => {
+  if (e.target.id !== "ident-record" || !lastPlan) return;
+  const picks = lastPlan.lots.filter((l) => !l.missing).map((l) => ({ originId: l.originId, sats: l.sats }));
+  try {
+    await post("/api/identifications", { Account: lastPlan.account, Strategy: lastPlan.strategy || lastPlan.method, Note: $("#ident-note").value, Picks: picks,
+      Estimate: { price: lastPlan.price, proceeds: lastPlan.proceeds, basis: lastPlan.short.basis + lastPlan.long.basis, shortSats: lastPlan.short.sats, longSats: lastPlan.long.sats, extraTax: lastPlan.extraTax } });
+    toast("Choice recorded");
+    e.target.disabled = true;
+    refresh();
+  } catch (err) { toast(err.message); }
+});
+// Recorded choices and what became of them.
+function renderIdents() {
+  const ids = report.identifications || [];
+  const status = { waiting: "Waiting for the sale", applied: "Used for", late: "Recorded after the sale: not used", cancelled: "Cancelled" };
+  $("#idents").innerHTML = ids.length ? `<h3>Recorded coin choices</h3><div class="scroll"><table class="small"><thead><tr><th>Recorded</th><th>From</th><th class="num"><span class="unit-name">BTC</span></th><th>Status</th><th></th></tr></thead><tbody>
+    ${[...ids].reverse().map((i) => `<tr><td>${esc(when(Math.floor(new Date(i.createdAt) / 1000)))}</td><td>${esc(i.account)}</td><td class="num">${btc(i.sats)}</td>
+      <td class="${i.status === "late" || i.warning ? "warn" : ""}">${esc(status[i.status] || i.status)}${i.appliedTo ? ` <a href="#graph" data-flowpick="${esc(i.appliedTo.split(">")[0])}">the sale</a>` : ""}${i.note ? `<br><span class="muted">${esc(i.note)}</span>` : ""}${i.warning ? `<br>${esc(i.warning)}` : ""}</td>
+      <td>${i.status === "waiting" ? `<button class="link small ident-cancel" data-id="${i.id}">Cancel</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+$("#idents").addEventListener("click", async (e) => {
+  const id = e.target.closest(".ident-cancel")?.dataset.id;
+  if (!id) return;
+  try { await post(`/api/identifications/${id}`, { Cancelled: true }); refresh(); } catch (err) { toast(err.message); }
 });
 
 // Lightning: the node as a checking account. Each bookkeeper event is a

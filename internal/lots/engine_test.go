@@ -114,7 +114,7 @@ func TestSpecificID(t *testing.T) {
 	ops := []Op{
 		{ID: "b1", Kind: Acquire, Time: d("2021-01-10"), Account: "ex", Sats: btc, Cents: 30_000_00},
 		{ID: "b2", Kind: Acquire, Time: d("2021-06-01"), Account: "ex", Sats: btc, Cents: 60_000_00},
-		{ID: "s1", Kind: Dispose, Time: d("2021-07-01"), Account: "ex", Sats: btc, Cents: 35_000_00, Picks: []Pick{{"b2", btc}}},
+		{ID: "s1", Kind: Dispose, Time: d("2021-07-01"), Account: "ex", Sats: btc, Cents: 35_000_00, Picks: []Pick{{LotID: "b2", Sats: btc}}},
 	}
 	r := run(t, ops, tax.Specific, nil)
 	if len(r.Disposals) != 1 || r.Disposals[0].LotID != "b2" || r.Disposals[0].Gain() != -25_000_00 {
@@ -267,5 +267,25 @@ func TestAllocationPrefs(t *testing.T) {
 	}
 	if got["old"] != "b-exchange" || got["new"] != "a-wallet" {
 		t.Errorf("allocations %+v", res.Allocations)
+	}
+}
+
+// Coins identified by their purchase are sold even in a FIFO year, after
+// a transfer has split them into a new lot; any rest follows FIFO.
+func TestIdentifiedByOrigin(t *testing.T) {
+	ops := []Op{
+		{ID: "b1", Kind: Acquire, Time: d("2021-01-10"), Account: "ex", Sats: btc, Cents: 30_000_00},
+		{ID: "b2", Kind: Acquire, Time: d("2021-06-01"), Account: "ex", Sats: btc, Cents: 60_000_00},
+		{ID: "t", Kind: Transfer, Time: d("2021-06-10"), Account: "ex", To: "cold", Sats: 2 * btc},
+		{ID: "s", Kind: Dispose, Time: d("2021-07-01"), Account: "cold", Sats: btc + btc/2, Cents: 50_000_00,
+			Picks: []Pick{{OriginID: "b2", Sats: btc}}},
+	}
+	r := run(t, ops, tax.FIFO, nil)
+	got := map[string]int64{}
+	for _, x := range r.Disposals {
+		got[x.OriginID] += x.Sats
+	}
+	if got["b2"] != btc || got["b1"] != btc/2 {
+		t.Errorf("sold %v", got)
 	}
 }

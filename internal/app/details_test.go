@@ -126,3 +126,59 @@ func TestAllocationSplit(t *testing.T) {
 		t.Error("a change after confirming isn't flagged")
 	}
 }
+
+// Plan a spend, record the coins chosen, and the sale that follows uses
+// them; a choice recorded after its sale is never applied.
+func TestRecordedIdentification(t *testing.T) {
+	st, h := newTest(t)
+	at := func(s string) time.Time { tm, _ := time.Parse("2006-01-02", s); return tm }
+	now := time.Now().UTC()
+	st.PutPrices(map[string]int64{now.Format("2006-01-02"): 100_000_00, now.AddDate(0, 0, 2).Format("2006-01-02"): 100_000_00}, "test")
+	rv, _ := st.ExchangeAccount("River", "river")
+	st.AddImport(rv, "river", "r.csv", "r", []importers.Event{
+		{Kind: importers.Buy, Time: at("2023-01-01"), Sats: 1_000_000, FiatCents: 200_00, UID: "cheap"},
+		{Kind: importers.Buy, Time: at("2024-03-01"), Sats: 1_000_000, FiatCents: 700_00, UID: "dear"},
+		{Kind: importers.Sell, Time: at("2024-06-01"), Sats: 100_000, FiatCents: 70_00, UID: "past"},
+	}, nil)
+	// The planner: highest cost first picks the 2024 purchase.
+	var plan struct {
+		Lots []struct {
+			OriginID string `json:"originId"`
+			Sats     int64  `json:"sats"`
+		} `json:"lots"`
+	}
+	json.Unmarshal(call(h, "POST", "/api/whatif", `{"account":"River","btc":0.005,"strategy":"highest_cost"}`).Body.Bytes(), &plan)
+	if len(plan.Lots) != 1 || plan.Lots[0].OriginID != "ex:2" {
+		t.Fatalf("plan %+v", plan)
+	}
+	body, _ := json.Marshal(map[string]any{"Account": "River", "Strategy": "highest_cost",
+		"Picks": []map[string]any{{"originId": plan.Lots[0].OriginID, "sats": plan.Lots[0].Sats}}})
+	if w := call(h, "POST", "/api/identifications", string(body)); w.Code != 200 {
+		t.Fatalf("record: %d %s", w.Code, w.Body.String())
+	}
+	// The sale happens two days later.
+	st.AddImport(rv, "river", "r2.csv", "r2", []importers.Event{
+		{Kind: importers.Sell, Time: now.AddDate(0, 0, 2), Sats: 500_000, FiatCents: 500_00, UID: "planned"},
+	}, nil)
+	var rep Report
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	for _, d := range rep.Disposals {
+		if d.OpID == "ex:4" && d.OriginID != "ex:2" {
+			t.Errorf("the planned sale used %s, not the coins chosen", d.OriginID)
+		}
+	}
+	if len(rep.Identifications) != 1 || rep.Identifications[0].Status != "applied" || rep.Identifications[0].AppliedTo != "ex:4" {
+		t.Fatalf("identification %+v", rep.Identifications)
+	}
+	// Tied to a sale that happened before it was recorded: not used.
+	call(h, "POST", "/api/identifications/1", `{"AppliesTo":"ex:3"}`)
+	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
+	if v := rep.Identifications[0]; v.Status != "late" || v.Warning == "" {
+		t.Errorf("late identification %+v", v)
+	}
+	for _, d := range rep.Disposals {
+		if d.OpID == "ex:3" && d.OriginID != "ex:1" {
+			t.Errorf("a late choice changed a past sale: %+v", d)
+		}
+	}
+}
