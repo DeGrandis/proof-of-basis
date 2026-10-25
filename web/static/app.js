@@ -90,15 +90,18 @@ function showLookup(kind, arg) {
 }
 let lookupRoute = null;
 
-// Search: a txid or an address. Answers come from your own records, then
-// from your own Fulcrum server; nothing else is contacted.
+// Search: a txid, an address, or a reference from an export (R-...).
+// Answers come from your own records, then from your own Fulcrum server;
+// nothing else is contacted.
 $("#search").addEventListener("submit", (e) => {
   e.preventDefault();
   const q = e.target.q.value.trim();
   if (!q) return;
-  if (/^[0-9a-fA-F]{64}$/.test(q)) location.hash = "tx/" + q.toLowerCase();
+  const byRef = /^R-[0-9A-F]{10}$/i.test(q) && (report?.graph || []).find((g) => g.ref === q.toUpperCase());
+  if (byRef) location.hash = pageLink(byRef);
+  else if (/^[0-9a-fA-F]{64}$/.test(q)) location.hash = "tx/" + q.toLowerCase();
   else if (/^(bc1|tb1|bcrt1|[13mn2])[0-9A-Za-z]{20,90}$/.test(q)) location.hash = "addr/" + encodeURIComponent(q);
-  else toast("Enter a 64-character transaction id or a bitcoin address.");
+  else toast("Enter a 64-character transaction id, a bitcoin address, or a reference like R-1A2B3C4D5E.");
 });
 
 // Theme: light or dark, remembered; without a choice it follows the OS.
@@ -967,7 +970,10 @@ async function renderReadiness() {
   $("#ready-year").innerHTML = (years.length ? years : [formsYear]).map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
   let r;
   try { r = await api(`/api/readiness?year=${formsYear}`); } catch (e) { $("#ready-out").textContent = e.message; return; }
-  $("#ready-download").innerHTML = `<a class="button primary" href="/api/package/${r.year}.zip" download>Download accountant package</a>`;
+  // Exports leave out on-chain ids unless asked (for an audit, say).
+  const onchain = $("#ready-onchain")?.checked;
+  $("#ready-download").innerHTML = `<label class="small" title="Off: no transaction ids or addresses in the files; records go by their R-... reference, which this app can look up."><input type="checkbox" id="ready-onchain"${onchain ? " checked" : ""}> Include on-chain transaction IDs</label>
+    <a class="button primary" id="ready-pkg" href="/api/package/${r.year}.zip${onchain ? "?onchain=1" : ""}" download>Download accountant package</a>`;
   const icon = { ok: '<span class="pos">✓</span>', warn: '<span class="warn">!</span>', bad: '<span class="neg">✕</span>' };
   const order = { bad: 0, warn: 1, ok: 2 };
   const checks = [...r.checks].sort((a, b) => order[a.status] - order[b.status]);
@@ -1436,6 +1442,7 @@ function buildDetail(key) {
   if (e.feeCents) rows.push(["Fee (USD)", usd(e.feeCents)]);
   if (e.feeSats) rows.push(["Network fee", `${amt(e.feeSats)}`]);
   if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);
+  if (e.ref) rows.push(["Reference", `<span class="mono">${esc(e.ref)}</span> <span class="small muted">how exports name this record</span>`]);
   if (e.method) rows.push(["Matched by", esc(e.method) + (e.toKey && e.method !== "manual" && e.method !== "same transaction"
     ? ` <button class="link small" data-autounlink="${esc(e.key)}" data-autounlink2="${esc(e.toKey)}">Unlink these</button>` : "")]);
   if (e.txid) rows.push(["Transaction", `<a class="mono small" href="#tx/${esc(e.txid)}">${esc(e.txid)}</a>`]);
@@ -1980,4 +1987,10 @@ $("#logout-all-btn").addEventListener("click", async () => {
   if (!confirm("Sign out on every device, including this one?")) return;
   try { await post("/api/auth/logout-all", {}); } catch {}
   location.href = "/login";
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "ready-onchain") return;
+  const a = $("#ready-pkg");
+  a.href = a.getAttribute("href").split("?")[0] + (e.target.checked ? "?onchain=1" : "");
 });

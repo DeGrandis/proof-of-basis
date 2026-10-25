@@ -28,7 +28,7 @@ func (s *Server) getPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var buf bytes.Buffer
-	if err := s.writePackage(&buf, year); err != nil {
+	if err := s.writePackage(&buf, year, s.exportIDs(r.URL.Query().Get("onchain") == "1")); err != nil {
 		fail(w, 500, err)
 		return
 	}
@@ -38,7 +38,7 @@ func (s *Server) getPackage(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
-func (s *Server) writePackage(out io.Writer, year int) error {
+func (s *Server) writePackage(out io.Writer, year int, ids exportIDs) error {
 	rep, err := s.buildReport()
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 	if err != nil {
 		return err
 	}
-	write8949(w, f.Rows)
+	write8949(w, f.Rows, ids)
 	note(fmt.Sprintf("form8949-%d.csv", year), "every Form 8949 line, with its box, code and adjustment")
 	boxes := make([]string, 0, len(f.Boxes))
 	for b := range f.Boxes {
@@ -102,7 +102,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 		if w, err = file(name); err != nil {
 			return err
 		}
-		write8949(w, rows)
+		write8949(w, rows, ids)
 		note(name, fmt.Sprintf("the %d line%s for box %s", len(rows), plural(len(rows)), b))
 	}
 	if year >= 2025 {
@@ -110,7 +110,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 		if w, err = file(name); err != nil {
 			return err
 		}
-		writeReconciliation(w, f)
+		writeReconciliation(w, f, ids)
 		note(name, "each sale against the brokers' Forms 1099-DA")
 	}
 
@@ -121,7 +121,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 	}
 	refs := map[string]string{}
 	for _, e := range p.ex {
-		refs["ex:"+e.ID] = firstNonEmpty(e.Ref, e.Txid)
+		refs["ex:"+e.ID] = firstNonEmpty(ids.platform(e.Ref), ids.tx(e.Txid))
 	}
 	describe := func(id string) string {
 		if acct, ok := strings.CutPrefix(id, lots.PoolSplit); ok {
@@ -135,7 +135,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 		if o.To != "" && o.To != o.Account {
 			s += " to " + o.To
 		}
-		if t := txidOf(id); t != "" {
+		if t := ids.tx(txidOf(id)); t != "" {
 			s += " (tx " + t + ")"
 		} else if r := refs[strings.Split(id, ">")[0]]; r != "" {
 			s += " (ID " + r + ")"
@@ -160,11 +160,11 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 		for i, h := range d.Path {
 			hops[i] = describe(h)
 		}
-		prov = append(prov, []string{d.Disposed.In(z).Format("2006-01-02"), strings.Split(d.OpID, ">")[0], d.Account, satsStr(d.Sats), money(d.Proceeds), money(d.Basis),
-			money(d.Gain()), term, bought, from, strings.Join(hops, " | "), d.OriginID})
+		prov = append(prov, []string{d.Disposed.In(z).Format("2006-01-02"), ids.rec(strings.Split(d.OpID, ">")[0]), d.Account, satsStr(d.Sats), money(d.Proceeds), money(d.Basis),
+			money(d.Gain()), term, bought, from, strings.Join(hops, " | "), ids.rec(d.OriginID)})
 	}
-	if err := table(fmt.Sprintf("lots-sold-%d.csv", year), []string{"Sold", "Sale record", "Account", "BTC", "Proceeds", "Basis", "Gain", "Term",
-		"Bought", "Purchase", "Moved through (oldest first)", "Purchase record"}, prov); err != nil {
+	if err := table(fmt.Sprintf("lots-sold-%d.csv", year), []string{"Sold", "Sale reference", "Account", "BTC", "Proceeds", "Basis", "Gain", "Term",
+		"Bought", "Purchase", "Moved through (oldest first)", "Purchase reference"}, prov); err != nil {
 		return err
 	}
 	note(fmt.Sprintf("lots-sold-%d.csv", year), "each lot sold: where it was bought and every transfer since")
@@ -180,9 +180,9 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 			continue
 		}
 		inc = append(inc, []string{i.Time.In(z).Format("2006-01-02 15:04"), i.Account, satsStr(i.Sats), money(i.Cents), src[i.Key], i.Type, rep.IncomeTypes[i.Type],
-			i.Key, firstNonEmpty(txidOf(i.Key), refs[i.Key])})
+			ids.rec(i.Key), firstNonEmpty(ids.tx(txidOf(i.Key)), refs[i.Key])})
 	}
-	if err := table(fmt.Sprintf("income-%d.csv", year), []string{"Received", "Account", "BTC", "Value (USD)", "Value from", "Type", "Usually reported on", "Record", "Transaction or platform ID"}, inc); err != nil {
+	if err := table(fmt.Sprintf("income-%d.csv", year), []string{"Received", "Account", "BTC", "Value (USD)", "Value from", "Type", "Usually reported on", "Reference", "Platform ID"}, inc); err != nil {
 		return err
 	}
 	note(fmt.Sprintf("income-%d.csv", year), "income received, its value and where that value came from")
@@ -199,10 +199,10 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 			ded = money(g.Deduction)
 		}
 		gifts = append(gifts, []string{t.In(z).Format("2006-01-02"), g.Category, g.Recipient, g.Account, satsStr(g.Sats), money(g.Value), money(g.Basis), g.Acquired, g.Term, ded,
-			strings.Join(g.Flags, " "), g.Key})
+			strings.Join(g.Flags, " "), ids.rec(g.Key)})
 	}
 	if len(gifts) > 0 {
-		if err := table(fmt.Sprintf("gifts-donations-%d.csv", year), []string{"Date", "What", "To or from", "Account", "BTC", "Value", "Basis", "Bought", "Held", "Usual deduction", "To check", "Record"}, gifts); err != nil {
+		if err := table(fmt.Sprintf("gifts-donations-%d.csv", year), []string{"Date", "What", "To or from", "Account", "BTC", "Value", "Basis", "Bought", "Held", "Usual deduction", "To check", "Reference"}, gifts); err != nil {
 			return err
 		}
 		note(fmt.Sprintf("gifts-donations-%d.csv", year), "gifts, donations and losses, with what to check")
@@ -216,9 +216,9 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 			continue
 		}
 		moves = append(moves, []string{o.Time.In(z).Format("2006-01-02"), o.Account, o.To, satsStr(o.Sats), satsStr(l.FeeSats), l.Method,
-			firstNonEmpty(txidOf(l.To), txidOf(l.From), refs[l.From], refs[l.To]), l.From, l.To})
+			firstNonEmpty(ids.tx(txidOf(l.To)), ids.tx(txidOf(l.From)), refs[l.From], refs[l.To]), ids.rec(l.From), ids.rec(l.To)})
 	}
-	if err := table(fmt.Sprintf("transfers-%d.csv", year), []string{"Date", "From", "To", "BTC arrived", "Network fee (BTC)", "Matched by", "Transaction or platform ID", "Outflow record", "Inflow record"}, moves); err != nil {
+	if err := table(fmt.Sprintf("transfers-%d.csv", year), []string{"Date", "From", "To", "BTC arrived", "Network fee (BTC)", "Matched by", "Platform ID", "Outflow reference", "Inflow reference"}, moves); err != nil {
 		return err
 	}
 	note(fmt.Sprintf("transfers-%d.csv", year), "moves between your own accounts (not taxable) and how each was matched")
@@ -231,16 +231,16 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 			if a.Assigned {
 				how = "assigned by you"
 			}
-			al = append(al, []string{time.Unix(a.Acquired, 0).In(z).Format("2006-01-02"), a.BoughtOn, a.Account, satsStr(a.Sats), money(a.Basis), how, a.OriginID})
+			al = append(al, []string{time.Unix(a.Acquired, 0).In(z).Format("2006-01-02"), a.BoughtOn, a.Account, satsStr(a.Sats), money(a.Basis), how, ids.rec(a.OriginID)})
 		}
-		if err := table("allocation-2025-01-01.csv", []string{"Bought", "Bought on", "Belongs to on Jan 1 2025", "BTC", "Basis", "How", "Purchase record"}, al); err != nil {
+		if err := table("allocation-2025-01-01.csv", []string{"Bought", "Bought on", "Belongs to on Jan 1 2025", "BTC", "Basis", "How", "Purchase reference"}, al); err != nil {
 			return err
 		}
 		note("allocation-2025-01-01.csv", "how pre-2025 basis was split across accounts (Rev. Proc. 2024-28)")
 	}
 
 	// Coin choices recorded before sales.
-	var ids [][]string
+	var choices [][]string
 	for _, id := range rep.Identifications {
 		applied := id.AppliedTo
 		if !in(id.CreatedAt) && (applied == "" || !in(ops[applied].Time)) {
@@ -248,12 +248,15 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 		}
 		var picks []string
 		for _, pk := range id.Picks {
-			picks = append(picks, fmt.Sprintf("%s BTC bought %s (%s)", satsStr(pk.Sats), pk.Acquired.In(z).Format("2006-01-02"), pk.OriginID))
+			picks = append(picks, fmt.Sprintf("%s BTC bought %s (%s)", satsStr(pk.Sats), pk.Acquired.In(z).Format("2006-01-02"), ids.rec(pk.OriginID)))
 		}
-		ids = append(ids, []string{id.CreatedAt.UTC().Format(time.RFC3339), id.Account, satsStr(id.Sats), id.Strategy, strings.Join(picks, "; "), id.Status, applied, id.Note, id.Warning})
+		if applied != "" {
+			applied = ids.rec(strings.Split(applied, ">")[0])
+		}
+		choices = append(choices, []string{id.CreatedAt.UTC().Format(time.RFC3339), id.Account, satsStr(id.Sats), id.Strategy, strings.Join(picks, "; "), id.Status, applied, id.Note, id.Warning})
 	}
-	if len(ids) > 0 {
-		if err := table(fmt.Sprintf("coin-choices-%d.csv", year), []string{"Recorded (UTC)", "Account", "BTC", "How chosen", "Coins chosen", "Status", "Used for", "Note", "Warning"}, ids); err != nil {
+	if len(choices) > 0 {
+		if err := table(fmt.Sprintf("coin-choices-%d.csv", year), []string{"Recorded (UTC)", "Account", "BTC", "How chosen", "Coins chosen", "Status", "Used for", "Note", "Warning"}, choices); err != nil {
 			return err
 		}
 		note(fmt.Sprintf("coin-choices-%d.csv", year), "which coins were chosen, recorded before each sale (IRS FAQ 82)")
@@ -296,7 +299,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 		if err != nil {
 			continue
 		}
-		name := fmt.Sprintf("proof/%s/%d-%s", safeName(a.Key), a.ID, safeName(a.Filename))
+		name := fmt.Sprintf("proof/%s/%d-%s", safeName(ids.rec(a.Key)), a.ID, safeName(a.Filename))
 		w, err := file(name)
 		if err != nil {
 			return err
@@ -313,7 +316,7 @@ func (s *Server) writePackage(out io.Writer, year int) error {
 	if err != nil {
 		return err
 	}
-	io.WriteString(w, packageReadme(rep, rd, year, files, s))
+	io.WriteString(w, packageReadme(rep, rd, year, files, s, ids.onchain))
 	return zw.Close()
 }
 
@@ -339,7 +342,7 @@ func txidOf(key string) string {
 	return ""
 }
 
-func packageReadme(rep *Report, rd *Readiness, year int, files []string, s *Server) string {
+func packageReadme(rep *Report, rd *Readiness, year int, files []string, s *Server, onchain bool) string {
 	var b strings.Builder
 	set := rep.Settings
 	fmt.Fprintf(&b, "Bitcoin records for tax year %d\n", year)
@@ -431,6 +434,11 @@ func packageReadme(rep *Report, rd *Readiness, year int, files []string, s *Serv
 	b.WriteString("\n\nNOTES\n")
 	b.WriteString("  Form 8949 boxes: C/F before 2025; from 2025, G/J when a 1099-DA reported basis, H/K when it didn't, I/L for sales no 1099-DA covers.\n")
 	b.WriteString("  Column (g) adjustments keep the gain the records support when a 1099-DA differs (code B: basis, E: transaction costs, O: other).\n")
-	b.WriteString("  Record ids (ex:..., tx:<txid>:<output>) tie every line back to an exchange row or an on-chain transaction.\n")
+	if onchain {
+		b.WriteString("  Record ids (ex:..., tx:<txid>:<output>) tie every line back to an exchange row or an on-chain transaction.\n")
+	} else {
+		b.WriteString("  References (R-...) tie every line to a record kept in the preparer's own app, where the full detail, including\n")
+		b.WriteString("  on-chain transactions, is available on request. Platform IDs are the exchanges' own transaction ids.\n")
+	}
 	return b.String()
 }

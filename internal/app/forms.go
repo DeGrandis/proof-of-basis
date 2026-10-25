@@ -162,9 +162,6 @@ func (s *Server) forms(rep *Report, year int) (*Forms, error) {
 		g := groups[k]
 		r := &g.row
 		r.Description = fmt.Sprintf("%s BTC", satsStr(r.Sats))
-		if id := firstNonEmpty(r.Ref, r.TxID); id != "" {
-			r.Description += " (ID " + id + ")"
-		}
 		r.Acquired = g.first.Format("01/02/2006")
 		if dayOf(g.first) != dayOf(g.end) {
 			r.Acquired = "VARIOUS"
@@ -299,17 +296,31 @@ func (s *Server) getForms(w http.ResponseWriter, r *http.Request) {
 }
 
 // write8949 writes Form 8949 lines as CSV, in the form's column order.
-func write8949(w io.Writer, rows []F8949Row) {
+// Without on-chain ids, column (a) names the exchange's own id when there
+// is one, and records go by their private reference.
+func write8949(w io.Writer, rows []F8949Row, ids exportIDs) {
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"Box", "(a) Description", "(b) Date acquired", "(c) Date sold or disposed", "(d) Proceeds", "(e) Cost or other basis",
-		"(f) Code", "(g) Adjustment", "(h) Gain or loss", "Term", "Account", "Transaction ID", "Platform ID", "Record", "1099-DA check", "Note"})
+	head := []string{"Box", "(a) Description", "(b) Date acquired", "(c) Date sold or disposed", "(d) Proceeds", "(e) Cost or other basis",
+		"(f) Code", "(g) Adjustment", "(h) Gain or loss", "Term", "Account", "Platform ID", "Reference", "1099-DA check", "Note"}
+	if ids.onchain {
+		head = append(head[:11], append([]string{"Transaction ID"}, head[11:]...)...)
+	}
+	cw.Write(head)
 	for _, r := range rows {
 		term := "Short"
 		if r.LongTerm {
 			term = "Long"
 		}
-		cw.Write([]string{r.Box, r.Description, r.Acquired, r.Sold, money(r.Proceeds), money(r.Basis), r.Code, money(r.Adjustment), money(r.Gain),
-			term, r.Account, r.TxID, r.Ref, r.Record, r.Status, r.Note})
+		desc := r.Description
+		if id := firstNonEmpty(ids.platform(r.Ref), ids.tx(r.TxID)); id != "" {
+			desc += " (ID " + id + ")"
+		}
+		row := []string{r.Box, desc, r.Acquired, r.Sold, money(r.Proceeds), money(r.Basis), r.Code, money(r.Adjustment), money(r.Gain),
+			term, r.Account, ids.platform(r.Ref), ids.rec(r.Record), r.Status, r.Note}
+		if ids.onchain {
+			row = append(row[:11], append([]string{r.TxID}, row[11:]...)...)
+		}
+		cw.Write(row)
 	}
 	cw.Flush()
 }
@@ -338,13 +349,13 @@ func (s *Server) export8949(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
-	write8949(w, rows)
+	write8949(w, rows, s.exportIDs(r.URL.Query().Get("onchain") == "1"))
 }
 
 // writeReconciliation lists every 1099-DA line against the records.
-func writeReconciliation(w io.Writer, f *Forms) {
+func writeReconciliation(w io.Writer, f *Forms, ids exportIDs) {
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"Account", "Date sold", "BTC", "Term", "1099-DA proceeds", "Your proceeds", "1099-DA basis", "Your basis", "Box", "Code", "Adjustment", "Result", "Record", "Note"})
+	cw.Write([]string{"Account", "Date sold", "BTC", "Term", "1099-DA proceeds", "Your proceeds", "1099-DA basis", "Your basis", "Box", "Code", "Adjustment", "Result", "Reference", "Note"})
 	for _, r := range f.Rows {
 		if r.Status == statusPre2025 || r.Status == statusNoBroker {
 			continue
@@ -361,7 +372,7 @@ func writeReconciliation(w io.Writer, f *Forms) {
 				daB = "not reported"
 			}
 		}
-		cw.Write([]string{r.Account, r.Sold, satsStr(r.Sats), term, daP, money(r.OurProceeds), daB, money(r.OurBasis), r.Box, r.Code, money(r.Adjustment), r.Status, r.Record, r.Note})
+		cw.Write([]string{r.Account, r.Sold, satsStr(r.Sats), term, daP, money(r.OurProceeds), daB, money(r.OurBasis), r.Box, r.Code, money(r.Adjustment), r.Status, ids.rec(r.Record), r.Note})
 	}
 	for _, d := range f.DAOnly {
 		basis := "not reported"
@@ -387,7 +398,7 @@ func (s *Server) exportReconciliation(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="1099da-reconciliation-%d.csv"`, year))
-	writeReconciliation(w, f)
+	writeReconciliation(w, f, s.exportIDs(r.URL.Query().Get("onchain") == "1"))
 }
 
 // post1099DA stores a broker's 1099-DA export for one exchange account.

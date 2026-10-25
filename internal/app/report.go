@@ -83,6 +83,9 @@ type GraphEvent struct {
 	ValueSource string `json:"valueSource,omitempty"`
 	IncomeType  string `json:"incomeType,omitempty"`
 	Recipient   string `json:"recipient,omitempty"`
+	// Ref is the record's reference in exports (R-...), which carry no
+	// on-chain ids.
+	Ref string `json:"ref,omitempty"`
 }
 
 type Report struct {
@@ -430,6 +433,10 @@ func (s *Server) buildReport() (*Report, error) {
 		r.Graph[i].Protected = p.prot[r.Graph[i].Key]
 		r.Graph[i].ValueSource = tr.ValueSource[r.Graph[i].Key]
 		r.Graph[i].Recipient = labels[r.Graph[i].Key].Recipient
+	}
+	ids := s.exportIDs(false)
+	for i := range r.Graph {
+		r.Graph[i].Ref = ids.ref(r.Graph[i].Key)
 	}
 	incomeType := map[string]string{}
 	for _, in := range tr.Income {
