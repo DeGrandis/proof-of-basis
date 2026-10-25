@@ -999,14 +999,6 @@ function timeOf(p) {
   return times[lo] + ((p - pos[lo]) / (pos[hi] - pos[lo] || 1)) * (times[hi] - times[lo]);
 }
 
-// Logos bundled in logos/, one per importer; any other CSV gets a bank.
-const LOGOS = new Set(["coinbase", "cashapp", "river", "fold", "strike"]);
-function laneLogo(handler, y) {
-  if (LOGOS.has(handler)) return `<image class="lane-logo" href="logos/${handler}.svg" x="14" y="${y}" width="18" height="18"/>`
-    + `<rect class="lane-logo-ring" x="14" y="${y}" width="18" height="18" rx="3.5"/>`;
-  return `<g class="lane-logo bank" transform="translate(14 ${y})"><path d="M2 7 9 2.5 16 7ZM3 15h12M4.5 8.5v5M7.5 8.5v5M10.5 8.5v5M13.5 8.5v5"/></g>`;
-}
-
 const LEFT = 150;
 function geometry() {
   const wrap = $("#graph-wrap");
@@ -1125,13 +1117,8 @@ function drawTimeline() {
     nowBal[acct] = pts.length ? pts.at(-1).bal : 0;
   }
   // Lane names and the current balance stay put while the timeline pans.
-  // Exchange lanes get the logo of the importer that created them.
-  const acctOf = Object.fromEntries((report.accounts || []).map((a) => [a.name, a]));
-  labels += Object.entries(laneTop).map(([l, top]) => {
-    const a = acctOf[l], y = top + laneH / 2, logo = a?.kind === "exchange" ? laneLogo(a.handler, y - 13) : "", x = logo ? 38 : 16;
-    return logo + `<text class="lane-name" x="${x}" y="${y}"><title>${esc(l)}</title>${esc(l.length > 17 ? l.slice(0, 16) + "…" : l)}</text>`
-      + `<text class="lane-bal" x="${x}" y="${y + 14}">${amt(nowBal[l] || 0)}</text>`;
-  }).join("");
+  labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${top + laneH / 2}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
+    + `<text class="lane-bal" x="16" y="${top + laneH / 2 + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
   out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);

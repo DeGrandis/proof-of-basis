@@ -34,7 +34,6 @@ type AccountView struct {
 	ScannedAt string `json:"scannedAt,omitempty"`
 	Script    string `json:"script,omitempty"`
 	ID        int64  `json:"id"`
-	Handler   string `json:"handler,omitempty"` // importer that created an exchange account
 	// Unlabeled items in Review don't move coins yet. PendingOut is BTC
 	// that has left this account on the platform's own books (and fees)
 	// but is still counted here; PendingIn arrived but isn't counted.
@@ -302,11 +301,7 @@ func (s *Server) buildReport() (*Report, error) {
 	seen := map[string]bool{}
 	for _, a := range accts {
 		v := AccountView{ID: a.ID, Name: a.Name, Kind: a.Kind, Sats: res.Balances[a.Name], Basis: basis[a.Name], ScannedAt: a.ScannedAt,
-			PendingOut: pendOut[a.Name], PendingIn: pendIn[a.Name], Handler: a.Handler}
-		if a.Handler == "demo" {
-			// Demo exchanges are named after the platform they imitate.
-			v.Handler = strings.ToLower(a.Name)
-		}
+			PendingOut: pendOut[a.Name], PendingIn: pendIn[a.Name]}
 		if a.Kind == "wallet" {
 			b := a.Balance
 			v.ChainSats = &b
