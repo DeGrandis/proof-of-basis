@@ -33,6 +33,7 @@ func (s *Server) getPackage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.note("export", fmt.Sprintf("Downloaded the accountant package for %d", year))
+	s.st.SetSetting(fmt.Sprintf("taxDownloaded:%d", year), time.Now().UTC().Format(time.RFC3339))
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="btc-tax-package-%d.zip"`, year))
 	w.Write(buf.Bytes())

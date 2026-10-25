@@ -26,6 +26,10 @@ type Readiness struct {
 	KnownBasis int     `json:"knownBasisBP"`
 	Ready      bool    `json:"ready"`
 	Checks     []Check `json:"checks"`
+	// When the user marked the year's numbers reviewed and last
+	// downloaded its package (RFC 3339), for the tax season steps.
+	Reviewed   string `json:"reviewed,omitempty"`
+	Downloaded string `json:"downloaded,omitempty"`
 }
 
 func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
@@ -224,6 +228,8 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 			"Something is unlabeled, linked wrongly, or a scan is stale. Overview shows the numbers.", "#overview")
 	}
 
+	rd.Reviewed = s.st.Setting(fmt.Sprintf("taxReviewed:%d", year), "")
+	rd.Downloaded = s.st.Setting(fmt.Sprintf("taxDownloaded:%d", year), "")
 	rd.Ready = true
 	for _, c := range rd.Checks {
 		if c.Status == "bad" {
@@ -249,4 +255,20 @@ func (s *Server) getReadiness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, rd)
+}
+
+// postReviewed marks a year's numbers as reviewed by the user, or not.
+func (s *Server) postReviewed(w http.ResponseWriter, r *http.Request) {
+	year, _ := strconv.Atoi(r.PathValue("year"))
+	var in struct{ Reviewed bool }
+	if err := decode(r, &in); err != nil || year < 2009 {
+		fail(w, 400, fmt.Errorf("which tax year?"))
+		return
+	}
+	v := ""
+	if in.Reviewed {
+		v = time.Now().UTC().Format(time.RFC3339)
+	}
+	s.st.SetSetting(fmt.Sprintf("taxReviewed:%d", year), v)
+	writeJSON(w, map[string]string{"reviewed": v})
 }

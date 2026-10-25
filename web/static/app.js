@@ -963,39 +963,11 @@ $("#protected-table").addEventListener("click", async (e) => {
   if (k) { await post("/api/protect", { key: k, on: false }); refresh(); }
 });
 
-// Is a year ready to hand over: what's complete and what to fix first.
-async function renderReadiness() {
-  const years = [...new Set([...(report.years || []).map((y) => y.year)])].sort((a, b) => b - a);
-  if (!years.includes(formsYear)) formsYear = years.find((y) => y < new Date().getFullYear()) || years[0] || new Date().getFullYear();
-  $("#ready-year").innerHTML = (years.length ? years : [formsYear]).map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
-  let r;
-  try { r = await api(`/api/readiness?year=${formsYear}`); } catch (e) { $("#ready-out").textContent = e.message; return; }
-  // Exports leave out on-chain ids unless asked (for an audit, say).
-  const onchain = $("#ready-onchain")?.checked;
-  $("#ready-download").innerHTML = `<label class="small" title="Off: no transaction ids or addresses in the files; records go by their R-... reference, which this app can look up."><input type="checkbox" id="ready-onchain"${onchain ? " checked" : ""}> Include on-chain transaction IDs</label>
-    <a class="button primary" id="ready-pkg" href="/api/package/${r.year}.zip${onchain ? "?onchain=1" : ""}" download>Download accountant package</a>`;
-  const icon = { ok: '<span class="pos">✓</span>', warn: '<span class="warn">!</span>', bad: '<span class="neg">✕</span>' };
-  const order = { bad: 0, warn: 1, ok: 2 };
-  const checks = [...r.checks].sort((a, b) => order[a.status] - order[b.status]);
-  $("#ready-out").innerHTML = `<p>${r.ready ? `<b class="pos">Ready to hand over</b>${checks.some((c) => c.status === "warn") ? ", with a few things worth a look." : "."}`
-      : `<b class="neg">Not ready yet</b>: fix the items marked ✕ first.`} ${(r.knownBasisBP / 100).toFixed(r.knownBasisBP % 100 ? 1 : 0)}% of the BTC sold or spent in ${r.year} has a known purchase.</p>
-    <ul class="checklist">${checks.map((c) => `<li>${icon[c.status]} <b>${esc(c.title)}</b>${c.detail ? `<br><span class="small muted">${esc(c.detail)}</span>` : ""}${c.link && c.status !== "ok" ? ` <a class="small" href="${esc(c.link)}">Go there</a>` : ""}</li>`).join("")}</ul>`;
-}
-$("#ready-year").addEventListener("change", (e) => { formsYear = Number(e.target.value); renderReadiness(); renderForms(); });
 
-// Form 8949 lines for one year, checked against imported 1099-DAs.
+// Form 8949 lines for one year, checked against imported 1099-DAs. The
+// year is the one picked in Tax season (season.js).
 let formsYear = 0;
-async function renderForms() {
-  if (!formsYear) formsYear = new Date().getFullYear() - 1;
-  const years = [...new Set([formsYear, ...(report.disposals || []).map((d) => Number(day(d.Disposed).slice(0, 4)))])].sort((a, b) => b - a);
-  const sel = $("#forms-year");
-  sel.innerHTML = years.map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}</option>`).join("");
-  const exch = (report.accounts || []).filter((a) => a.kind === "exchange");
-  $("#da-account").innerHTML = exch.map((a) => `<option>${esc(a.name)}</option>`).join("") || `<option value="">No exchange accounts</option>`;
-  $("#taxform-account").innerHTML = $("#da-account").innerHTML;
-  $("#taxform-form").hidden = formsYear < 2025;
-  let f;
-  try { f = await api(`/api/forms?year=${formsYear}`); } catch (e) { $("#forms-summary").textContent = e.message; return; }
+function fillForms(f) {
   const boxes = Object.keys(f.boxes).sort();
   $("#forms-downloads").innerHTML = f.rows.length
     ? `Download: <a href="/api/export/8949.csv?year=${f.year}">all lines</a>` + boxes.map((b) => ` · <a href="/api/export/8949.csv?year=${f.year}&box=${b}">box ${b}</a> (${f.boxes[b]})`).join("")
@@ -1004,22 +976,6 @@ async function renderForms() {
   $("#da-list").innerHTML = f.forms.length
     ? "Lines imported for " + f.year + ": " + f.forms.map((x) => `${esc(x.account)} <span class="muted">(${esc(x.filename)})</span> <button class="link small da-del" data-id="${x.id}">Remove</button>`).join(" · ")
     : "";
-  // Each exchange's form, its totals, and how they compare.
-  const status = {
-    "no form": (c) => `<span class="warn">No 1099-DA added yet.</span>`,
-    "no totals": (c) => `<span class="warn">Type the form's total proceeds to check it.</span>`,
-    match: (c) => `<span class="pos">✓ The form's total proceeds match your records (${usd(c.proceeds)}).</span>`,
-    differs: (c) => `<span class="neg">✕ The form shows ${usd(c.formProceeds)}; your records show ${usd(c.proceeds)}: the form is ${usd(Math.abs(c.diff))} ${c.diff < 0 ? "less" : "more"}.</span>`,
-    lines: (c) => `<span class="pos">Checked sale by sale against the imported lines.</span>`,
-  };
-  $("#taxform-list").innerHTML = (f.checks || []).map((c) => `<div class="card taxform">
-      <b>${esc(c.account)}</b> <span class="small muted">${c.sales} sale${c.sales === 1 ? "" : "s"} in your records, proceeds ${usd(c.proceeds)}</span><br>
-      <span class="small">${status[c.status](c)}</span>
-      ${c.forms.map((x) => `<div class="row small"><a href="/api/taxforms/${x.id}">${esc(x.filename)}</a>
-        <label>Proceeds <input class="tf-p" data-id="${x.id}" inputmode="decimal" size="11" value="${x.totals.proceeds != null ? (x.totals.proceeds / 100).toFixed(2) : ""}"></label>
-        <label>Basis <input class="tf-b" data-id="${x.id}" inputmode="decimal" size="11" value="${x.totals.basis != null ? (x.totals.basis / 100).toFixed(2) : ""}" placeholder="if shown"></label>
-        <button class="tf-save" data-id="${x.id}">Save</button><button class="link tf-del" data-id="${x.id}">Remove</button></div>`).join("")}
-    </div>`).join("");
   $("#forms-summary").innerHTML = f.issues
     ? `<p class="warn">${f.issues} line${f.issues === 1 ? "" : "s"} to look at: differences from a 1099-DA, sales a 1099-DA should cover but doesn't, 1099-DA lines with no sale, or coins with no known purchase.</p>`
     : f.rows.length ? `<p class="pos">Every line is accounted for.</p>` : `<p class="muted">No sales or spends in ${f.year}.</p>`;
@@ -1033,20 +989,19 @@ async function renderForms() {
       <td class="num">${d.row.hasBasis ? usd(d.row.basis) : "not reported"}</td><td></td><td></td><td></td><td class="small warn">Only on the 1099-DA. ${esc(d.note)}</td></tr>`).join("")
     || `<tr><td colspan="10" class="muted">None.</td></tr>`;
 }
-$("#forms-year").addEventListener("change", (e) => { formsYear = Number(e.target.value); renderForms(); renderReadiness(); });
 $("#da-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
     const r = await api("/api/1099da", { method: "POST", body: new FormData(e.target) });
     toast(`Imported ${r.rows} Bitcoin line${r.rows === 1 ? "" : "s"}` + (r.warnings?.length ? `, ${r.warnings.length} skipped` : ""));
     e.target.reset();
-    renderForms();
+    renderSeason();
   } catch (err) { toast(err.message); }
 });
 $("#da-list").addEventListener("click", async (e) => {
   const id = e.target.closest(".da-del")?.dataset.id;
   if (!id) return;
-  try { await api(`/api/1099da/${id}`, { method: "DELETE" }); renderForms(); } catch (err) { toast(err.message); }
+  try { await api(`/api/1099da/${id}`, { method: "DELETE" }); renderSeason(); } catch (err) { toast(err.message); }
 });
 
 // The January 2025 split of pooled basis across accounts.
@@ -1080,20 +1035,8 @@ $("#alloc-confirm").addEventListener("click", async () => {
 
 function renderTaxes() {
   renderProtected();
-  renderReadiness().then(renderForms);
   renderAllocation();
-  const types = report.incomeTypes || {};
-  const incRows = [];
-  for (const y of [...(report.years || [])].reverse()) {
-    for (const [t, v] of Object.entries(y.incomeByType || {}).sort((a, b) => b[1] - a[1])) incRows.push(`<tr><td>${y.year}</td><td>${esc(t)}</td><td class="num">${usd(v)}</td><td class="small">${esc(types[t] || "")}</td></tr>`);
-  }
-  $("#income-types-table tbody").innerHTML = incRows.join("") || `<tr><td colspan="4" class="muted">No income.</td></tr>`;
-  const giftName = { gift: "Gift sent", donation: "Donation", lost: "Lost or stolen", "gift-in": "Gift received" };
-  $("#gifts-table tbody").innerHTML = (report.gifts || []).map((g) => `<tr>
-    <td>${day(g.t)}</td><td>${esc(giftName[g.category] || g.category)}</td><td>${esc(g.recipient || "")}</td><td class="num">${btc(g.sats)}</td>
-    <td class="num">${usd(g.value)}</td><td class="num">${usd(g.basis)}</td><td>${esc(g.term || "")}</td><td class="num">${g.deduction ? usd(g.deduction) : ""}</td>
-    <td class="small">${g.flags.map((f) => `<div class="warn">${esc(f)}</div>`).join("")} <a href="#graph" data-flowpick="${esc(g.key)}">open</a></td></tr>`).join("")
-    || `<tr><td colspan="9" class="muted">None.</td></tr>`;
+  renderSeason();
   const sales = {};
   // A sale can use several lots; count each sale once.
   const seenSale = new Set();
@@ -2007,36 +1950,4 @@ $("#logout-all-btn").addEventListener("click", async () => {
   location.href = "/login";
 });
 
-document.addEventListener("change", (e) => {
-  if (e.target.id !== "ready-onchain") return;
-  const a = $("#ready-pkg");
-  a.href = a.getAttribute("href").split("?")[0] + (e.target.checked ? "?onchain=1" : "");
-});
 
-$("#taxform-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  fd.append("year", formsYear);
-  try {
-    await api("/api/taxforms", { method: "POST", body: fd });
-    toast("1099-DA added");
-    e.target.reset();
-    renderForms();
-    renderReadiness();
-  } catch (err) { toast(err.message); }
-});
-$("#taxform-list").addEventListener("click", async (e) => {
-  const id = e.target.dataset.id;
-  if (!id) return;
-  try {
-    if (e.target.classList.contains("tf-save")) {
-      const box = e.target.closest(".row");
-      await post(`/api/taxforms/${id}`, { Proceeds: $(".tf-p", box).value, Basis: $(".tf-b", box).value });
-      toast("Totals saved");
-    } else if (e.target.classList.contains("tf-del")) {
-      await api(`/api/taxforms/${id}`, { method: "DELETE" });
-    } else return;
-    renderForms();
-    renderReadiness();
-  } catch (err) { toast(err.message); }
-});
