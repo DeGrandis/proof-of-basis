@@ -54,6 +54,14 @@ func (coinbase) Parse(t *Table) ([]Event, []Warning, error) {
 	}
 	iID, iCcy, iPrice, iSub, iTotal, iFees, iNotes := ix(c.id), ix(c.ccy), ix(c.price), ix(c.sub), ix(c.total), ix(c.fees), ix(c.notes)
 	iSender, iRecipient := ix(c.sender), ix(c.recipient)
+	// Quantities are signed in current exports: positive arrived.
+	signed := false
+	for _, row := range t.Rows {
+		if strings.HasPrefix(cell(row, iQty), "-") {
+			signed = true
+			break
+		}
+	}
 	var out []Event
 	var warns []Warning
 	for n, row := range t.Rows {
@@ -62,13 +70,23 @@ func (coinbase) Parse(t *Table) ([]Event, []Warning, error) {
 		lt := strings.ToLower(typ)
 		notes := cell(row, iNotes)
 		intoBTC := ""
-		if !strings.EqualFold(cell(row, iAsset), "BTC") {
+		from := cell(row, iAsset)
+		if !strings.EqualFold(from, "BTC") {
 			// "Converted 1.5 ETH to 0.031 BTC": another asset sold for BTC.
 			m := convertToBTC.FindStringSubmatch(notes)
 			if lt != "convert" || m == nil {
 				continue
 			}
 			intoBTC = m[1]
+		} else if lt == "convert" {
+			// The BTC side of a conversion can be either way round: read it
+			// from the notes, else from the sign, before calling it a sale.
+			from = "another asset"
+			if m := convertToBTC.FindStringSubmatch(notes); m != nil {
+				intoBTC = m[1]
+			} else if q := cell(row, iQty); signed && q != "" && !strings.HasPrefix(q, "-") {
+				intoBTC = q
+			}
 		}
 		w := func(f string, a ...any) { warns = append(warns, Warning{line, fmt.Sprintf(f, a...)}) }
 		ts, err := ParseTime(cell(row, iTime))
@@ -102,7 +120,7 @@ func (coinbase) Parse(t *Table) ([]Event, []Warning, error) {
 			if total == 0 {
 				ev.FiatCents = sub + fees
 			}
-			w("%s converted into BTC; the %s side's own gain or loss is not tracked here", cell(row, iAsset), cell(row, iAsset))
+			w("%s converted into BTC; that side's own gain or loss is not tracked here", from)
 		case strings.Contains(lt, "buy"):
 			ev.Kind, ev.FeeCents = Buy, fees
 			ev.FiatCents = total // total includes fees: that is the basis

@@ -113,6 +113,50 @@ func Import(r io.Reader, id string) (Handler, []Event, []Warning, error) {
 	return h, ev, warns, nil
 }
 
+// Reparse runs a handler again over rows saved from an earlier import, so
+// parser fixes reach data already imported. out[i] is what rows[i] gives
+// now, or nil when it gives nothing.
+func Reparse(id string, rows []map[string]string) ([]*Event, error) {
+	h, ok := Get(id)
+	if !ok {
+		return nil, fmt.Errorf("unknown handler %q", id)
+	}
+	t := &Table{FirstRow: 1, index: map[string]int{}}
+	seen := map[string]bool{}
+	for _, r := range rows {
+		for k := range r {
+			if !seen[k] {
+				seen[k] = true
+				t.Header = append(t.Header, k)
+			}
+		}
+	}
+	sort.Strings(t.Header)
+	for j, col := range t.Header {
+		if _, dup := t.index[norm(col)]; !dup {
+			t.index[norm(col)] = j
+		}
+	}
+	for _, r := range rows {
+		row := make([]string, len(t.Header))
+		for j, col := range t.Header {
+			row[j] = r[col]
+		}
+		t.Rows = append(t.Rows, row)
+	}
+	evs, _, err := h.Parse(t)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*Event, len(rows))
+	for i := range evs {
+		if n := evs[i].Row - t.FirstRow; n >= 0 && n < len(rows) && out[n] == nil {
+			out[n] = &evs[i]
+		}
+	}
+	return out, nil
+}
+
 // canonicalCell normalises a cell for hashing: numbers to a fixed form,
 // dates to Unix seconds, text trimmed.
 func canonicalCell(s string) string {

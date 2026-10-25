@@ -51,6 +51,12 @@ func main() {
 		log.Fatal(err)
 	}
 	defer st.Close()
+	// Parser fixes reach files imported before them.
+	if n, err := st.Reparse(); err != nil {
+		log.Printf("re-reading imports: %v", err)
+	} else if n > 0 {
+		log.Printf("re-read imports: %d rows updated", n)
+	}
 
 	srv := app.New(st, web.Static())
 	if err := srv.ApplyEnvPassword(os.Getenv("BTCTAX_PASSWORD")); err != nil {

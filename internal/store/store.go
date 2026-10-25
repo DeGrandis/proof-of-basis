@@ -253,6 +253,58 @@ func (s *Store) Imports() ([]Import, error) {
 	return out, rows.Err()
 }
 
+// Reparse reads every import's saved rows again with the current parsers
+// and rewrites the events whose reading changed. Each event keeps its id,
+// UID, line number and original row, so labels and links still apply.
+// Rows a parser now skips are left as they were.
+func (s *Store) Reparse() (changed int, err error) {
+	ims, err := s.Imports()
+	if err != nil {
+		return 0, err
+	}
+	for _, im := range ims {
+		rows, err := s.db.Query(`SELECT id, data FROM events WHERE import_id=? ORDER BY id`, im.ID)
+		if err != nil {
+			return changed, err
+		}
+		var ids []int64
+		var old []importers.Event
+		var raws []map[string]string
+		for rows.Next() {
+			var id int64
+			var data string
+			var e importers.Event
+			if err := rows.Scan(&id, &data); err == nil && json.Unmarshal([]byte(data), &e) == nil && len(e.Raw) > 0 {
+				ids, old, raws = append(ids, id), append(old, e), append(raws, e.Raw)
+			}
+		}
+		rows.Close()
+		if len(raws) == 0 {
+			continue
+		}
+		now, err := importers.Reparse(im.Handler, raws)
+		if err != nil {
+			continue // a handler that no longer exists: keep what is stored
+		}
+		for i, e := range now {
+			if e == nil {
+				continue
+			}
+			e.UID, e.Row, e.Raw = old[i].UID, old[i].Row, old[i].Raw
+			was, _ := json.Marshal(old[i])
+			b, _ := json.Marshal(e)
+			if string(b) == string(was) {
+				continue
+			}
+			if _, err := s.db.Exec(`UPDATE events SET data=? WHERE id=?`, string(b), ids[i]); err != nil {
+				return changed, err
+			}
+			changed++
+		}
+	}
+	return changed, nil
+}
+
 func (s *Store) DeleteImport(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM imports WHERE id=?`, id)
 	return err

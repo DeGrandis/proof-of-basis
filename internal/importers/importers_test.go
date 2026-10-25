@@ -1,6 +1,7 @@
 package importers
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -199,5 +200,67 @@ func TestRowIDsSurviveReformatting(t *testing.T) {
 	_, ec, _, _ := Import(strings.NewReader(c), "river")
 	if ec[0].UID == eb[0].UID {
 		t.Error("a different amount got the same id")
+	}
+}
+
+// The BTC side of a Convert can be either way round. Synthetic rows.
+func TestCoinbaseConvertDirection(t *testing.T) {
+	csv := `ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+cv1,2023-01-01 10:00:00 UTC,Convert,BTC,-0.01000000,USD,$20000.00,$200.00,$203.00,$3.00,Converted 0.01 BTC to 0.15 ETH
+cv2,2023-02-01 10:00:00 UTC,Convert,BTC,0.00413028,USD,$24213.00,$100.00,$101.50,$1.50,Converted 101.50 USDC to 0.00413028 BTC
+cv3,2023-03-01 10:00:00 UTC,Convert,BTC,0.00200000,USD,$25000.00,$50.00,$50.75,$0.75,
+cv4,2023-04-01 10:00:00 UTC,Convert,ETH,-0.50000000,USD,$1600.00,$800.00,$812.00,$12.00,Converted 0.5 ETH to 0.04 BTC`
+	_, ev, _, err := Import(strings.NewReader(csv), "coinbase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		k    Kind
+		sats int64
+	}{{Sell, 1_000_000}, {Buy, 413_028}, {Buy, 200_000}, {Buy, 4_000_000}}
+	if len(ev) != len(want) {
+		t.Fatalf("got %d events: %+v", len(ev), ev)
+	}
+	for i, w := range want {
+		if ev[i].Kind != w.k || ev[i].Sats != w.sats {
+			t.Errorf("row %d: %s %d, want %s %d", i, ev[i].Kind, ev[i].Sats, w.k, w.sats)
+		}
+	}
+	if ev[1].FiatCents != 101_50 {
+		t.Errorf("convert into BTC basis %d", ev[1].FiatCents)
+	}
+}
+
+// Re-reading saved rows of a correctly parsed file changes nothing.
+func TestReparseIsStable(t *testing.T) {
+	for _, f := range []string{"testdata/coinbase.csv", "testdata/fold.csv", "testdata/river.csv", "testdata/strike.csv",
+		"testdata/strike-report.csv", "../trace/testdata/fees/coinbase.csv", "../trace/testdata/fees/fold.csv",
+		"../trace/testdata/fees/river.csv", "../trace/testdata/fees/strike.csv"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h, ev, _, err := Import(strings.NewReader(string(b)), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raws := make([]map[string]string, len(ev))
+		for i, e := range ev {
+			raws[i] = e.Raw
+		}
+		now, err := Reparse(h.ID(), raws)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, e := range now {
+			if e == nil {
+				t.Errorf("%s row %d: dropped", f, i)
+				continue
+			}
+			e.UID, e.Row, e.Raw = ev[i].UID, ev[i].Row, ev[i].Raw
+			if fmt.Sprintf("%+v", *e) != fmt.Sprintf("%+v", ev[i]) {
+				t.Errorf("%s row %d:\n was %+v\n now %+v", f, i, ev[i], *e)
+			}
+		}
 	}
 }
