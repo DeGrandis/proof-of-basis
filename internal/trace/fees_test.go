@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"btctax/internal/importers"
 	"btctax/internal/lots"
@@ -139,5 +140,57 @@ func TestWithdrawalFees(t *testing.T) {
 		} else if got != f {
 			t.Errorf("%s: fee %d, want %d", addr, got, f)
 		}
+	}
+}
+
+// In the 2017 fee spike an exchange's send could wait days for a block.
+// The receipt still links (by address, amount, or amount less a hidden
+// fee) up to two weeks out, and the wallet never goes negative.
+func TestSlowConfirmingWithdrawal(t *testing.T) {
+	sent := at("2017-12-20T10:00:00Z")
+	build := func(delay time.Duration, sats int64, addr string, extra ...ExEvent) (*Result, *lots.Result) {
+		ex := append([]ExEvent{
+			{"1", "coinbase", importers.Event{Kind: importers.Buy, Time: at("2017-12-01T10:00:00Z"), Sats: 200_000, FiatCents: 100_00}},
+			{"2", "coinbase", importers.Event{Kind: importers.Withdrawal, Time: sent, Sats: sats, Address: addr}},
+		}, extra...)
+		got := sent.Add(delay)
+		cold := WalletTxs{"cold", []scan.Tx{
+			{Txid: "aa", Height: 100, Time: got, Inputs: []scan.Input{{PrevTxid: "exchange-hot-wallet"}},
+				Outputs:  []scan.Output{{Vout: 0, Address: "exchange-change", Sats: 30_000}, {Vout: 1, Address: "cold-0", Sats: 20_000, Ours: true}},
+				RecvSats: 20_000},
+			{Txid: "bb", Height: 200, Time: got.Add(48 * time.Hour),
+				Inputs:  []scan.Input{{PrevTxid: "aa", PrevVout: 1, Sats: 20_000, Ours: true}},
+				Outputs: []scan.Output{{Vout: 0, Address: "shop", Sats: 19_000}}, SentSats: 20_000, FeeSats: 1_000},
+		}}
+		r := Build(ex, []WalletTxs{cold}, map[string]Label{"tx:bb:0": {Key: "tx:bb:0", Category: Spend, FiatCents: 1_00}}, Options{})
+		res, err := lots.Run(r.Ops, lots.Config{Rules: tax.US{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r, res
+	}
+	for _, delay := range []time.Duration{20 * time.Minute, 5 * 24 * time.Hour, 13 * 24 * time.Hour} {
+		for _, c := range []struct {
+			sats, coinbase int64 // exported amount, coinbase balance after
+			addr           string
+		}{
+			{20_000, 180_000, ""},       // exchange paid the fee
+			{20_000, 180_000, "cold-0"}, // ... and the export names the address
+			{90_000, 110_000, ""},       // 70,000 fee folded into the amount
+		} {
+			r, res := build(delay, c.sats, c.addr)
+			if len(r.Links) != 1 || res.Balances["cold"] != 0 || res.Balances["coinbase"] != c.coinbase {
+				t.Errorf("delay %v, %+v: links %+v balances %v", delay, c, r.Links, res.Balances)
+			}
+		}
+	}
+	// Past two weeks it is left for Review rather than guessed.
+	if r, _ := build(20*24*time.Hour, 20_000, ""); len(r.Links) != 0 {
+		t.Errorf("linked a receipt 20 days late: %+v", r.Links)
+	}
+	// Two sends of the same amount could each be the slow one: no guess.
+	twin := ExEvent{"3", "coinbase", importers.Event{Kind: importers.Withdrawal, Time: sent.Add(-24 * time.Hour), Sats: 20_000}}
+	if r, _ := build(5*24*time.Hour, 20_000, "", twin); len(r.Links) != 0 {
+		t.Errorf("ambiguous slow receipt linked: %+v", r.Links)
 	}
 }

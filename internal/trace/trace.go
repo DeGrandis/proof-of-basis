@@ -531,14 +531,58 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 		}
 		return r
 	}
-	ok := func(o, i Item) bool {
-		if o.Account == i.Account {
-			return false // a record can't be a transfer to its own account
+	within := func(win time.Duration) func(o, i Item) bool {
+		return func(o, i Item) bool {
+			if o.Account == i.Account {
+				return false // a record can't be a transfer to its own account
+			}
+			return !i.Time.Before(o.Time.Add(-6*time.Hour)) && !i.Time.After(o.Time.Add(win))
 		}
-		return !i.Time.Before(o.Time.Add(-6*time.Hour)) && !i.Time.After(o.Time.Add(b.opt.Window))
+	}
+	ok := within(b.opt.Window)
+	// An exchange's send can sit unconfirmed for days when fees spike (the
+	// 2017 backlog), and a chain receipt carries its block time. Those get
+	// a second look over the longest a node keeps a transaction waiting.
+	slow := within(max(b.opt.Window, slowConfirm))
+	exToChain := func(fits func(o, i Item) bool) func(o, i Item) bool {
+		return func(o, i Item) bool { return o.Source == "exchange" && i.Source == "chain" && slow(o, i) && fits(o, i) }
+	}
+	slowSend := exToChain(func(Item, Item) bool { return true })
+	// unique links each outflow to the one inflow that fits it, when that
+	// inflow fits no other outflow either, or a guess could steal a match.
+	unique := func(fits func(o, i Item) bool, method string) {
+		for _, o := range free(outs) {
+			var cands []Item
+			for _, i := range free(ins) {
+				if fits(o, i) {
+					cands = append(cands, i)
+				}
+			}
+			if len(cands) != 1 {
+				continue
+			}
+			back := 0
+			for _, o2 := range free(outs) {
+				if fits(o2, cands[0]) {
+					back++
+				}
+			}
+			if back == 1 {
+				b.link(o.Key, cands[0].Key, method)
+			}
+		}
 	}
 	amountFits := func(o, i Item) bool {
 		return i.Sats == o.Sats || (o.FeeSats > 0 && i.Sats == o.Sats-o.FeeSats)
+	}
+	// Some exports (old Coinbase sends) give the amount debited with the
+	// network fee folded in and no fee of their own, so the receipt is
+	// smaller by an unknown fee, which in a fee spike can exceed what
+	// arrived. A fee given only in USD may sit inside the amount the same
+	// way, off by rounding. Accept a receipt short by at most maxHiddenFee;
+	// the difference becomes the fee.
+	hiddenFee := func(o, i Item) bool {
+		return o.Source == "exchange" && (o.FeeSats == 0 || o.FeeApprox) && i.Sats < o.Sats && o.Sats-i.Sats <= maxHiddenFee
 	}
 	for _, o := range free(outs) {
 		for _, i := range free(ins) {
@@ -553,67 +597,27 @@ func (b *builder) match(outs, ins []string, crossAccountOnly bool) {
 			continue
 		}
 		for _, i := range free(ins) {
-			if o.Address == i.Address && ok(o, i) {
+			if o.Address == i.Address && (ok(o, i) || slowSend(o, i)) {
 				b.link(o.Key, i.Key, "address")
 				break
 			}
 		}
 	}
-	for _, o := range free(outs) {
-		var cands []Item
-		for _, i := range free(ins) {
-			if ok(o, i) && amountFits(o, i) {
-				cands = append(cands, i)
-			}
-		}
-		if len(cands) != 1 {
-			continue
-		}
-		// Unique in the other direction too, or a guess could steal a match.
-		back := 0
-		for _, o2 := range free(outs) {
-			if ok(o2, cands[0]) && amountFits(o2, cands[0]) {
-				back++
-			}
-		}
-		if back == 1 {
-			b.link(o.Key, cands[0].Key, "amount")
-		}
-	}
-	// Last resort: some exports (old Coinbase sends) give the amount debited
-	// with the network fee folded in and no fee of their own, so the receipt
-	// is smaller by an unknown fee, which in a fee spike can exceed what
-	// arrived. A fee given only in USD may sit inside the amount the same
-	// way, off by rounding. Accept one receipt short by at most maxHiddenFee,
-	// if it is the only fit both ways; the difference becomes the fee.
-	hiddenFee := func(o, i Item) bool {
-		return o.Source == "exchange" && (o.FeeSats == 0 || o.FeeApprox) && i.Sats < o.Sats && o.Sats-i.Sats <= maxHiddenFee
-	}
-	for _, o := range free(outs) {
-		var cands []Item
-		for _, i := range free(ins) {
-			if ok(o, i) && hiddenFee(o, i) {
-				cands = append(cands, i)
-			}
-		}
-		if len(cands) != 1 {
-			continue
-		}
-		back := 0
-		for _, o2 := range free(outs) {
-			if ok(o2, cands[0]) && hiddenFee(o2, cands[0]) {
-				back++
-			}
-		}
-		if back == 1 {
-			b.link(o.Key, cands[0].Key, "amount less network fee")
-		}
-	}
+	unique(func(o, i Item) bool { return ok(o, i) && amountFits(o, i) }, "amount")
+	unique(func(o, i Item) bool { return ok(o, i) && hiddenFee(o, i) }, "amount less network fee")
+	// Then the slow-confirming exchange sends, in the same order.
+	unique(exToChain(amountFits), "amount")
+	unique(exToChain(hiddenFee), "amount less network fee")
 }
 
 // maxHiddenFee bounds the fee inferred when a withdrawal's amount includes
 // it: 0.01 BTC, above any per-transaction fee seen even in the 2017 spike.
 const maxHiddenFee = 1_000_000
+
+// slowConfirm is how long after an exchange's send its receipt may confirm:
+// two weeks, the default time a Bitcoin node keeps an unconfirmed
+// transaction before dropping it.
+const slowConfirm = 14 * 24 * time.Hour
 
 func (b *builder) link(from, to, method string) {
 	o, ok1 := b.res.Items[from]
