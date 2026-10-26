@@ -459,6 +459,15 @@ func TestAnalyzeMath(t *testing.T) {
 	if v, _ := calc("1"); v != 1 {
 		t.Fatal()
 	}
+	// "max 1" meant as "just one" filters to $1 or less, and says so.
+	_, out = tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "stat": "list", "sort": "largest", "max": "1"})
+	if !strings.Contains(out, "No rows match") || !strings.Contains(out, "top_n") {
+		t.Errorf("max as a count: %s", out)
+	}
+	_, out = tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "stat": "max", "max": float64(100)})
+	if !strings.Contains(out, "[only values at most 100]") {
+		t.Errorf("filter not stated: %s", out)
+	}
 }
 
 func TestClaimsChange(t *testing.T) {
@@ -478,6 +487,10 @@ func TestClaimsChange(t *testing.T) {
 	note := lookupNote(`{"lookups":[{"name":"analyze_records","args":{"source":"review","from":"2026-01-01"},"summary":"x"}]}`)
 	if !strings.Contains(note, `"source":"review"`) {
 		t.Errorf("note: %s", note)
+	}
+	// A model that copies the note into its answer has it taken back out.
+	if got := lookupNoteRe.ReplaceAllString("Your smallest income was $0.00."+note, ""); got != "Your smallest income was $0.00." {
+		t.Errorf("copied note kept: %q", got)
 	}
 }
 

@@ -529,6 +529,13 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	text := strings.TrimSpace(answer.String())
+	// Some models copy the lookups note from earlier answers into their
+	// own; take it back out.
+	if clean := strings.TrimSpace(lookupNoteRe.ReplaceAllString(text, "")); clean != text {
+		text = clean
+		out.send(map[string]any{"type": "reset"})
+		out.send(map[string]any{"type": "delta", "text": text})
+	}
 	if text == "" && failMsg == "" {
 		text = "(The model didn't answer. Try asking again, or pick a larger model in Settings.)"
 		out.send(map[string]any{"type": "delta", "text": text})
@@ -1456,6 +1463,8 @@ var claimRe = regexp.MustCompile(`(?i)\b(i have|i've|i)\s+(just\s+|now\s+|succes
 func claimsChange(text string) bool {
 	return claimRe.MatchString(strings.NewReplacer("**", "", "__", "", "*", "", "`", "").Replace(text))
 }
+
+var lookupNoteRe = regexp.MustCompile(`\s*\[Lookups behind this answer:[^\n]*\]`)
 
 // lookupNote tells the model which lookups an earlier answer used, so a
 // follow-up like "label those" can repeat the same filters.

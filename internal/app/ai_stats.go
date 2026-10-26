@@ -26,7 +26,8 @@ func analyzeToolSpec() ollama.Tool {
 		Description: "List, count, total or describe records with exact math. Pick the records (source and filters), what to measure, and the statistic; optionally group, export or chart. " +
 			"Use it for searches, counts, totals, averages, medians, most common values, largest/smallest, distributions and per-year/per-account questions. Examples: " +
 			"most common buy amount = source buys, measure usd, stat mode; average price paid per year = source buys, measure price, stat mean, group_by year; " +
-			"which weekday I buy on = measure weekday, stat count; usual holding time = source sales, measure days_held, stat median; " +
+			"biggest buy = source buys, stat top, top_n 1 (smallest: stat bottom); " +
+			"which weekday I buy on = measure weekday, stat count;usual holding time = source sales, measure days_held, stat median; " +
 			"lots turning long-term in 60 days = source lots, measure days_to_long_term, max 60, stat list; lots at a loss = source lots, measure gain, max 0, stat list; " +
 			"find a record = stat list with filters (from, to, account, kind, text).",
 		Parameters: obj(map[string]any{
@@ -39,8 +40,8 @@ func analyzeToolSpec() ollama.Tool {
 			"account":  str("account name"),
 			"kind":     str("kind: buy, sell, transfer, income, spend, unmatched…; for review: in or out"),
 			"text":     str("text in the note, label, txid, address or id"),
-			"min":      num("measure at least this"),
-			"max":      num("measure at most this"),
+			"min":      num("filter: keep only records whose measure is at least this value (not a count)"),
+			"max":      num("filter: keep only records whose measure is at most this value (not a count; for the N largest use stat top with top_n)"),
 			"round_to": num("bucket size for mode/histogram, e.g. 10 for $10"),
 			"top_n":    num("rows for list/top/bottom, default 10 (list: 40)"),
 			"sort":     str("for list: newest (default), oldest, largest, smallest"),
@@ -376,6 +377,14 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		}
 		b.WriteString(")")
 	}
+	switch {
+	case hasMin && hasMax:
+		fmt.Fprintf(&b, " [only values %g to %g]", lo, hi)
+	case hasMin:
+		fmt.Fprintf(&b, " [only values at least %g]", lo)
+	case hasMax:
+		fmt.Fprintf(&b, " [only values at most %g]", hi)
+	}
 	b.WriteString(":\n")
 	summary := fmt.Sprintf("Analyzed %s (%s of %s)", src, stat, unit)
 	if stat == "list" {
@@ -383,6 +392,10 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	}
 	if len(all) == 0 {
 		b.WriteString("No rows match.\n")
+		if hasMin || hasMax {
+			// Models often send "max 1" meaning "just one": say what it did.
+			b.WriteString("min and max filter by value; they don't limit how many rows. For the largest or smallest N, leave them out and use stat top or bottom with top_n.\n")
+		}
 		return b.String(), summary, nil
 	}
 	if want, _ := a["export"].(bool); want {
