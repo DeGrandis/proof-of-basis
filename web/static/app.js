@@ -57,6 +57,33 @@ async function api(path, opts = {}) {
 }
 const post = (path, data) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 
+// Two fingers on a chart zoom the chart, not the page. onStart(x) runs as
+// the second finger lands, onMove(k, x) as they move: k is how much the
+// shown span grows (below 1 zooms in), x the client x between the fingers.
+function pinchZoom(el, onStart, onMove) {
+  const pts = new Map();
+  let base = 0;
+  const two = () => [...pts.values()];
+  const gap = () => { const [a, b] = two(); return Math.hypot(a.x - b.x, a.y - b.y); };
+  const mid = () => { const [a, b] = two(); return (a.x + b.x) / 2; };
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { base = Math.max(gap(), 1); onStart(mid()); }
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2 && base) onMove(base / Math.max(gap(), 1), mid());
+  });
+  const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) base = 0; };
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
+  // Safari zooms the page from its own gesture and touch events.
+  el.addEventListener("gesturestart", (e) => e.preventDefault());
+  el.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+}
+
 function toast(msg) {
   const t = $("#toast");
   t.textContent = msg;
@@ -500,6 +527,7 @@ function drawHistory() {
   const W = Math.max(320, $("#history-wrap").clientWidth), L = 58, R = 16, PW = W - L - R;
   const top1 = 22, h1 = 150, top2 = top1 + h1 + 36, h2 = 150, axisY = top2 + h2 + 18, scrubTop = axisY + 14, scrubH = 36, H = scrubTop + scrubH + 10;
   const x = (t) => L + ((t - t0) / (t1 - t0)) * PW;
+  hist.geo = { L, PW };
   const inView = pts.filter((p) => p.t >= t0 && p.t <= t1);
   const maxS = Math.max(...(inView.length ? inView : pts).map((p) => p.sats), 1);
   const priced = pts.filter((p) => p.price > 0), pricedIn = priced.filter((p) => p.t >= t0 && p.t <= t1);
@@ -648,6 +676,23 @@ function drawHistory() {
   });
 }
 window.addEventListener("resize", () => { if ($("#overview").classList.contains("on") && report) drawHistory(); });
+// Pinch zooms the history around the fingers, and moving them pans.
+(() => {
+  let s = null;
+  const frac = (cx) => { const { L, PW } = hist.geo; return Math.min(Math.max((cx - $("#history").getBoundingClientRect().left - L) / PW, 0), 1); };
+  pinchZoom($("#history"), (cx) => {
+    hist.drag = null;
+    $("#history-tip").hidden = true;
+    s = { t0: hist.t0, t1: hist.t1 };
+    s.at = s.t0 + frac(cx) * (s.t1 - s.t0);
+  }, (k, cx) => {
+    const [a, b] = histBounds(), span = Math.min(Math.max((s.t1 - s.t0) * k, 2 * DAY), b - a);
+    hist.t0 = Math.min(Math.max(a, s.at - frac(cx) * span), b - span);
+    hist.t1 = hist.t0 + span;
+    hist.preset = ""; $$("#history-range button").forEach((x) => x.classList.remove("on"));
+    drawHistory();
+  });
+})();
 
 // Wallets
 function renderWallets() {
@@ -1356,6 +1401,22 @@ window.addEventListener("pointermove", (e) => {
   view.d0 = drag.d0 + d; view.d1 = drag.d1 + d; clampView(); drawGraph();
 });
 window.addEventListener("pointerup", () => { setTimeout(() => (drag = null), 0); svgEl.classList.remove("panning"); });
+// Pinch zooms Flow around the fingers, and moving them pans.
+(() => {
+  let s = null;
+  const frac = (cx) => { const { W } = geometry(); return (cx - svgEl.getBoundingClientRect().left - LEFT - 20) / (W - LEFT - 40); };
+  pinchZoom(svgEl, (cx) => {
+    drag = null;
+    svgEl.classList.remove("panning");
+    s = { d0: view.d0, d1: view.d1 };
+    s.at = s.d0 + frac(cx) * (s.d1 - s.d0);
+  }, (k, cx) => {
+    const span = Math.max(0.5, Math.min(view.full * 1.05, (s.d1 - s.d0) * k));
+    view.d0 = s.at - frac(cx) * span; view.d1 = view.d0 + span;
+    clampView();
+    drawGraph();
+  });
+})();
 $("#zoom-in").addEventListener("click", () => zoomAt(geometry().W / 2 + LEFT / 2, 0.5));
 $("#zoom-out").addEventListener("click", () => zoomAt(geometry().W / 2 + LEFT / 2, 2));
 $("#zoom-fit").addEventListener("click", () => animateTo(-view.full * 0.01, view.full * 1.01));

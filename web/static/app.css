@@ -29,7 +29,7 @@
    ink lines, faint area, hollow rings for buys and accent dots for sales */
 #history-range { margin: 0 0 var(--s-3); gap: 6px 12px; align-items: center; }
 #history-wrap { position: relative; }
-#history { display: block; width: 100%; }
+#history { display: block; width: 100%; touch-action: pan-y; }
 #history .bar { fill: none; stroke: var(--chart-bar); stroke-width: 1; }
 #history .bar.hot { stroke: var(--chart-line); stroke-opacity: .55; }
 #history.dragging { cursor: grabbing; }
