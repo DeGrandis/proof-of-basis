@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
 )
 
 // A year's Form 8949 lines against a broker's 1099-DA. Invented data.

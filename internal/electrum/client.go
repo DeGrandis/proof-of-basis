@@ -75,7 +75,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 		c.conn, c.CertSHA256 = tc, seen
 	}
 	c.r = bufio.NewReaderSize(c.conn, 1<<20)
-	if _, err := c.Call("server.version", "btctax", "1.4"); err != nil {
+	if _, err := c.Call("server.version", "proof-of-basis", "1.4"); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("handshake: %w", err)
 	}

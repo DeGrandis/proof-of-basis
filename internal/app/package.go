@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
 )
 
 // The accountant package: one download per tax year with everything a tax
@@ -35,7 +35,7 @@ func (s *Server) getPackage(w http.ResponseWriter, r *http.Request) {
 	s.note("export", fmt.Sprintf("Downloaded the accountant package for %d", year))
 	s.st.SetSetting(fmt.Sprintf("taxDownloaded:%d", year), time.Now().UTC().Format(time.RFC3339))
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="btc-tax-package-%d.zip"`, year))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="proof-of-basis-%d.zip"`, year))
 	w.Write(buf.Bytes())
 }
 
@@ -62,7 +62,7 @@ func (s *Server) writePackage(out io.Writer, year int, ids exportIDs) error {
 	in := func(t time.Time) bool { return !t.Before(start) && t.Before(end) }
 
 	zw := zip.NewWriter(out)
-	dir := fmt.Sprintf("btc-tax-%d/", year)
+	dir := fmt.Sprintf("proof-of-basis-%d/", year)
 	file := func(name string) (io.Writer, error) {
 		return zw.CreateHeader(&zip.FileHeader{Name: dir + name, Method: zip.Deflate, Modified: time.Now()})
 	}
@@ -365,7 +365,7 @@ func packageReadme(rep *Report, rd *Readiness, f *Forms, year int, files []strin
 	var b strings.Builder
 	set := rep.Settings
 	fmt.Fprintf(&b, "Bitcoin records for tax year %d\n", year)
-	fmt.Fprintf(&b, "Prepared with BTC Tax on %s. This package documents the records; it is not a tax return.\n\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	fmt.Fprintf(&b, "Prepared with Proof of Basis on %s. This package documents the records; it is not a tax return.\n\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"))
 	b.WriteString("PLEASE NOTE\n")
 	for _, line := range strings.Split(strings.TrimSpace(packageDisclaimer), "\n") {
 		b.WriteString("  " + line + "\n")

@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/app"
-	"btctax/internal/demo"
-	"btctax/internal/prices"
-	"btctax/internal/store"
-	"btctax/web"
+	"github.com/DeGrandis/proof-of-basis/internal/app"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/prices"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
+	"github.com/DeGrandis/proof-of-basis/web"
 )
 
 func env(k, d string) string {

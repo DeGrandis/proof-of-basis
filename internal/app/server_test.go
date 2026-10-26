@@ -1,9 +1,9 @@
 package app
 
 import (
-	"btctax/internal/demo"
-	"btctax/internal/importers"
-	"btctax/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
 	"bytes"
 	"encoding/json"
 	"mime/multipart"
@@ -16,7 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // BIP84 test vector key (public test data, not anyone's wallet).

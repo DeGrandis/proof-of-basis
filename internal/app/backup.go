@@ -17,7 +17,7 @@ import (
 	"net/http"
 	"time"
 
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // A backup is one JSON file. Its payload is every table, as JSON, gzipped
@@ -84,7 +84,7 @@ var errPassphrase = errors.New("wrong passphrase, or the file was changed")
 func readBackup(b []byte, pass string) (store.Tables, error) {
 	var f backupFile
 	if err := json.Unmarshal(b, &f); err != nil || f.Format != backupFormat {
-		return nil, errors.New("this isn't a BTC Tax backup file")
+		return nil, errors.New("this isn't a Proof of Basis backup file")
 	}
 	if f.Version < 1 || f.Version > backupVersion {
 		return nil, fmt.Errorf("this backup is version %d; this app reads up to version %d, so update the app first", f.Version, backupVersion)
@@ -166,7 +166,7 @@ func (s *Server) postBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="btctax-backup-%s.json"`, time.Now().Format("2006-01-02")))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="proof-of-basis-backup-%s.json"`, time.Now().Format("2006-01-02")))
 	w.Write(b)
 }
 

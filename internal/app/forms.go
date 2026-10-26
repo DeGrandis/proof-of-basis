@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // F8949Row is one line of Form 8949: a sale (or spend) in one account,

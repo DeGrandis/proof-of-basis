@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/lightning"
 )
 
 // fakeCLN answers like CLNRest with an invented node history: funded from

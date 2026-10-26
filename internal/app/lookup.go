@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"btctax/internal/scan"
-	"btctax/internal/wallet"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/wallet"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"

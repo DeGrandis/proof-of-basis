@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/scan"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // The accountant package for a year: every file there, provenance traced
@@ -61,7 +61,7 @@ func TestAccountantPackage(t *testing.T) {
 		rc, _ := f.Open()
 		b, _ := io.ReadAll(rc)
 		rc.Close()
-		files[strings.TrimPrefix(f.Name, "btc-tax-2025/")] = string(b)
+		files[strings.TrimPrefix(f.Name, "proof-of-basis-2025/")] = string(b)
 	}
 	for _, want := range []string{"README.txt", "form8949-2025.csv", "form8949-2025-box-H.csv", "1099da-reconciliation-2025.csv", "lots-sold-2025.csv",
 		"income-2025.csv", "gifts-donations-2025.csv", "transfers-2025.csv", "sources.csv"} {
@@ -81,7 +81,7 @@ func TestAccountantPackage(t *testing.T) {
 		t.Errorf("income:\n%s", i)
 	}
 	readme := files["README.txt"]
-	for _, want := range []string{"tax year 2025", "PLEASE NOTE\n  This package was prepared with BTC Tax", "not tax, legal or accounting advice", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River", "lots-sold-2025.csv"} {
+	for _, want := range []string{"tax year 2025", "PLEASE NOTE\n  This package was prepared with Proof of Basis", "not tax, legal or accounting advice", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River", "lots-sold-2025.csv"} {
 		if !strings.Contains(readme, want) {
 			t.Errorf("README lacks %q:\n%s", want, readme)
 		}
@@ -168,8 +168,8 @@ func TestExportsHaveNoOnchainData(t *testing.T) {
 	leaks("8949 csv", call(h, "GET", "/api/export/8949.csv?year=2025", "").Body.String())
 	leaks("reconciliation csv", call(h, "GET", "/api/export/1099da-reconciliation.csv?year=2025", "").Body.String())
 	// The exchange's own id stays; the spend is findable by its reference.
-	if !strings.Contains(pkg["btc-tax-2025/lots-sold-2025.csv"], "cb-buy-1") {
-		t.Errorf("platform id dropped:\n%s", pkg["btc-tax-2025/lots-sold-2025.csv"])
+	if !strings.Contains(pkg["proof-of-basis-2025/lots-sold-2025.csv"], "cb-buy-1") {
+		t.Errorf("platform id dropped:\n%s", pkg["proof-of-basis-2025/lots-sold-2025.csv"])
 	}
 	var rep Report
 	json.Unmarshal(call(h, "GET", "/api/report", "").Body.Bytes(), &rep)
@@ -179,12 +179,12 @@ func TestExportsHaveNoOnchainData(t *testing.T) {
 			ref = g.Ref
 		}
 	}
-	if ref == "" || !strings.Contains(pkg["btc-tax-2025/form8949-2025.csv"], ref) {
+	if ref == "" || !strings.Contains(pkg["proof-of-basis-2025/form8949-2025.csv"], ref) {
 		t.Errorf("reference %q not in the 8949 file", ref)
 	}
 	// Asked for explicitly, on-chain ids are included.
 	all := unzip(call(h, "GET", "/api/package/2025.zip?onchain=1", "").Body.Bytes())
-	if !strings.Contains(all["btc-tax-2025/form8949-2025.csv"], spendTx) {
+	if !strings.Contains(all["proof-of-basis-2025/form8949-2025.csv"], spendTx) {
 		t.Error("onchain=1 left the txid out")
 	}
 }
@@ -254,7 +254,7 @@ func TestTaxFormPDF(t *testing.T) {
 		rc, _ := f.Open()
 		b, _ := io.ReadAll(rc)
 		rc.Close()
-		files[strings.TrimPrefix(f.Name, "btc-tax-2025/")] = string(b)
+		files[strings.TrimPrefix(f.Name, "proof-of-basis-2025/")] = string(b)
 	}
 	if files["1099-DA/River/River_1099-DA_2025.pdf"] != "%PDF-1.7 synthetic 1099-DA" {
 		names := []string{}

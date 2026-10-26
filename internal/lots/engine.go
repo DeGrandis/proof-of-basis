@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"btctax/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
 )
 
 type Kind string

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"btctax/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
 )
 
 func restore(h http.Handler, file []byte, pass, confirm string) *httptest.ResponseRecorder {

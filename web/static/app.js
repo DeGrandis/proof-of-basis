@@ -2010,7 +2010,7 @@ $("#backup-form").addEventListener("submit", async (e) => {
       body: JSON.stringify(encrypt ? { passphrase: f.pass.value } : { unencrypted: true }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
     const blob = await r.blob();
-    const name = (r.headers.get("content-disposition") || "").match(/filename="([^"]+)"/)?.[1] || "btctax-backup.json";
+    const name = (r.headers.get("content-disposition") || "").match(/filename="([^"]+)"/)?.[1] || "proof-of-basis-backup.json";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);

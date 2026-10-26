@@ -10,7 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"btctax/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
 )
 
 type fakeAI struct{ calls int }

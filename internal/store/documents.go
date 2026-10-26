@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"btctax/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
 )
 
 // Documents a tax professional needs alongside the records: brokers'

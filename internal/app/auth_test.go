@@ -8,7 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // A browser with a cookie jar, talking to one server.

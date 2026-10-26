@@ -3,9 +3,9 @@ package demo
 import (
 	"testing"
 
-	"btctax/internal/importers"
-	"btctax/internal/prices"
-	"btctax/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/prices"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
 )
 
 func TestStoryHasEveryKind(t *testing.T) {

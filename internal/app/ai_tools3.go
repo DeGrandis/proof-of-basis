@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/ollama"
-	"btctax/internal/store"
-	"btctax/internal/tax"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // The assistant's tools after consolidation: a few general building blocks

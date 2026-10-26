@@ -10,8 +10,8 @@ import (
 	"sort"
 	"time"
 
-	"btctax/internal/electrum"
-	"btctax/internal/wallet"
+	"github.com/DeGrandis/proof-of-basis/internal/electrum"
+	"github.com/DeGrandis/proof-of-basis/internal/wallet"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"

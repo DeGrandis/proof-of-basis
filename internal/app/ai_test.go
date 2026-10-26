@@ -1,7 +1,7 @@
 package app
 
 import (
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"btctax/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
 )
 
 // fakeOllama answers like Ollama: it asks for one tool, then answers

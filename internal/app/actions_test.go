@@ -1,16 +1,16 @@
 package app
 
 import (
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"btctax/internal/demo"
-	"btctax/internal/importers"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 func lastAction(t *testing.T, st *store.Store) store.Action {

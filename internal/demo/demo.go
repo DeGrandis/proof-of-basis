@@ -14,11 +14,11 @@ import (
 	"sort"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/prices"
-	"btctax/internal/scan"
-	"btctax/internal/store"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/prices"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 const (

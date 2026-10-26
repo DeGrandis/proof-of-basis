@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
 )
 
 // All scenarios use invented amounts and dates.

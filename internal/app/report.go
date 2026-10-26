@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/lightning"
-	"btctax/internal/lots"
-	"btctax/internal/tax"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 type YearSummary struct {

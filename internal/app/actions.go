@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/ollama"
-	"btctax/internal/store"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // Every change to the user's data is logged as an action with the state

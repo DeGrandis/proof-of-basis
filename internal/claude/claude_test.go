@@ -7,7 +7,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"btctax/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
 )
 
 // The assistant's loop, as Claude must see it: system prompt apart, tool

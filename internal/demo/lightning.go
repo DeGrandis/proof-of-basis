@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"btctax/internal/lightning"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // SeedLightning adds an invented Core Lightning node: an on-chain deposit

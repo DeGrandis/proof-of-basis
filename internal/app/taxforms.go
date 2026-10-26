@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"btctax/internal/importers"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // Exchanges send Form 1099-DA as a PDF. The app keeps it with the year's

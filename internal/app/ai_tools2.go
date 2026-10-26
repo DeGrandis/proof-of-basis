@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/ollama"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // More read-only tools for the assistant: totals, lot timing, matching

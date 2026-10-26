@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/lightning"
-	"btctax/internal/lots"
-	"btctax/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
 )
 
 // ExEvent is an imported exchange row with its storage id and account.

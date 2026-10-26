@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"btctax/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/lightning"
 )
 
 // lightningSync pulls the node's bookkeeper history and balances over

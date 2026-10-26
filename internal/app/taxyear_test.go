@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // Capital losses net across terms, deduct up to the limit from other

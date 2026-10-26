@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"btctax/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
 )
 
 func demoToolbox(t *testing.T) (*toolbox, *Report, func(method, path, body string) (int, string)) {

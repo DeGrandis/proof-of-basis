@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
 )
 
 // Income types, the Form 1040 answer, and what gifts and donations need.

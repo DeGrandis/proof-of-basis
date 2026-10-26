@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/tax"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // DigitalAssetQuestion is the year's answer to the yes/no question on

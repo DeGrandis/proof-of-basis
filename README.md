@@ -1,8 +1,8 @@
-# BTC Tax
+# Proof of Basis
 
 **Your bitcoin's tax story, worked out on your own server.**
 
-BTC Tax follows your coins from the exchanges where you bought them, through
+Proof of Basis follows your coins from the exchanges where you bought them, through
 your own wallets, to where you sold or spent them. It works out your cost
 basis, gains and income, flags anything it can't explain, and when tax
 season comes it walks you through gathering everything and hands your tax
@@ -11,7 +11,7 @@ professional one tidy package.
 It runs on your own machine and talks only to your own Bitcoin node. No
 account, no cloud, no tracking.
 
-> **Not tax advice.** BTC Tax is a self-help tool for organizing your
+> **Not tax advice.** Proof of Basis is a self-help tool for organizing your
 > records. It is not a CPA, enrolled agent, law firm or tax preparer, and its
 > numbers may be incomplete or wrong. You are responsible for your own taxes;
 > check everything with a qualified tax professional before you file. See the
@@ -21,7 +21,7 @@ account, no cloud, no tracking.
 
 ---
 
-## Why BTC Tax
+## Why Proof of Basis
 
 - **Private by design.** It reads your wallets through your own Fulcrum
   server, keeps everything in one file on your machine, and never phones
@@ -151,7 +151,7 @@ node packages (Umbrel, Start9, RaspiBlitz, myNode) offer one.
 
 ## Disclaimer
 
-BTC Tax is software for organizing your own records, for informational and
+Proof of Basis is software for organizing your own records, for informational and
 educational purposes only.
 
 - **Not professional advice.** It does not provide tax, legal, accounting or
@@ -179,6 +179,9 @@ footer.
 ## Technical details
 
 ### Configuration
+
+The program, its settings (`BTCTAX_*`) and its data volume keep the
+project's short code name, `btctax`.
 
 | Variable | Default | |
 |---|---|---|

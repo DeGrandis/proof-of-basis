@@ -1,4 +1,4 @@
-module btctax
+module github.com/DeGrandis/proof-of-basis
 
 go 1.24.7
 

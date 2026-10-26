@@ -19,10 +19,10 @@ import (
 	"strconv"
 	"time"
 
-	"btctax/internal/app"
-	"btctax/internal/claude"
-	"btctax/internal/sandbox"
-	"btctax/web"
+	"github.com/DeGrandis/proof-of-basis/internal/app"
+	"github.com/DeGrandis/proof-of-basis/internal/claude"
+	"github.com/DeGrandis/proof-of-basis/internal/sandbox"
+	"github.com/DeGrandis/proof-of-basis/web"
 )
 
 func env(k, d string) string {

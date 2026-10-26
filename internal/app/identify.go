@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // Lot identification: which coins a sale or spend uses, recorded before

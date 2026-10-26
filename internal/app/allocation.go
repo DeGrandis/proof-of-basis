@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"btctax/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
 )
 
 // From 2025 basis is tracked per wallet and account. Rev. Proc. 2024-28

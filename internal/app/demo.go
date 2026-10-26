@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/ollama"
-	"btctax/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
 )
 
 // Demo mode: one visitor's copy of an invented history on a public server.

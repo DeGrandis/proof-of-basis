@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/lots"
-	"btctax/internal/scan"
-	"btctax/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
 )
 
 // Withdrawals to your own wallet, every way an export can describe the

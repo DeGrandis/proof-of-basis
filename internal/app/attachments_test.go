@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
 
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // Files kept as proof for a record: listed, downloaded unchanged, never

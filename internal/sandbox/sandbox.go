@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"btctax/internal/app"
-	"btctax/internal/demo"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/app"
+	"github.com/DeGrandis/proof-of-basis/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 type Config struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"btctax/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
 )
 
 func TestOverlappingImportsDoNotDuplicate(t *testing.T) {

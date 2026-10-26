@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/ollama"
-	"btctax/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
 // The assistant: an optional chat backed by the user's own Ollama server.
@@ -600,7 +600,7 @@ func pageName(hash string) (page, arg string) {
 func (s *Server) systemPrompt(rep *Report, pc PageContext) string {
 	var b strings.Builder
 	now := time.Now().UTC()
-	fmt.Fprintf(&b, `You are the assistant inside BTC Tax, a self-hosted Bitcoin tax calculator. You help the owner understand their own bitcoin history, cost basis and taxes. Today is %s. Unless the page says otherwise, "this year" means the current calendar year.
+	fmt.Fprintf(&b, `You are the assistant inside Proof of Basis, a self-hosted Bitcoin tax calculator. You help the owner understand their own bitcoin history, cost basis and taxes. Today is %s. Unless the page says otherwise, "this year" means the current calendar year.
 
 Rules:
 - Answer from the data below and from your lookup tools. Never invent transactions, amounts or dates. If something isn't in the data, say so.

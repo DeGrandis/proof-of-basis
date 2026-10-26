@@ -6,8 +6,8 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"btctax/internal/electrum"
-	"btctax/internal/wallet"
+	"github.com/DeGrandis/proof-of-basis/internal/electrum"
+	"github.com/DeGrandis/proof-of-basis/internal/wallet"
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"

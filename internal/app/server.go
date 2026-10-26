@@ -18,15 +18,15 @@ import (
 	"sync"
 	"time"
 
-	"btctax/internal/electrum"
-	"btctax/internal/importers"
-	"btctax/internal/lots"
-	"btctax/internal/ollama"
-	"btctax/internal/prices"
-	"btctax/internal/store"
-	"btctax/internal/tax"
-	"btctax/internal/trace"
-	"btctax/internal/wallet"
+	"github.com/DeGrandis/proof-of-basis/internal/electrum"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/prices"
+	"github.com/DeGrandis/proof-of-basis/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/tax"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/wallet"
 )
 
 type Server struct {

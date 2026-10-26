@@ -4,8 +4,8 @@ import (
 	"sort"
 	"time"
 
-	"btctax/internal/lots"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // lossLimit is how much net capital loss a year can deduct from other

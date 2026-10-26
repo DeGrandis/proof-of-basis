@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"btctax/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
 )
 
 // analyze_records: one tool to list, total and describe the user's
@@ -392,7 +392,7 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 			}
 		})
 		// Name the file after what's in it.
-		parts := []string{"btctax", src}
+		parts := []string{"proof-of-basis", src}
 		if acct != "" {
 			parts = append(parts, acct)
 		}
@@ -778,7 +778,7 @@ func exportCSV(src, m string, each func(func(statRow, float64))) (string, []byte
 		w.Write([]string{dayOf(r.t), r.acct, r.kind, strconv.FormatFloat(r.btc, 'f', 8, 64), f(r.usd, 2), price, f(r.fee, 2), f(r.feeBTC, 8), f(r.gain, 2), f(math.Round(r.days), 0), r.key})
 	})
 	w.Flush()
-	return "btctax-" + src + "-" + time.Now().Format("2006-01-02") + ".csv", buf.Bytes()
+	return "proof-of-basis-" + src + "-" + time.Now().Format("2006-01-02") + ".csv", buf.Bytes()
 }
 
 // reviewDir maps the words people use to a Review item's direction:

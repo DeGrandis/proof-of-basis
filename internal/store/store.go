@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"btctax/internal/importers"
-	"btctax/internal/lightning"
-	"btctax/internal/scan"
-	"btctax/internal/trace"
+	"github.com/DeGrandis/proof-of-basis/internal/importers"
+	"github.com/DeGrandis/proof-of-basis/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/scan"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 
 	_ "modernc.org/sqlite"
 )
