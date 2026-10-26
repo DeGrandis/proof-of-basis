@@ -1163,6 +1163,12 @@ const LEDGER_KEY = [["buy", "●", "Buy"], ["income", "●", "Income or received
   ["sell", "▼", "Sold or spent"], ["gift", "▼", "Gift, donation, sent outside"], ["unmatched", "◆", "Needs a label"], ["consol", "■", "Coins merged"]];
 $("#legend").innerHTML = LEDGER_KEY.map(([k, g, l]) => `<span><span class="lg ${k}">${g}</span> ${l}</span>`).join("")
   + `<span><svg width="22" height="10"><path d="M1,8 L7,8 L7,4 L15,4 L15,2 L21,2" class="bal-line"/></svg> Balance</span>`;
+// On a phone the key folds away behind its button.
+$("#flow-key").addEventListener("click", (e) => {
+  const on = $("#graph").classList.toggle("show-key");
+  e.currentTarget.setAttribute("aria-expanded", on);
+  drawGraph();
+});
 let selected = null;
 const view = { d0: 0, d1: 1, full: 1, key: "" }; // visible slice of the compressed timeline
 let axis = null; // {times, pos}: event times and their positions on the timeline
@@ -1306,17 +1312,19 @@ function drawTimeline() {
   const { W, H } = geometry();
   const bands = lanesByBand();
   const nLanes = bands.reduce((n, b) => n + b.lanes.length, 0);
-  const laneH = Math.max(40, Math.min(110, (H - 40 - bands.length * 34) / nLanes));
+  const narrow = matchMedia("(max-width: 760px)").matches, head = narrow ? 16 : 22;
+  const laneH = Math.max(narrow ? 36 : 40, Math.min(narrow ? 60 : 110, (H - 40 - bands.length * (head + 12)) / nLanes));
   const laneTop = {};
-  let yy = 6, out = "", labels = "";
+  let yy = narrow ? 2 : 6, out = "", labels = "";
   for (const b of bands) {
     const top = yy;
-    yy += 22;
+    yy += head;
     for (const l of b.lanes) { laneTop[l] = yy; yy += laneH; }
     out += `<rect class="band" x="0" y="${top}" width="${W}" height="${yy - top}" rx="8"/>`;
-    labels += `<text class="band-label" x="10" y="${top + 15}">${esc(b.label)}</text>`;
-    yy += 12;
+    labels += `<text class="band-label" x="10" y="${top + (narrow ? 12 : 15)}">${esc(b.label)}</text>`;
+    yy += narrow ? 8 : 12;
   }
+  const nameY = (top) => narrow ? top + 14 : top + laneH / 2;
   const bottom = yy;
   const visible = (p) => p >= view.d0 - (view.d1 - view.d0) * 0.02 && p <= view.d1 + (view.d1 - view.d0) * 0.02;
   const tt0 = timeOf(Math.max(view.d0, 0)), tt1 = timeOf(Math.min(view.d1, view.full));
@@ -1358,8 +1366,8 @@ function drawTimeline() {
     nowBal[acct] = pts.length ? pts.at(-1).bal : 0;
   }
   // Lane names and the current balance stay put while the timeline pans.
-  labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${top + laneH / 2}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
-    + `<text class="lane-bal${(nowBal[l] || 0) < 0 ? " neg" : ""}" x="16" y="${top + laneH / 2 + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
+  labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${nameY(top)}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
+    + `<text class="lane-bal${(nowBal[l] || 0) < 0 ? " neg" : ""}" x="16" y="${nameY(top) + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
   out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);

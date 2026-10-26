@@ -356,3 +356,12 @@ a.button.primary { background: var(--ink); color: var(--on-ink); border-color: v
 }
 /* A label's own text, when it also holds an info mark. */
 label > .lbl-text { font-weight: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
+
+/* Flow on a phone: the key folds behind its button. */
+.key-btn { display: none; }
+@media (max-width: 760px) {
+  .key-btn { display: inline-flex; }
+  #graph:not(.show-key) .tg-legend { display: none !important; }
+  #graph .tg-legend { gap: 4px 12px; font-size: var(--fs-xs); }
+  #graph.show-key .key-btn { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+}
