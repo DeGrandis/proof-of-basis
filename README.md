@@ -315,9 +315,10 @@ fresh install, and Settings marks them "Found on your node". A value saved
 in Settings always wins. `GET /api/health` answers without a session
 (`{"ok":true,"version":"…"}`) for platform health checks.
 
-The app is one static Go binary with the UI embedded; the Docker image is
-built `FROM scratch`. `docker-compose.yml` publishes port 8080 on your LAN
-and keeps data in the `btctax-data` volume.
+The app is one static Go binary with the UI embedded; the Docker image adds
+it to Alpine Linux (about 10 MB in all), which StartOS needs.
+`docker-compose.yml` publishes port 8080 on your LAN and keeps data in the
+`btctax-data` volume.
 
 ### Login and sessions
 
