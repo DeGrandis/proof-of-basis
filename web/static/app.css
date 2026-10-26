@@ -421,3 +421,20 @@ main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type {
 #disclaimer-pop .row { justify-content: flex-end; margin-top: var(--s-3); }
 #foot { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 1px solid var(--line); text-align: center; }
 body.flow #foot { display: none; }
+
+/* Demo mode: a red banner under the nav (above it on a phone), and the
+   parts that don't apply to a public demo hidden. */
+body:not(.demo) .demo-only { display: none !important; }
+body.demo .no-demo { display: none !important; }
+.demo-note { margin: 0 0 var(--s-3); }
+#demo-banner { position: sticky; top: var(--nav-h); z-index: 19; background: var(--neg); color: #fff; text-align: center;
+  padding: 6px var(--s-4); font-size: var(--fs-sm); line-height: 1.3; }
+#demo-banner .link { color: #fff; text-decoration: underline; margin-left: 6px; min-height: 0; padding: 0; background: none; border: 0; }
+@media (max-width: 760px) {
+  #demo-banner { position: fixed; top: auto; left: var(--s-3); right: var(--s-3); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 66px);
+    border-radius: var(--pill); z-index: 29; font-size: var(--fs-xs); box-shadow: var(--shadow-pop); }
+  body.demo main { padding-bottom: calc(var(--tabbar-h) + 72px); }
+  body.demo #toast { bottom: calc(var(--tabbar-h) + 60px); }
+  body.demo .rec-view.page .rec-actions { bottom: calc(var(--tabbar-h) + 64px); }
+  body.demo .info-tip { bottom: calc(var(--tabbar-h) + 64px); }
+}

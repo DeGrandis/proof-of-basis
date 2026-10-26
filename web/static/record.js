@@ -189,7 +189,7 @@ function renderRecord(d, opts = {}) {
   }
   const canLabel = /class="lb-cat"/.test(treat);
   const actions = `<div class="rec-actions">${canLabel ? `<button data-rec-act="label">${e.label ? "Change label" : "Label it"}</button>` : ""}
-    <button data-rec-act="proof">Attach proof</button><a class="button" href="#graph" data-flowshow="${esc(e.key)}">Show in Flow</a></div>`;
+    ${report.settings.demo ? "" : `<button data-rec-act="proof">Attach proof</button>`}<a class="button" href="#graph" data-flowshow="${esc(e.key)}">Show in Flow</a></div>`;
   const note = recordNote(e);
   const flow = `<svg class="txflow txf" data-key="${esc(e.key)}" role="img" aria-label="Where these coins came from and went"></svg>`
     + (d.fromLots.length || d.fromGifts.length ? lotRows(d) : wentRows(d)) + (note ? `<p class="small muted">${note}</p>` : "");

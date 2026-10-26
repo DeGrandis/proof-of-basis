@@ -193,11 +193,28 @@ async function refresh() {
   }
   if ($("#graph").classList.contains("on")) drawGraph();
   if ($("#lookup").classList.contains("on")) renderLookup();
+  showDemo();
   showDisclaimer();
 }
 
 // The disclaimer, once per install: it has to be accepted before first use,
 // and stays on its page, linked from the footer.
+function showDemo() {
+  const on = report?.settings?.demo === "true";
+  document.body.classList.toggle("demo", on);
+  if (on) {
+    $("#demo-ai-note").textContent = report.settings.demoAllowance
+      ? `In the demo, the assistant runs on Claude Haiku through AWS Bedrock, up to ${report.settings.demoAllowance}. Your own copy uses a model on your own Ollama server.`
+      : "The assistant is off in this demo. Your own copy uses a model on your own Ollama server.";
+  }
+}
+$("#demo-reset").addEventListener("click", async () => {
+  if (!confirm("Start over with a fresh copy of the demo? Your changes here are dropped.")) return;
+  try { await post("/api/demo/reset", {}); } catch {}
+  location.hash = "";
+  location.reload();
+});
+
 function showDisclaimer() {
   const box = $("#disclaimer-pop");
   if (report?.settings?.disclaimerAccepted || box.open) return;
@@ -1805,8 +1822,8 @@ async function fillAttachments(root) {
     try { list = await api(`/api/attachments?key=${encodeURIComponent(box.dataset.key)}`); } catch { continue; }
     box.innerHTML = `<ul class="att-list">${list.map((a) => `<li><a href="/api/attachments/${a.id}">${esc(a.filename)}</a>${a.note ? ` <span class="muted">(${esc(a.note)})</span>` : ""}
       <button class="link small att-del" data-id="${a.id}" aria-label="Remove ${esc(a.filename)}">✕</button></li>`).join("") || '<li class="muted">None attached yet.</li>'}</ul>
-      <label class="dropzone inline att-add">Drop a receipt or letter here, or <span class="link">choose a file</span><input type="file" hidden></label>
-      <input class="att-note" placeholder="Note for the next file (optional)">`;
+      ${report?.settings?.demo ? `<p class="small muted">Attaching files is off in the demo.</p>` : `<label class="dropzone inline att-add">Drop a receipt or letter here, or <span class="link">choose a file</span><input type="file" hidden></label>
+      <input class="att-note" placeholder="Note for the next file (optional)">`}`;
   }
 }
 async function attachFile(box, file) {

@@ -184,6 +184,9 @@ type Message struct {
 	Thinking  string     `json:"thinking,omitempty"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 	ToolName  string     `json:"tool_name,omitempty"`
+	// Raw is another model provider's own form of this message, kept so a
+	// reply can be sent back exactly as it came (never sent to Ollama).
+	Raw any `json:"-"`
 }
 
 type ToolCall struct {

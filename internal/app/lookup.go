@@ -222,6 +222,9 @@ func (s *Server) getTx(w http.ResponseWriter, r *http.Request) {
 // fulcrumTx decodes a transaction fetched from the user's Fulcrum, with
 // input amounts from the transactions they spend (up to 25 of them).
 func (s *Server) fulcrumTx(ctx context.Context, txid string, owner map[string]string) (*txView, error) {
+	if s.demo != nil {
+		return nil, errors.New("not in the demo's records")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	c, err := s.dial(ctx)
@@ -346,7 +349,7 @@ func (s *Server) getAddress(w http.ResponseWriter, r *http.Request) {
 	// Then the user's own Fulcrum, which also knows spends from the address.
 	if a, err := btcutil.DecodeAddress(addr, s.params()); err != nil {
 		out["note"] = "not a valid address for this network"
-	} else if spk, err := txscript.PayToAddrScript(a); err == nil {
+	} else if spk, err := txscript.PayToAddrScript(a); err == nil && s.demo == nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 		if c, err := s.dial(ctx); err != nil {

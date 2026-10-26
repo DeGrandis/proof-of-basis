@@ -40,13 +40,14 @@
     <button data-tab="imports" aria-label="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
     <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
   </nav>
+<div id="demo-banner" class="demo-only" role="note"><b>Demo:</b> all data here is fake and synthetic. <button type="button" class="link" id="demo-reset">Start over</button></div>
 <div id="page">
 <div id="page-head"><h1 id="tab-title"></h1></div>
 <main>
   <div id="toast" role="status" hidden></div>
 
   <section id="overview" class="tab on">
-    <div id="setup-hint" class="card hint" hidden>
+    <div id="setup-hint" class="card hint no-demo" hidden>
       Connect Fulcrum in <a href="#settings">Settings</a>, then add wallets.
     </div>
     <div id="ov-cards">
@@ -144,12 +145,13 @@
   <section id="imports" class="tab">
     <div id="freshness"></div>
     <h2>Import CSVs</h2>
-    <div id="drop" class="card drop" tabindex="0" role="button" aria-label="Drop CSV files here or click to choose">
+    <p class="demo-only small muted demo-note">Uploads are off in the demo, so nobody's real files end up on a public server. Run your own copy to import yours.</p>
+    <div id="drop" class="card drop no-demo" tabindex="0" role="button" aria-label="Drop CSV files here or click to choose">
       <b>Drop CSV exports here</b> <span class="muted">or click · platforms are detected</span>
       <input id="drop-input" type="file" accept=".csv,text/csv" multiple hidden>
     </div>
     <div id="drop-queue" class="scroll" hidden><table><thead><tr><th>File</th><th>Result</th></tr></thead><tbody></tbody></table></div>
-    <details class="small"><summary>Import with options</summary>
+    <details class="small no-demo"><summary>Import with options</summary>
     <form id="import-form" class="card grid">
       <label class="wide">File <input name="file" type="file" accept=".csv,text/csv" required></label>
       <label>Platform <select name="handler" id="handler-select"><option value="">Detect automatically</option></select></label>
@@ -159,8 +161,8 @@
     </details>
     <p class="small muted">Stays on this server. Duplicates skipped.</p>
     <div class="scroll"><table id="imports-table"><thead><tr><th>File</th><th>Account</th><th>Platform</th><th class="num">Rows</th><th>Warnings</th><th></th></tr></thead><tbody></tbody></table></div>
-    <h2>Prices</h2>
-    <form id="price-form" class="card row">
+    <h2 class="no-demo">Prices</h2>
+    <form id="price-form" class="card row no-demo">
       <input name="file" type="file" accept=".csv" required>
       <button type="submit">Import daily prices</button>
       <span class="small muted">CSV: date, USD close <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Used for spends and income that have no price of their own.</span></span></span>
@@ -247,7 +249,7 @@
           <div id="taxform-list"></div>
           <div id="taxform-other" class="small"></div>
           <ul class="checklist" data-checks="forms"></ul>
-          <details class="small"><summary>Import 1099-DA CSV</summary>
+          <details class="small no-demo"><summary>Import 1099-DA CSV</summary>
             <form id="da-form" class="row">
               <label>Lines for <select name="account" id="da-account"></select></label>
               <input type="file" name="file" accept=".csv,text/csv" required>
@@ -329,11 +331,12 @@
       <div class="wide small muted">Saved in this browser. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Whole dollars drop the cents rather than rounding. The bitcoin sign counts sats, written like dollars.</span></span></div>
     </form>
     <h2>Your node</h2>
+    <p class="demo-only small muted demo-note">In the demo, the node is simulated: it answers from the demo's own invented history.</p>
     <form id="settings-form" class="card grid">
-      <label>Fulcrum host <input name="fulcrumHost" placeholder="192.168.1.10 or umbrel.local"></label>
-      <label>Port <input name="fulcrumPort" inputmode="numeric"></label>
-      <label>TLS <select name="fulcrumTLS"><option value="true">Yes (usually 50002)</option><option value="false">No (usually 50001)</option></select></label>
-      <label>Network <select name="regtest"><option value="false">Mainnet</option><option value="true">Regtest (testing)</option></select></label>
+      <label class="no-demo">Fulcrum host <input name="fulcrumHost" placeholder="192.168.1.10 or umbrel.local"></label>
+      <label class="no-demo">Port <input name="fulcrumPort" inputmode="numeric"></label>
+      <label class="no-demo">TLS <select name="fulcrumTLS"><option value="true">Yes (usually 50002)</option><option value="false">No (usually 50001)</option></select></label>
+      <label class="no-demo">Network <select name="regtest"><option value="false">Mainnet</option><option value="true">Regtest (testing)</option></select></label>
       <div class="wide small muted" id="cert-line"></div>
       <h3 class="wide">Tax</h3>
       <label>Jurisdiction <select name="jurisdiction"><option value="us">United States</option></select></label>
@@ -343,14 +346,14 @@
       <label><span class="lbl-text">Time zone <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Tax years and holding periods follow your time zone's calendar.</span></span></span><input name="timezone" list="tz-list" placeholder="America/New_York"><datalist id="tz-list"><option value="UTC"><option value="America/New_York"><option value="America/Chicago"><option value="America/Denver"><option value="America/Phoenix"><option value="America/Los_Angeles"><option value="America/Anchorage"><option value="Pacific/Honolulu"></datalist></label>
       <label>Short-term rate % <input name="rateShort" inputmode="decimal"></label>
       <label>Long-term rate % <input name="rateLong" inputmode="decimal"></label>
-      <h3 class="wide">Prices</h3>
-      <label>Price source <select name="priceSource" id="price-source"></select></label>
+      <h3 class="wide no-demo">Prices</h3>
+      <label class="no-demo">Price source <select name="priceSource" id="price-source"></select></label>
       <div class="wide small muted" id="price-line"></div>
-      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn">Test connection</button><button type="button" id="fetch-prices-btn">Update prices</button></div>
-      <div class="wide small muted">Only goes online when you press Update. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Updating prices is the only time this app contacts anything besides your node. The image already includes daily history up to when it was built.</span></span></div>
+      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="test-btn" class="no-demo">Test connection</button><button type="button" id="fetch-prices-btn" class="no-demo">Update prices</button></div>
+      <div class="wide small muted no-demo">Only goes online when you press Update. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Updating prices is the only time this app contacts anything besides your node. The image already includes daily history up to when it was built.</span></span></div>
     </form>
-    <h2>Lightning node (optional)</h2>
-    <form id="ln-form" class="card grid">
+    <h2 class="no-demo">Lightning node (optional)</h2>
+    <form id="ln-form" class="card grid no-demo">
       <label class="wide">Core Lightning CLNRest address <input name="clnUrl" placeholder="https://192.168.1.10:3010" autocomplete="off" spellcheck="false"></label>
       <label class="wide">Rune <input name="clnRune" type="password" autocomplete="off" spellcheck="false" placeholder="paste a read-only rune"></label>
       <label>Name in this app <input name="clnName" placeholder="Lightning node"></label>
@@ -358,8 +361,8 @@
       <div class="wide small muted" id="ln-cert-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save and sync</button><button type="button" id="ln-forget" class="link">Disconnect and forget the rune</button></div>
     </form>
-    <h2>Security</h2>
-    <form id="security-form" class="card grid">
+    <h2 class="no-demo">Security</h2>
+    <form id="security-form" class="card grid no-demo">
       <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
       <label>New password <input name="next" type="password" autocomplete="new-password" minlength="8" required></label>
       <label>Repeat new password <input name="next2" type="password" autocomplete="new-password" required></label>
@@ -367,7 +370,8 @@
       <div class="wide small muted">Signs out other devices. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Forgot it? On the server, run <code>docker compose exec btctax /btctax reset-password</code> and set a new one on the next visit. Over plain http the password isn't encrypted in transit; use HTTPS (a reverse proxy or Tailscale) to reach this app from outside your home.</span></span></div>
     </form>
     <h2>Assistant (optional)</h2>
-    <form id="ai-settings" class="card grid">
+    <p class="demo-only small muted demo-note" id="demo-ai-note">In the demo, the assistant runs on Claude Haiku through AWS Bedrock. Your own copy uses a model on your own Ollama server.</p>
+    <form id="ai-settings" class="card grid no-demo">
       <label class="wide">Ollama server address <input name="aiUrl" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false"></label>
       <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
       <label>Think before answering <select name="aiThink"><option value="true">On: more careful, a little slower</option><option value="false">Off: answers start sooner</option></select><span id="ai-think-note" class="small muted" hidden>This model doesn't reason first, so this has no effect.</span></label>
@@ -387,7 +391,7 @@
         <div class="wide small muted">Everything, including xpubs. Keep it encrypted. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Settings, wallets and their keys, imports, labels, protected purchases, scans, prices and your Lightning node's history and rune. There's no way to recover a forgotten passphrase.</span></span></div>
         <div class="wide row"><button type="submit" class="primary">Download backup</button></div>
       </form>
-      <form id="restore-form" class="wide grid">
+      <form id="restore-form" class="wide grid no-demo">
         <b class="wide">Restore from a backup</b>
         <label class="wide">Backup file <input name="file" type="file" accept=".json,application/json" required></label>
         <label>Passphrase <input name="passphrase" type="password" autocomplete="off" placeholder="if the backup is encrypted"></label>
@@ -401,8 +405,8 @@
         <span class="small muted">Rescans and recomputes. Nothing deleted.</span></div>
       <div id="recheck-status" class="small" hidden><progress id="recheck-bar" max="1" value="0"></progress> <span id="recheck-text"></span></div>
     </div>
-    <h2>Delete all data</h2>
-    <div class="card row">
+    <h2 class="no-demo">Delete all data</h2>
+    <div class="card row no-demo">
       <button type="button" id="wipe-btn" class="danger">Wipe everything</button>
       <span class="small muted">Deletes all data.</span>
     </div>

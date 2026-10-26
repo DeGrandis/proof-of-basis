@@ -234,6 +234,12 @@ func (s *Server) pipeline() (*pipeline, error) {
 		Unlinked: s.unlinked()})
 	set := s.settings()
 	set[disclaimerKey] = s.st.Setting(disclaimerKey, "")
+	if s.demo != nil {
+		set["demo"], set["demoAllowance"] = "true", s.demo.Allowance
+		if s.demo.AI == nil {
+			set["demoAllowance"] = ""
+		}
+	}
 	// Tax years and holding periods follow the user's calendar.
 	z := loc(set)
 	for i := range tr.Ops {

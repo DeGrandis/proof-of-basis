@@ -1,0 +1,26 @@
+# The public demo: invented data, a private copy for every visitor, no
+# login, a simulated node, and uploads off. Nothing is kept: copies are
+# deleted after a few idle hours, and all of them when the container
+# restarts.
+#
+# The assistant uses Claude in Amazon Bedrock with the machine's AWS role,
+# which needs bedrock-mantle:CreateInference on the model. Put the demo
+# behind HTTPS (your reverse proxy), not straight on the internet.
+#
+#   docker compose -f docker-compose.demo.yml up -d --build
+services:
+  btctax-demo:
+    image: btctax:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8080"   # your reverse proxy forwards to this
+    environment:
+      BTCTAX_DEMO: "true"
+      AWS_REGION: us-east-1
+      # BTCTAX_BEDROCK_MODEL: anthropic.claude-haiku-5-5
+      # BTCTAX_DEMO_AI: "false"            # turn the assistant off
+      # BTCTAX_DEMO_AI_PER_VISITOR: "20"   # questions per visitor
+      # BTCTAX_DEMO_AI_PER_DAY: "300"      # questions per day, for everyone
+      # BTCTAX_DEMO_MAX_COPIES: "100"      # visitors' copies kept at once
+      # BTCTAX_DEMO_IDLE_HOURS: "3"        # a copy unused this long is deleted

@@ -35,6 +35,9 @@ const (
 )
 
 func (s *Server) aiClient() (*ollama.Client, string, error) {
+	if s.demo != nil {
+		return nil, "", errors.New("in the demo, the assistant runs on a hosted model")
+	}
 	url, model := s.st.Setting("aiUrl", ""), s.st.Setting("aiModel", "")
 	if url == "" || model == "" {
 		return nil, "", errors.New("the assistant isn't set up: add an Ollama address and model in Settings")
@@ -45,6 +48,14 @@ func (s *Server) aiClient() (*ollama.Client, string, error) {
 
 // aiStatus tells the UI whether to show the chat button.
 func (s *Server) aiStatus(w http.ResponseWriter, r *http.Request) {
+	if s.demo != nil {
+		if s.demo.AI == nil {
+			writeJSON(w, map[string]any{"enabled": false})
+			return
+		}
+		writeJSON(w, map[string]any{"enabled": true, "ok": true, "model": s.demo.AI.Name(), "host": "AWS Bedrock", "demo": true})
+		return
+	}
 	c, model, err := s.aiClient()
 	if err != nil {
 		writeJSON(w, map[string]any{"enabled": false})
@@ -283,10 +294,32 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	c, model, err := s.aiClient()
-	if err != nil {
-		fail(w, 400, err)
-		return
+	// The model: the user's Ollama, or the demo's hosted one (which counts
+	// against the visitor's allowance).
+	var c *ollama.Client
+	var llm interface {
+		Chat(context.Context, ollama.ChatRequest, func(string), func(string)) (ollama.Message, error)
+	}
+	var model string
+	if s.demo != nil {
+		if s.demo.AI == nil {
+			fail(w, 503, errors.New("the demo's assistant isn't available right now"))
+			return
+		}
+		if s.demo.Ask != nil {
+			if err := s.demo.Ask(); err != nil {
+				fail(w, http.StatusTooManyRequests, err)
+				return
+			}
+		}
+		llm, model = s.demo.AI, s.demo.AI.Name()
+	} else {
+		c, model, err = s.aiClient()
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		llm = c
 	}
 	rep, err := s.buildReport()
 	if err != nil {
@@ -309,8 +342,10 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	out := &stream{w: w, f: f}
 	out.send(map[string]any{"type": "start", "model": model})
 
-	url := s.st.Setting("aiUrl", "")
-	caps := s.modelCaps(r.Context(), c, url, model)
+	caps := ollama.Model{Name: model, Tools: true}
+	if c != nil {
+		caps = s.modelCaps(r.Context(), c, s.st.Setting("aiUrl", ""), model)
+	}
 	numCtx, _ := strconv.Atoi(s.st.Setting("aiCtx", "16384"))
 	if caps.Context > 0 && numCtx > caps.Context {
 		numCtx = caps.Context
@@ -356,7 +391,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Messages = msgs
 		var text strings.Builder
-		reply, err := c.Chat(r.Context(), req, func(d string) {
+		reply, err := llm.Chat(r.Context(), req, func(d string) {
 			if !thinkStart.IsZero() {
 				thinkTime += time.Since(thinkStart)
 				thinkStart = time.Time{}

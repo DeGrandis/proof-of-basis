@@ -115,13 +115,13 @@ function renderSeasonForms(f, year) {
         <label>Total proceeds <input class="tf-p" inputmode="decimal" size="11" value="${x.totals.proceeds != null ? (x.totals.proceeds / 100).toFixed(2) : ""}" placeholder="$0.00"></label>
         <label>Total basis <input class="tf-b" inputmode="decimal" size="11" value="${x.totals.basis != null ? (x.totals.basis / 100).toFixed(2) : ""}" placeholder="if shown"></label>
         <button class="tf-save">Save</button><button class="link tf-del">Remove</button></div>`).join("")}
-      <label class="dropzone"><input type="file" class="tf-file" accept=".pdf,application/pdf,image/*" hidden>
-        ${c.forms.length ? "Drop another page or form here" : `Drop ${esc(c.account)}'s 1099-DA here`}, or <span class="link">choose the file</span></label>
+      ${report.settings.demo ? `<p class="small muted">Uploads are off in the demo.</p>` : `<label class="dropzone"><input type="file" class="tf-file" accept=".pdf,application/pdf,image/*" hidden>
+        ${c.forms.length ? "Drop another page or form here" : `Drop ${esc(c.account)}'s 1099-DA here`}, or <span class="link">choose the file</span></label>`}
     </div>`).join("") || `<p class="small muted">No exchange sales in ${year}, so no 1099-DA to collect.</p>`;
   // A form from an exchange with no sales here still matters: it may show
   // sales that were never imported.
   const others = exch.filter((n) => !checks.some((c) => c.account === n));
-  $("#taxform-other").innerHTML = others.length ? `<label class="dropzone inline" data-account="">
+  $("#taxform-other").innerHTML = others.length && !report.settings.demo ? `<label class="dropzone inline" data-account="">
       <input type="file" class="tf-file" accept=".pdf,application/pdf,image/*" hidden>
       Got a 1099-DA from <select class="tf-other-acct">${others.map((n) => `<option>${esc(n)}</option>`).join("")}</select>? Drop it here or <span class="link">choose the file</span>.</label>` : "";
   if (tfFocus) {

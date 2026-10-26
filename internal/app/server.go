@@ -41,6 +41,8 @@ type Server struct {
 	status   fulcrumStatus
 
 	recheck rechecker
+
+	demo *DemoOptions // set on a public demo copy
 }
 
 type fulcrumStatus struct {
@@ -170,12 +172,33 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/logout-all", s.authLogoutAll)
 	mux.HandleFunc("POST /api/auth/password", s.authPassword)
 	mux.Handle("GET /", http.FileServerFS(s.static))
+	if s.demo != nil {
+		// No login, and the demo's own answers for the node and uploads.
+		demo := s.demoRoutes()
+		return secureHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/login" || r.URL.Path == "/login.html" {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+				return
+			}
+			if _, pattern := demo.Handler(r); pattern != "" {
+				demo.ServeHTTP(w, r) // (fills in the path's {id})
+				return
+			}
+			mux.ServeHTTP(w, r)
+		}))
+	}
 	return s.secure(s.requireLogin(mux))
 }
 
+// StaticHandler serves the UI's files with the app's security headers,
+// for pages that need no data.
+func StaticHandler(static fs.FS) http.Handler { return secureHeaders(http.FileServerFS(static)) }
+
 // secure adds a strict CSP (no third-party anything) and refuses
 // cross-site writes. Login is checked inside it, by requireLogin.
-func (s *Server) secure(h http.Handler) http.Handler {
+func (s *Server) secure(h http.Handler) http.Handler { return secureHeaders(h) }
+
+func secureHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -217,6 +240,9 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 	if err := decode(r, &in); err != nil {
 		fail(w, 400, err)
 		return
+	}
+	if s.demo != nil {
+		demoSettings(in)
 	}
 	// Log what this changes (never the rune itself).
 	logKeys := []string{"clnUrl", "clnCert", "fulcrumCert"}
@@ -333,6 +359,9 @@ func validMethod(v string) bool {
 }
 
 func (s *Server) dial(ctx context.Context) (*electrum.Client, error) {
+	if s.demo != nil {
+		return nil, errNoNode
+	}
 	set := s.settings()
 	if set["fulcrumHost"] == "" {
 		return nil, errors.New("set your Fulcrum server address first")
@@ -1099,6 +1128,10 @@ func (s *Server) priceInfo(w http.ResponseWriter, r *http.Request) {
 // fetchPrices runs only when the user presses the button: it is the one
 // place the running app contacts anything other than their own node.
 func (s *Server) fetchPrices(w http.ResponseWriter, r *http.Request) {
+	if s.demo != nil {
+		fail(w, 403, errors.New("the demo has its prices built in"))
+		return
+	}
 	src, ok := prices.Get(s.st.Setting("priceSource", defaults["priceSource"]))
 	if !ok {
 		fail(w, 400, errors.New("no price source configured"))

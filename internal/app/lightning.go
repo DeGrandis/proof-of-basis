@@ -13,6 +13,9 @@ import (
 // lightningSync pulls the node's bookkeeper history and balances over
 // CLNRest. It is the only contact with the node and it only reads.
 func (s *Server) lightningSync(ctx context.Context) (map[string]any, error) {
+	if s.demo != nil {
+		return nil, errNoNode
+	}
 	u := s.st.Setting("clnUrl", "")
 	if u == "" {
 		return nil, errors.New("set your node's CLNRest address in Settings first")

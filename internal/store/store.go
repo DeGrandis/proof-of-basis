@@ -553,3 +553,9 @@ func (s *Store) Wipe() error {
 	_, err = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	return err
 }
+
+// SnapshotTo writes a compact copy of the whole database to a new file.
+func (s *Store) SnapshotTo(path string) error {
+	_, err := s.db.Exec(`VACUUM INTO ?`, path)
+	return err
+}
