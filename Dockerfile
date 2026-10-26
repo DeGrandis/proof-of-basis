@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
-# Two images from the same source: the app people run (the default target)
-# and the public demo (--target demo). Building one never builds the other,
-# and the app's image carries none of the demo's code or libraries.
+# Three images from the same source: the app people run (the default
+# target), the public demo (--target demo) and the landing page (--target
+# site). Building one never builds the others, and the app's image carries
+# none of the demo's code or libraries.
 #
 # Multi-arch (amd64 and arm64, for Umbrel and StartOS boxes): Go runs on the
 # build machine's own platform and cross-compiles for the target, and the
@@ -42,6 +43,14 @@ USER 65532:65532
 ENV BTCTAX_ADDR=0.0.0.0:8080 BTCTAX_DATA=/data
 EXPOSE 8080
 ENTRYPOINT ["/btctax-demo"]
+
+# The landing page: site/ with the app's font, icon and screenshots, behind
+# nginx. Static files only; it never talks to the app.
+FROM nginx:1.27-alpine AS site
+COPY site/ /usr/share/nginx/html/
+COPY web/static/fonts/ /usr/share/nginx/html/fonts/
+COPY web/static/favicon.svg /usr/share/nginx/html/favicon.svg
+COPY docs/images/overview-dark.png docs/images/mobile-overview.png docs/images/mobile-review.png docs/images/mobile-flow.png docs/images/mobile-assistant.png /usr/share/nginx/html/img/
 
 # The app (the default target, so it stays last). On a small standard base
 # rather than scratch: StartOS runs the image's own filesystem and expects

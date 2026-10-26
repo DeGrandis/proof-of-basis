@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof of Basis · Your bitcoin story, untangled</title>
+<meta name="description" content="Self-hosted bitcoin cost basis and tax records. Drop in your exchange exports, connect your wallets, and it untangles where every coin came from and went. Runs on Umbrel, StartOS and Docker.">
+<meta name="theme-color" content="#0b0b0a">
+<meta property="og:title" content="Proof of Basis">
+<meta property="og:description" content="Your bitcoin story, untangled on your own node.">
+<meta property="og:image" content="img/overview-dark.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="site.css">
+<script src="site.js" defer></script>
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="#top" aria-label="Proof of Basis">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M9 7h4.5a2.5 2.5 0 0 1 0 5H9m0 0h5a2.5 2.5 0 0 1 0 5H9M9 7v10M10.5 5v2M13 5v2M10.5 17v2M13 17v2"/></svg>
+    <span>Proof of Basis</span>
+  </a>
+  <nav class="bar-links">
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/DeGrandis/proof-of-basis">GitHub</a>
+  </nav>
+  <a class="btn btn-demo" data-demo href="https://demo.proofofbasis.degrand.is">Try the demo <span aria-hidden="true">→</span></a>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="glow" aria-hidden="true"></div>
+    <div class="hero-copy">
+      <p class="eyebrow">Self-hosted · open source · MIT</p>
+      <h1>Your bitcoin story, <em>untangled</em> on your own node.</h1>
+      <p class="lede">Drop in every exchange export, connect your real wallets, and it works out where every coin came from and where it went. Then it hands your accountant one tidy package, and answers your questions with AI that runs on your own hardware.</p>
+      <div class="cta">
+        <a class="btn btn-primary" data-demo href="https://demo.proofofbasis.degrand.is">Try the live demo</a>
+        <a class="btn btn-ghost" href="#install">Install it</a>
+      </div>
+      <p class="runs">Runs on <b>Umbrel</b> · <b>StartOS</b> · <b>Docker</b></p>
+    </div>
+
+    <div class="stage" aria-label="Proof of Basis on a phone">
+      <figure class="browser" aria-hidden="true">
+        <div class="browser-top"><i></i><i></i><i></i></div>
+        <img src="img/overview-dark.png" alt="" loading="eager">
+      </figure>
+      <div class="phone">
+        <div class="phone-screen">
+          <img class="shot on" src="img/mobile-overview.png" alt="The Overview on a phone: portfolio value, gains and estimated tax">
+          <img class="shot" src="img/mobile-review.png" alt="Review on a phone: one unmatched transaction at a time, with big label buttons">
+          <img class="shot" src="img/mobile-flow.png" alt="Flow on a phone: every exchange and wallet as a lane over time">
+          <img class="shot" src="img/mobile-assistant.png" alt="The assistant on a phone, answering where the bitcoin came from">
+          <span class="status" aria-hidden="true"><b>9:41</b><span class="island"></span><i></i></span>
+        </div>
+      </div>
+      <div class="screen-tabs" role="tablist" aria-label="Screens">
+        <button role="tab" aria-selected="true">Overview</button>
+        <button role="tab" aria-selected="false">Review</button>
+        <button role="tab" aria-selected="false">Flow</button>
+        <button role="tab" aria-selected="false">Assistant</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="steps reveal">
+    <h2>How it works</h2>
+    <ol>
+      <li><b>Dump in your exchange history.</b> CSV exports from Coinbase, River, Strike and Fold, or a spreadsheet of your own. It recognizes each one.</li>
+      <li><b>Connect your real wallets.</b> Paste an xpub or output descriptor. It reads them from your own node's Electrum server, so your addresses never touch anyone else's.</li>
+      <li><b>It untangles everything.</b> Withdrawals matched to deposits, coins followed from wallet to wallet, every sale traced to its purchase. What it can't explain waits for a label.</li>
+      <li><b>Hand your accountant one package.</b> Form 8949 lines, your 1099-DA forms checked against your records, where every coin came from, and your proof.</li>
+    </ol>
+  </section>
+
+  <section id="features" class="features reveal">
+    <h2>What you get</h2>
+    <div class="grid">
+      <article>
+        <h3>It follows every coin</h3>
+        <p>Buys on an exchange, withdrawals to cold storage, spends from a hot wallet, sales back on an exchange: linked up, so every sale knows which purchase it came from.</p>
+      </article>
+      <article>
+        <h3>Ready for tax season</h3>
+        <p>Five guided steps from "is everything here?" to one download for your tax professional, with each exchange's 1099-DA checked against your own records.</p>
+      </article>
+      <article>
+        <h3>Ask your own AI</h3>
+        <p>An optional assistant on your own Ollama looks things up, charts them and proposes fixes you apply with one tap. Every change can be undone.</p>
+      </article>
+      <article>
+        <h3>Private by design</h3>
+        <p>One file on your own machine. It talks to your node, never phones home, and the accountant package leaves out addresses unless you ask.</p>
+      </article>
+      <article>
+        <h3>One click on your node</h3>
+        <p>Install it from the Umbrel community store or as a StartOS package, and it finds your node's Electrum server on its own.</p>
+      </article>
+      <article>
+        <h3>In your language</h3>
+        <p>English, Español, Français, Deutsch, Polski and Русский. It follows your browser, or pick one in Settings.</p>
+      </article>
+    </div>
+    <p class="note">Untangling and tracing work wherever you live. The tax side (Form 8949, 1099-DA checks, the accountant package) follows United States rules, in US dollars.</p>
+  </section>
+
+  <section id="install" class="install reveal">
+    <h2>Get started</h2>
+    <p class="sub">Pick where you run it. Each install asks you to set a password the first time you open it.</p>
+    <div class="tabs" role="tablist" aria-label="Where to install">
+      <button role="tab" id="tab-umbrel" aria-controls="p-umbrel" aria-selected="true">Umbrel</button>
+      <button role="tab" id="tab-startos" aria-controls="p-startos" aria-selected="false">StartOS</button>
+      <button role="tab" id="tab-docker" aria-controls="p-docker" aria-selected="false">Docker</button>
+    </div>
+
+    <div class="panel" id="p-umbrel" role="tabpanel" aria-labelledby="tab-umbrel">
+      <ol>
+        <li>On your Umbrel, open the <b>App Store</b>, then <b>⋯ → Community App Stores</b>.</li>
+        <li>Paste this address and add it:
+          <div class="code"><code>https://github.com/DeGrandis/proof-of-basis-umbrel</code><button class="copy" type="button">Copy</button></div></li>
+        <li>Open the new store and install <b>Proof of Basis</b>. It needs Electrs or Fulcrum on the Umbrel, and connects to it by itself.</li>
+        <li>For the assistant, install <b>Ollama</b> from the App Store, then in Proof of Basis open <b>Settings → Assistant</b> and enter:
+          <div class="code"><code>http://ollama_ollama_1:11434</code><button class="copy" type="button">Copy</button></div></li>
+      </ol>
+    </div>
+
+    <div class="panel" id="p-startos" role="tabpanel" aria-labelledby="tab-startos" hidden>
+      <ol>
+        <li>Download the package for your server from the <a href="https://github.com/DeGrandis/proof-of-basis-startos/releases/latest">latest release</a>: <code>x86_64</code> for Intel or AMD, <code>aarch64</code> for ARM.</li>
+        <li>In StartOS, click <b>Sideload</b> in the top bar and choose the file.</li>
+        <li>Start <b>Proof of Basis</b> and open its <b>Web UI</b>. Fulcrum or Electrs, and Ollama if you have it, connect on their own.</li>
+      </ol>
+      <p class="small">For StartOS 0.4. The <b>Node Services</b> and <b>Reset Password</b> actions are on the service's page.</p>
+    </div>
+
+    <div class="panel" id="p-docker" role="tabpanel" aria-labelledby="tab-docker" hidden>
+      <ol>
+        <li>Run the image (amd64 or arm64):
+          <div class="code"><code>docker run -d --name proof-of-basis -p 8080:8080 -v pob-data:/data --restart unless-stopped ghcr.io/degrandis/proof-of-basis:latest</code><button class="copy" type="button">Copy</button></div></li>
+        <li>Open <code>http://&lt;this computer&gt;:8080</code> and set a password.</li>
+        <li>In <b>Settings</b>, enter your Fulcrum or Electrs server, then add your wallets and drop in your exchange exports.</li>
+      </ol>
+      <p class="small">Or build it yourself with <code>docker compose up -d --build</code> from the <a href="https://github.com/DeGrandis/proof-of-basis">repository</a>.</p>
+    </div>
+  </section>
+
+  <section class="closing reveal">
+    <h2>See it with invented data first.</h2>
+    <p>The demo is a private copy for you, full of made-up exchanges and wallets. Nothing you do there is kept.</p>
+    <a class="btn btn-primary" data-demo href="https://demo.proofofbasis.degrand.is">Open the demo</a>
+  </section>
+</main>
+
+<footer>
+  <p class="disclaimer"><b>Not tax advice.</b> Proof of Basis organizes your own records. It is not a CPA, enrolled agent, law firm or tax preparer, and its numbers may be incomplete or wrong. Check everything with a qualified tax professional before you file.</p>
+  <p class="links"><a href="https://github.com/DeGrandis/proof-of-basis">GitHub</a> · <a href="https://github.com/DeGrandis/proof-of-basis/blob/master/LICENSE">MIT license</a> · <a href="https://github.com/DeGrandis/proof-of-basis#disclaimer">Disclaimer</a></p>
+</footer>
+</body>
+</html>
