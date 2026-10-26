@@ -1,6 +1,7 @@
 package converse
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -73,5 +74,33 @@ func TestDisplayName(t *testing.T) {
 		if got := DisplayName(id); got != want {
 			t.Errorf("%s: %q, want %q", id, got, want)
 		}
+	}
+}
+
+// Llama's tool calls written as text become real calls; prose, unknown
+// tools and JSON that isn't a call stay an answer.
+func TestTextToolCalls(t *testing.T) {
+	offered := []ollama.Tool{{Function: ollama.ToolSpec{Name: "calculate"}}, {Function: ollama.ToolSpec{Name: "get_tax_year"}}}
+	for in, want := range map[string]string{
+		`{"type": "function", "name": "calculate", "parameters": {"expression": "1.00190665"}}`:                              "calculate",
+		`<|python_tag|>{"name": "get_tax_year", "arguments": {"year": 2025}}`:                                                "get_tax_year",
+		`{"name": "calculate", "parameters": {"expression": "2*3"}}; {"name": "get_tax_year", "parameters": {"year": 2025}}`: "calculate,get_tax_year",
+		"```json\n[{\"name\": \"get_tax_year\", \"parameters\": {\"year\": 2024}}]\n```":                                     "get_tax_year",
+		`{"name": "get_tax_year", "arguments": "{\"year\": 2025}"}`:                                                          "get_tax_year",
+		`You hold 1.0019 BTC.`:                                "",
+		`{"name": "delete_everything", "parameters": {}}`:     "",
+		`{"balance": 1.0019}`:                                 "",
+		`Here it is: {"name": "calculate", "parameters": {}}`: "",
+	} {
+		var names []string
+		for _, c := range textToolCalls(in, offered) {
+			names = append(names, c.Function.Name)
+		}
+		if got := strings.Join(names, ","); got != want {
+			t.Errorf("%s\n  got %q, want %q", in, got, want)
+		}
+	}
+	if c := textToolCalls(`{"name": "get_tax_year", "arguments": "{\"year\": 2025}"}`, offered); c[0].Function.Arguments["year"] != float64(2025) {
+		t.Errorf("arguments from a string: %+v", c[0].Function.Arguments)
 	}
 }

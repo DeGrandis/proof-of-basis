@@ -8,6 +8,7 @@ package converse
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -102,10 +103,87 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 		}
 	}
 	reply.Content = text.String()
+	// Llama sometimes writes its tool calls out as JSON text instead of
+	// making them; when the whole reply is such calls to tools it was
+	// offered, make them real. The reply is then rebuilt with tool-use
+	// blocks when sent back, so it isn't replayed as the text.
+	if len(reply.ToolCalls) == 0 {
+		if calls := textToolCalls(reply.Content, req.Tools); len(calls) > 0 {
+			reply.ToolCalls, reply.Content, reply.Raw = calls, "", nil
+		}
+	}
 	if reply.Content != "" && onDelta != nil {
 		onDelta(reply.Content)
 	}
 	return reply, nil
+}
+
+// textToolCalls reads a reply that is nothing but tool calls written as
+// JSON, in the forms Llama uses: {"type":"function","name":...,"parameters":
+// {...}}, {"name":...,"arguments":{...}}, a list of them, or several in a
+// row (separated by ";" or new lines), maybe after <|python_tag|> or in a
+// ```json fence. Every call must name an offered tool; anything else (prose,
+// or JSON that isn't a call) returns nil and stays an answer.
+func textToolCalls(text string, offered []ollama.Tool) []ollama.ToolCall {
+	known := map[string]bool{}
+	for _, t := range offered {
+		known[t.Function.Name] = true
+	}
+	s := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "<|python_tag|>"))
+	if strings.HasPrefix(s, "```") {
+		s = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(s, "```json"), "```"), "```")
+	}
+	s = strings.TrimSpace(s)
+	if s == "" || (s[0] != '{' && s[0] != '[') {
+		return nil
+	}
+	var objs []map[string]any
+	if s[0] == '[' {
+		if json.Unmarshal([]byte(s), &objs) != nil {
+			return nil
+		}
+	} else {
+		for rest := s; ; {
+			rest = strings.TrimLeft(rest, " \t\r\n;,")
+			if rest == "" {
+				break
+			}
+			dec := json.NewDecoder(strings.NewReader(rest))
+			var o map[string]any
+			if dec.Decode(&o) != nil {
+				return nil
+			}
+			objs = append(objs, o)
+			rest = rest[dec.InputOffset():]
+		}
+	}
+	var calls []ollama.ToolCall
+	for _, o := range objs {
+		name, _ := o["name"].(string)
+		if !known[name] {
+			return nil
+		}
+		args := o["parameters"]
+		if args == nil {
+			args = o["arguments"]
+		}
+		var tc ollama.ToolCall
+		tc.Function.Name = name
+		switch a := args.(type) {
+		case map[string]any:
+			tc.Function.Arguments = a
+		case string: // arguments given as a JSON string
+			if json.Unmarshal([]byte(a), &tc.Function.Arguments) != nil {
+				return nil
+			}
+		case nil:
+			tc.Function.Arguments = map[string]any{}
+		default:
+			return nil
+		}
+		calls = append(calls, tc)
+	}
+	return calls
 }
 
 // toMessages turns the assistant's messages into Converse's: leading system
