@@ -401,3 +401,10 @@ label > .lbl-text { font-weight: inherit; letter-spacing: inherit; text-transfor
 .deck-follow { margin-top: var(--s-3); padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-sm); display: grid; gap: var(--s-2); }
 .deck-follow > p { margin: 0; }
 .deck-nav { display: flex; justify-content: space-between; margin-top: var(--s-4); }
+
+/* The same space under the page title on every tab: 32px, whatever the
+   page starts with. (Overview has no title.) */
+main > .tab:not(#overview) { padding-top: var(--s-4); }
+main > .tab > :first-child, main > .tab > :first-child > :first-child, main > .tab > [hidden]:first-child + *,
+main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type { margin-top: 0; }
+@media (max-width: 760px) { main > .tab:not(#overview) { padding-top: calc(var(--s-5)); } }
