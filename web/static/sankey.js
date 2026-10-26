@@ -91,7 +91,28 @@ function drawSummary() {
     if (over > 0) for (const r of rows) r.y -= over;
     return new Map(rows.map((r) => [r.n, r.y]));
   };
-  const lA = layout(srcs, pA, rowL), lC = layout(dsts, pC, rowR);
+  const lA = layout(srcs, pA, rowL);
+  // The right column stacks each group's heading with the labels, so a label
+  // pushed down past a thin band can't land on the next group's heading.
+  // A label's lines run from about 15 above its y to 25 below.
+  const headY = new Map(), lC = (() => {
+    const rows = [];
+    let y = top + rowR / 2;
+    for (const n of dsts) {
+      const p = pC.get(n), want = p.y + p.h / 2;
+      if (groupStart.has(n)) {
+        const hy = Math.max(y - 15, Math.min(p.y - 8, want - 30));
+        headY.set(n, hy);
+        y = Math.max(y, hy + 26);
+      }
+      const ly = Math.max(want, y);
+      rows.push([n, ly]);
+      y = ly + rowR;
+    }
+    const over = y - rowR / 2 - H + 8; // pull everything up if the stack overflows
+    if (over > 0) { for (const r of rows) r[1] -= over; for (const [n, v] of headY) headY.set(n, v - over); }
+    return new Map(rows);
+  })();
   const taxable = new Set(OUT_GROUPS[0][1]);
   const exchanges = new Set((report.accounts || []).filter((a) => a.kind === "exchange").map((a) => a.name));
   const cls = (name) => exchanges.has(name) ? "buy" : /Income|routing|Gifts|Refunds|Bought from|wallets not added$/.test(name) ? "income" : name === "Unknown origin" ? "unmatched"
@@ -121,9 +142,9 @@ function drawSummary() {
   }
   g += `<rect class="sk-node acct" x="${xM}" y="${yM}" width="${nodeW}" height="${hM}" rx="1"/><text class="sk-label strong" x="${xM + nodeW / 2}" y="${yM - 6}" text-anchor="middle">${summaryAll ? "All your bitcoin" : `What left in ${year}`}</text>`;
   for (const [grp, list] of groups) {
-    const p0 = pC.get(list[0]);
     const tx = list.reduce((s, d) => s + (taxable.has(d) ? dstT.get(d).usd - dstT.get(d).basis : 0), 0);
-    g += `<text class="sk-col" x="${xC}" y="${Math.min(p0.y, lC.get(list[0]) - 22) - 8}">${grp}${grp === "Taxable" ? ` · gain ${tx >= 0 ? usd(tx) : "-" + usd(-tx)}` : ""}</text>`;
+    // In line with the labels, so a heading pushed down can't cross a node.
+    g += `<text class="sk-col" x="${xC + nodeW + 10}" y="${headY.get(list[0])}">${grp}${grp === "Taxable" ? ` · gain ${tx >= 0 ? usd(tx) : "-" + usd(-tx)}` : ""}</text>`;
   }
   for (const d of dsts) {
     const p = pC.get(d), t = dstT.get(d), ly = lC.get(d);
