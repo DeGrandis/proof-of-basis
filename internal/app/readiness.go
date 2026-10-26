@@ -184,7 +184,7 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 	}
 	if giftFlags > 0 {
 		add("gifts", "warn", fmt.Sprintf("%d gift%s or donation%s to check", giftFlags, plural(giftFlags), plural(giftFlags)),
-			"See Details.", "#taxes")
+			"See step 3 on Taxes.", "#taxes")
 	}
 
 	// Data that may not cover the whole year.
