@@ -26,7 +26,7 @@ func analyzeToolSpec() ollama.Tool {
 		Description: "List, count, total or describe records with exact math. Pick the records (source and filters), what to measure, and the statistic; optionally group, export or chart. " +
 			"Use it for searches, counts, totals, averages, medians, most common values, largest/smallest, distributions and per-year/per-account questions. Examples: " +
 			"most common buy amount = source buys, measure usd, stat mode; average price paid per year = source buys, measure price, stat mean, group_by year; " +
-			"biggest buy = source buys, stat top, top_n 1 (smallest: stat bottom); " +
+			"biggest buy = source buys, stat top, top_n 1 (smallest: stat bottom); oldest coins still held = source lots, measure days_held, stat top; " +
 			"which weekday I buy on = measure weekday, stat count;usual holding time = source sales, measure days_held, stat median; " +
 			"lots turning long-term in 60 days = source lots, measure days_to_long_term, max 60, stat list; lots at a loss = source lots, measure gain, max 0, stat list; " +
 			"find a record = stat list with filters (from, to, account, kind, text).",
