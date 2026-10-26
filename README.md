@@ -86,6 +86,14 @@
   Ollama on its own.
 - **Works on your phone.** Labeling, the charts and record pages are built
   for a phone screen too.
+- **Untangling works anywhere; the tax side is US only.** Matching transfers
+  between your accounts, tracing every coin back to the purchase it came
+  from, and the Flow and record pages work wherever you live. The tax side
+  (gains by US holding periods, Form 8949, the 1099-DA checks, the package
+  for your tax professional) follows United States rules, and values are in
+  US dollars.
+- **In your language.** English, Spanish, French, German, Polish and
+  Russian. It follows your browser's language, or pick one in Settings.
 
 ---
 
@@ -251,7 +259,8 @@ node packages (Umbrel, Start9, RaspiBlitz, myNode) offer one.
 | **Exchanges** | Coinbase, River, Strike, Fold (CSV exports, detected automatically) |
 | **Wallets** | Single-key (xpub, ypub, zpub, taproot) and multisig, by public key or output descriptor (Sparrow, Specter, Nunchuk, Bitcoin Core, Electrum, Caravan) |
 | **Lightning** | Core Lightning, through CLNRest |
-| **Tax rules** | United States: FIFO, LIFO or specific lot; per-wallet basis from 2025; Form 8949 boxes including the new digital asset boxes; capital loss limit and carryover |
+| **Tax rules** | United States only, in US dollars: FIFO, LIFO or specific lot; per-wallet basis from 2025; Form 8949 boxes including the new digital asset boxes; capital loss limit and carryover. Untangling and tracing work for anyone. |
+| **Languages** | English, Español, Français, Deutsch, Polski, Русский. Follows your browser's language, or pick one in Settings → Display. |
 
 ### Good to know
 
