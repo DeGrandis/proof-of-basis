@@ -291,20 +291,23 @@ built from the same commit (`.github/workflows/images.yml` publishes
 `ghcr.io/<owner>/<repo>` and `ghcr.io/<owner>/<repo>-demo`, each tagged
 with the commit). `docker-compose.demo.yml` runs the demo image.
 
-- Every visitor gets a private copy of an invented history (seven years,
-  three exchanges, four wallets and a Lightning node), found again by a
-  cookie. Copies are deleted after 3 idle hours, and all of them on restart.
+- Every visitor gets a private copy of an invented history, found again by
+  a cookie: seven years of trying exchanges for months at a time (weekly
+  buys, dip buys and the odd sale on Coinbase, River, Strike and Kraken),
+  savings moved from a Ledger to a Trezor to a Coldcard, and spending from
+  a phone wallet. Copies are deleted after 3 idle hours, and all of them on restart.
 - No login. Visitors accept the disclaimer, and a red banner says the data
   is fake, with **Start over** for a fresh copy.
-- Fulcrum and Lightning are simulated from the copy's own data. The app
+- Fulcrum is simulated from the copy's own data, and the Lightning node is
+  left out (it isn't finished). The app
   makes no outside connections except the assistant's: node settings,
   price updates, uploads (CSVs, 1099-DA PDFs, proof files), restore, wipe
   and passwords are off.
 - The assistant runs on a model in Amazon Bedrock instead of Ollama, with
-  20 questions per visitor and 300 per day overall. The default is Llama
-  3.3 70B (`us.meta.llama3-3-70b-instruct-v1:0`), through Bedrock's
-  Converse API; any Converse model with tool use works (Amazon Nova, for
-  example), and `anthropic.*` IDs go through Anthropic's SDK instead. It
+  20 questions per visitor and 300 per day overall. The default is
+  OpenAI's open-weight gpt-oss-20b (`openai.gpt-oss-20b-1:0`), through
+  Bedrock's Converse API; any Converse model with tool use works (Amazon
+  Nova, for example), and `anthropic.*` IDs go through Anthropic's SDK instead. It
   signs in with the usual AWS credential chain. On EC2 the instance role
   needs `bedrock:InvokeModel` on the model's inference profile and its
   foundation models (Claude models need `bedrock-mantle:CreateInference`
@@ -315,7 +318,7 @@ with the commit). `docker-compose.demo.yml` runs the demo image.
 | Variable | Default | |
 |---|---|---|
 | `AWS_REGION` / `BTCTAX_BEDROCK_REGION` | `us-east-1` | Bedrock region |
-| `BTCTAX_BEDROCK_MODEL` | `us.meta.llama3-3-70b-instruct-v1:0` | Bedrock model ID |
+| `BTCTAX_BEDROCK_MODEL` | `openai.gpt-oss-20b-1:0` | Bedrock model ID |
 | `BTCTAX_DEMO_AI` | `true` | `false` turns the assistant off |
 | `BTCTAX_DEMO_AI_PER_VISITOR` / `_PER_DAY` | `20` / `300` | Assistant questions allowed |
 | `BTCTAX_DEMO_MAX_COPIES` / `BTCTAX_DEMO_IDLE_HOURS` | `100` / `3` | Visitors' copies kept, and for how long idle |

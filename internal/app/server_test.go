@@ -219,7 +219,7 @@ func TestHistoryAndFreshness(t *testing.T) {
 		Days    int
 	}
 	json.Unmarshal(call(h, "GET", "/api/imports/freshness", "").Body.Bytes(), &fresh)
-	if len(fresh) != 3 {
+	if len(fresh) != 4 {
 		t.Errorf("%+v", fresh)
 	}
 }

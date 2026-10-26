@@ -275,10 +275,10 @@ func TestLabelIdFallback(t *testing.T) {
 	}
 	srv := New(st, nil)
 	rep, _ := srv.buildReport()
-	tb := &toolbox{s: srv, rep: rep, chatID: 9, historyMatch: `{"direction":"out","account":"Hot wallet"}`, refersBack: true}
+	tb := &toolbox{s: srv, rep: rep, chatID: 9, historyMatch: `{"direction":"out","account":"Phone wallet"}`, refersBack: true}
 	want := 0
 	for _, it := range rep.Unmatched {
-		if it.Dir == "out" && it.Account == "Hot wallet" {
+		if it.Dir == "out" && it.Account == "Phone wallet" {
 			want++
 		}
 	}

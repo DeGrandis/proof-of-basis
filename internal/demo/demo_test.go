@@ -18,7 +18,7 @@ func TestStoryHasEveryKind(t *testing.T) {
 			kinds[e.Kind]++
 		}
 	}
-	t.Logf("%v, vault holds %d", kinds, w.total(vault))
+	t.Logf("%v; wallets hold %d / %d / %d / %d sats; exchanges %v", kinds, w.total(ledger), w.total(trezor), w.total(coldcard), w.total(phone), w.bal)
 	for _, k := range []importers.Kind{importers.Buy, importers.Sell, importers.Withdrawal, importers.Deposit, importers.Income} {
 		if kinds[k] == 0 {
 			t.Errorf("no %s rows", k)

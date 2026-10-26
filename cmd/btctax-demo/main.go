@@ -51,7 +51,7 @@ func main() {
 	region := env("BTCTAX_BEDROCK_REGION", env("AWS_REGION", "us-east-1"))
 	// Claude models (anthropic.*) go through Anthropic's SDK; any other
 	// Bedrock model (Llama, Amazon Nova...) through Bedrock's Converse API.
-	model := env("BTCTAX_BEDROCK_MODEL", "us.meta.llama3-3-70b-instruct-v1:0")
+	model := env("BTCTAX_BEDROCK_MODEL", "openai.gpt-oss-20b-1:0")
 	if env("BTCTAX_DEMO_AI", "true") == "true" {
 		var c app.ChatModel
 		var err error

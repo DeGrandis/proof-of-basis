@@ -66,20 +66,20 @@ func TestConsolidatedTools(t *testing.T) {
 		{"get_record", map[string]any{"id": sale}, "came from"},
 		{"get_record", map[string]any{"id": buy}, "Where these coins went"},
 		{"get_record", map[string]any{"id": rep.Unmatched[0].Key}, "Waiting in Review"},
-		{"accounts", map[string]any{}, "Cold storage"},
-		{"accounts", map[string]any{"name": "cold storage (wallet)"}, "Purchase lots"},
-		{"accounts", map[string]any{"name": "Cold storage", "sources": true}, "came from"},
+		{"accounts", map[string]any{}, "Coldcard"},
+		{"accounts", map[string]any{"name": "coldcard (wallet)"}, "Purchase lots"},
+		{"accounts", map[string]any{"name": "Coldcard", "sources": true}, "came from"},
 		{"accounts", map[string]any{"date": "2023-12-31"}, "By account"},
 		{"simulate_sale", map[string]any{"account": "all", "all": true}, "Total proceeds"},
-		{"simulate_sale", map[string]any{"account": "Cold storage", "all": true}, "Estimated extra tax"},
-		{"simulate_sale", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "highest_cost"}, "Estimated extra tax"},
+		{"simulate_sale", map[string]any{"account": "Coldcard", "all": true}, "Estimated extra tax"},
+		{"simulate_sale", map[string]any{"account": "Coldcard", "btc": 0.01, "strategy": "highest_cost"}, "Estimated extra tax"},
 		{"price", map[string]any{"date": "2023-06-15"}, "BTC closed"},
 		{"price", map[string]any{"from": "2023-01-01", "to": "2023-12-31"}, "high"},
 		{"analyze_records", map[string]any{"source": "records", "stat": "list", "kind": "sold", "account": "River", "top_n": float64(3)}, "records match"},
 		{"analyze_records", map[string]any{"source": "lots", "measure": "days_to_long_term", "max": float64(400), "stat": "list"}, "long-term on"},
 		{"analyze_records", map[string]any{"source": "lots", "measure": "gain", "max": float64(0), "stat": "list"}, "lot "},
 		{"analyze_records", map[string]any{"source": "income", "stat": "list"}, "worth"},
-		{"analyze_records", map[string]any{"source": "review", "stat": "list", "account": "Hot wallet"}, "Hot wallet"},
+		{"analyze_records", map[string]any{"source": "review", "stat": "list", "account": "Phone wallet"}, "Phone wallet"},
 	}
 	for _, c := range cases {
 		lk, out := tb.run(c.name, c.args)
@@ -108,7 +108,7 @@ func TestConsolidatedTools(t *testing.T) {
 			t.Errorf("target_gain %v gave gain %v: %s", limit, g, out)
 		}
 	}
-	if _, out := tb.run("simulate_sale", map[string]any{"target_tax": 100, "account": "Hot wallet"}); !strings.Contains(out, "extra") {
+	if _, out := tb.run("simulate_sale", map[string]any{"target_tax": 100, "account": "Phone wallet"}); !strings.Contains(out, "extra") {
 		t.Errorf("target_tax: %s", out)
 	}
 	// Exactly at or under the limit, to the cent, for many limits.
@@ -155,11 +155,11 @@ func TestBulkLabelAndUndoTool(t *testing.T) {
 	tb, rep, do := demoToolbox(t)
 	var hot int
 	for _, it := range rep.Unmatched {
-		if it.Account == "Hot wallet" && it.Dir == "out" {
+		if it.Account == "Phone wallet" && it.Dir == "out" {
 			hot++
 		}
 	}
-	lk, msg := tb.run("label_items", map[string]any{"match": map[string]any{"account": "Hot wallet", "direction": "out"}, "category": "spend"})
+	lk, msg := tb.run("label_items", map[string]any{"match": map[string]any{"account": "Phone wallet", "direction": "out"}, "category": "spend"})
 	if lk.Error != "" || !strings.Contains(msg, "must press Apply") {
 		t.Fatalf("bulk: %q %s", lk.Error, msg)
 	}

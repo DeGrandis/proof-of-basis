@@ -93,10 +93,8 @@ func (h *Hub) buildTemplate() error {
 		return err
 	}
 	defer st.Close()
+	// No Lightning node: that part of the app isn't finished.
 	if err := demo.Seed(st, 1); err != nil {
-		return err
-	}
-	if err := demo.SeedLightning(st, 1); err != nil {
 		return err
 	}
 	return st.SnapshotTo(h.template)

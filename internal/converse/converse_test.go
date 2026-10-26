@@ -82,6 +82,7 @@ func TestToMessages(t *testing.T) {
 func TestDisplayName(t *testing.T) {
 	for id, want := range map[string]string{
 		"us.meta.llama3-3-70b-instruct-v1:0": "Llama 3.3 70B (AWS Bedrock)",
+		"openai.gpt-oss-20b-1:0":             "gpt-oss 20B (AWS Bedrock)",
 		"us.amazon.nova-pro-v1:0":            "Amazon Nova Pro (AWS Bedrock)",
 		"us.amazon.nova-2-lite-v1:0":         "Amazon Nova 2 Lite (AWS Bedrock)",
 	} {

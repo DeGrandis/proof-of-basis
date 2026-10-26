@@ -53,6 +53,8 @@ func DisplayName(model string) string {
 		m = strings.TrimPrefix(m, p)
 	}
 	switch {
+	case strings.HasPrefix(m, "openai.gpt-oss-"):
+		m = "gpt-oss " + strings.ToUpper(strings.SplitN(strings.TrimPrefix(m, "openai.gpt-oss-"), "-", 2)[0])
 	case strings.HasPrefix(m, "meta.llama3-3-70b"):
 		m = "Llama 3.3 70B"
 	case strings.HasPrefix(m, "meta.llama3-1-70b"):
@@ -88,9 +90,19 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 	if !ok {
 		return reply, errors.New("the model sent no reply")
 	}
-	reply.Raw = m.Value
+	// Reasoning (gpt-oss thinks first) goes to the thinking view and is
+	// left out of the reply sent back next round: not every model takes
+	// its reasoning back.
+	kept := types.Message{Role: m.Value.Role}
 	var text strings.Builder
 	for _, b := range m.Value.Content {
+		if r, ok := b.(*types.ContentBlockMemberReasoningContent); ok {
+			if t, ok := r.Value.(*types.ReasoningContentBlockMemberReasoningText); ok && onThink != nil && t.Value.Text != nil {
+				onThink(*t.Value.Text)
+			}
+			continue
+		}
+		kept.Content = append(kept.Content, b)
 		switch x := b.(type) {
 		case *types.ContentBlockMemberText:
 			text.WriteString(x.Value)
@@ -104,6 +116,7 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 			reply.ToolCalls = append(reply.ToolCalls, tc)
 		}
 	}
+	reply.Raw = kept
 	reply.Content = text.String()
 	// Llama sometimes writes its tool calls out as JSON text instead of
 	// making them; when the whole reply is such calls to tools it was

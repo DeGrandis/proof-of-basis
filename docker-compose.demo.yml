@@ -10,7 +10,7 @@
 # `docker login ghcr.io` with a token that can read packages. To build it
 # locally instead: docker build --target demo -t btctax-demo .
 #
-# The assistant uses a model in Amazon Bedrock (Llama 3.3 70B by default)
+# The assistant uses a model in Amazon Bedrock (OpenAI's open-weight gpt-oss-20b by default)
 # with the machine's AWS role, which needs bedrock:InvokeModel on the model's
 # inference profile and its foundation models. Put the demo behind HTTPS
 # (your reverse proxy), not straight on the internet.
@@ -22,7 +22,7 @@ services:
       - "127.0.0.1:8090:8080"   # your reverse proxy forwards to this
     environment:
       AWS_REGION: us-east-1
-      # BTCTAX_BEDROCK_MODEL: us.meta.llama3-3-70b-instruct-v1:0   # or us.amazon.nova-pro-v1:0, anthropic.claude-haiku-5-5...
+      # BTCTAX_BEDROCK_MODEL: openai.gpt-oss-20b-1:0   # or openai.gpt-oss-120b-1:0, us.amazon.nova-pro-v1:0, us.meta.llama3-3-70b-instruct-v1:0...
       # BTCTAX_DEMO_AI: "false"            # turn the assistant off
       # BTCTAX_DEMO_AI_PER_VISITOR: "20"   # questions per visitor
       # BTCTAX_DEMO_AI_PER_DAY: "300"      # questions per day, for everyone

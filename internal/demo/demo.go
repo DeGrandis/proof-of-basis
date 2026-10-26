@@ -1,8 +1,9 @@
-// Package demo fills an empty database with a large, invented history:
-// years of buys on three exchanges, withdrawals to four wallets,
-// consolidations, batch payments, spends funded by two wallets at once,
-// deposits back and sales. It is for trying the app and testing the flow
-// view at a realistic size. Nothing in it is real.
+// Package demo fills an empty database with a large, invented history of
+// someone who tries exchanges for months at a time (moving their weekly
+// buys, dip buys and the odd sale from one to the next and sometimes back)
+// and moves their savings from one hardware wallet to the next, spending
+// from a phone wallet along the way. It is for trying the app and testing
+// the flow view at a realistic size. Nothing in it is real.
 package demo
 
 import (
@@ -22,11 +23,53 @@ import (
 )
 
 const (
-	coinbase, river, strike = "Coinbase", "River", "Strike"
-	cold, hot, vault, spend = "Cold storage", "Hot wallet", "Vault (multisig)", "Spending"
+	coinbase, river, strike, kraken = "Coinbase", "River", "Strike", "Kraken"
+	ledger, trezor, coldcard, phone = "Ledger", "Trezor", "Coldcard", "Phone wallet"
 )
 
-var wallets = []string{cold, hot, vault, spend}
+var (
+	wallets   = []string{ledger, trezor, coldcard, phone}
+	exchanges = []string{coinbase, river, strike, kraken}
+)
+
+// phase is a stretch on one exchange with weekly buys of lo to hi dollars.
+// Phases overlap by a few weeks while moving over.
+type phase struct {
+	ex       string
+	from, to time.Time
+	lo, hi   int64
+}
+
+func day(s string) time.Time {
+	t, _ := time.Parse("2006-01-02", s)
+	return t.Add(15 * time.Hour)
+}
+
+var phases = []phase{
+	{coinbase, day("2019-01-07"), day("2020-03-30"), 25, 100},
+	{river, day("2020-03-02"), day("2021-09-27"), 100, 200},
+	{strike, day("2021-09-06"), day("2022-12-26"), 50, 150},
+	{coinbase, day("2022-12-05"), day("2023-06-26"), 150, 300}, // back for a while, buying more
+	{kraken, day("2023-06-12"), day("2024-10-28"), 75, 175},
+	{river, day("2024-10-07"), day("2025-08-25"), 150, 250},
+	{strike, day("2025-08-04"), day("2026-09-28"), 50, 100},
+}
+
+// The hardware wallet savings go to from each date.
+var hardware = []struct {
+	name string
+	from time.Time
+}{{ledger, day("2019-01-07")}, {trezor, day("2021-05-17")}, {coldcard, day("2023-10-09")}}
+
+func savingsOn(t time.Time) string {
+	name := hardware[0].name
+	for _, h := range hardware {
+		if !t.Before(h.from) {
+			name = h.name
+		}
+	}
+	return name
+}
 
 type utxo struct {
 	txid  string
@@ -77,7 +120,7 @@ func Seed(st *store.Store, seed int64) error {
 			return err
 		}
 	}
-	for _, ex := range []string{coinbase, river, strike} {
+	for _, ex := range exchanges {
 		id, err := st.ExchangeAccount(ex, "demo")
 		if err != nil {
 			return err
@@ -98,73 +141,103 @@ func Seed(st *store.Store, seed int64) error {
 func newRand(seed int64) *rand.Rand { return rand.New(rand.NewSource(seed)) }
 
 func (w *world) play() {
-	start := time.Date(2019, 1, 7, 15, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 9, 28, 15, 0, 0, 0, time.UTC)
+	start, end := phases[0].from, phases[len(phases)-1].to
 	week := 0
 	for t := start; t.Before(end); t = t.AddDate(0, 0, 7) {
 		week++
-		// Weekly buys: Coinbase until 2023, River from 2021, Strike from 2023.
-		if t.Year() < 2023 {
-			w.buy(coinbase, t, 50+w.rnd.Int63n(150))
+		savings := savingsOn(t)
+		// Moving to a new hardware wallet: Trezor takes everything on the
+		// Ledger in one sweep; the Coldcard gets the Trezor's coins in two
+		// goes, half now and the rest six weeks later.
+		switch {
+		case sameWeek(t, day("2021-05-17")):
+			w.sweep(ledger, trezor, t.Add(5*time.Hour))
+		case sameWeek(t, day("2023-10-09")):
+			w.send(trezor, coldcard, w.total(trezor)/2, t.Add(5*time.Hour))
+		case sameWeek(t, day("2023-11-20")):
+			w.sweep(trezor, coldcard, t.Add(5*time.Hour))
 		}
-		if t.Year() >= 2021 {
-			w.buy(river, t.Add(2*time.Hour), 100+w.rnd.Int63n(100))
+		var active []string
+		for i, p := range phases {
+			if t.Before(p.from) || !t.Before(p.to) {
+				// Leaving an exchange: take everything off, now and then
+				// leaving a little dust behind.
+				if !t.Before(p.to) && t.Before(p.to.AddDate(0, 0, 7)) && w.bal[p.ex] > 20_000 {
+					dust := int64(0)
+					if w.rnd.Intn(2) == 0 {
+						dust = 5_000 + w.rnd.Int63n(30_000)
+					}
+					w.withdraw(p.ex, savings, w.bal[p.ex]-dust, t.Add(30*time.Hour))
+				}
+				continue
+			}
+			active = append(active, p.ex)
+			// The regular buy, at this phase's size.
+			w.buy(p.ex, t.Add(time.Duration(i)*time.Hour), p.lo+w.rnd.Int63n(p.hi-p.lo+1))
+			// Now and then a bigger buy on a dip, the same day: before the
+			// month's withdrawal, which counts it.
+			if w.rnd.Intn(10) == 0 {
+				w.buy(p.ex, t.Add(8*time.Hour), 200+w.rnd.Int63n(1300))
+			}
+			// Once in a while, sell some of what's on the exchange.
+			if w.rnd.Intn(30) == 0 && w.bal[p.ex] > 500_000 {
+				w.sell(p.ex, w.bal[p.ex]*int64(10+w.rnd.Intn(30))/100, t.Add(4*24*time.Hour))
+			}
+			// Rewards: Coinbase's Earn while on Coinbase, a referral bonus
+			// at River.
+			if p.ex == coinbase && week%13 == 5 {
+				w.event(coinbase, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: 2_000 + w.rnd.Int63n(8_000), Note: "Earn reward"})
+			}
+			if p.ex == river && week%40 == 11 {
+				w.event(river, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: 10_000 + w.rnd.Int63n(15_000), Note: "Referral bonus"})
+			}
+			// Lightning payments straight from Strike, left for the Review queue.
+			if p.ex == strike && week%9 == 4 && w.bal[strike] > 60_000 {
+				sats := 5_000 + w.rnd.Int63n(45_000)
+				w.event(strike, importers.Event{Kind: importers.Withdrawal, Time: t.Add(20 * time.Hour), Sats: sats, FeeSats: 1 + w.rnd.Int63n(20),
+					Address: fmt.Sprintf("lnbc%dn1demo%06d", sats/100, w.n), Note: "Lightning payment"})
+			}
 		}
-		if t.Year() >= 2023 {
-			w.buy(strike, t.Add(4*time.Hour), 25+w.rnd.Int63n(75))
-		}
-		if week%13 == 5 && t.Year() < 2023 {
-			w.event(coinbase, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: 2_000 + w.rnd.Int63n(8_000), Note: "Earn reward"})
-		}
-		// Monthly withdrawals to cold storage, now and then to the hot wallet.
+		// Monthly, the exchanges in use send to savings, now and then to the
+		// phone wallet instead.
 		if week%4 == 0 {
-			for _, ex := range []string{coinbase, river, strike} {
+			for _, ex := range active {
 				if w.bal[ex] > 300_000 {
-					to := cold
-					if w.rnd.Intn(4) == 0 {
-						to = hot
+					to := savings
+					if w.rnd.Intn(5) == 0 && w.total(phone) < 1_000_000 {
+						to = phone
 					}
 					w.withdraw(ex, to, w.bal[ex]-10_000-w.rnd.Int63n(50_000), t.Add(26*time.Hour))
 				}
 			}
 		}
-		// Lightning payments straight from Strike, left for the Review queue.
-		if week%9 == 4 && t.Year() >= 2023 && w.bal[strike] > 60_000 {
-			sats := 5_000 + w.rnd.Int63n(45_000)
-			w.event(strike, importers.Event{Kind: importers.Withdrawal, Time: t.Add(20 * time.Hour), Sats: sats, FeeSats: 1 + w.rnd.Int63n(20),
-				Address: fmt.Sprintf("lnbc%dn1demo%06d", sats/100, w.n), Note: "Lightning payment"})
-		}
-		// Everyday spending from the hot wallet and the spending wallet.
+		// Everyday spending from the phone, topped up from savings twice a
+		// year.
 		if week%3 == 1 {
-			w.pay(t.Add(30*time.Hour), []string{hot}, 20_000+w.rnd.Int63n(80_000))
+			w.pay(t.Add(30*time.Hour), []string{phone}, 10_000+w.rnd.Int63n(60_000))
 		}
-		if week%5 == 2 {
-			w.pay(t.Add(50*time.Hour), []string{spend}, 10_000+w.rnd.Int63n(60_000))
+		if week%26 == 3 && w.total(savings) > 3_000_000 {
+			w.send(savings, phone, 1_000_000+w.rnd.Int63n(2_000_000), t.Add(40*time.Hour))
 		}
-		// Many to one across wallets: hot and spending fund one payment.
-		if week%17 == 9 {
-			w.pay(t.Add(70*time.Hour), []string{hot, spend}, 0)
+		// A big purchase once a year, paid from the phone and savings together.
+		// It costs more than the phone holds, so savings chips in.
+		if week%52 == 30 && w.total(phone) > 0 && w.total(savings) > 5_000_000 {
+			w.pay(t.Add(70*time.Hour), []string{phone, savings}, w.total(phone)+1_000_000+w.rnd.Int63n(2_000_000))
 		}
-		// Twice a year cold storage sweeps every coin into the vault: many
-		// inputs, one output.
-		if week%26 == 20 {
-			w.sweep(cold, vault, t.Add(80*time.Hour))
-		}
-		// Once a year cold storage consolidates into itself first.
+		// Once a year the savings wallet consolidates its many small coins
+		// from monthly withdrawals into one.
 		if week%52 == 33 {
-			w.sweep(cold, cold, t.Add(90*time.Hour))
+			w.sweep(savings, savings, t.Add(90*time.Hour))
 		}
-		// Quarterly, the vault pays out to the hot and spending wallets and a
-		// supplier in one transaction: one input, many outputs.
-		if week%13 == 7 {
-			w.batch(vault, t.Add(100*time.Hour))
-		}
-		// Yearly, some coins go back to an exchange and are sold.
-		if week%52 == 40 && t.Year() >= 2021 {
-			w.depositAndSell(vault, river, t.Add(110*time.Hour))
+		// Yearly from 2021, some savings go back to the exchange in use and
+		// are sold.
+		if week%52 == 40 && t.Year() >= 2021 && len(active) > 0 {
+			w.depositAndSell(savings, active[len(active)-1], t.Add(110*time.Hour))
 		}
 	}
 }
+
+func sameWeek(t, d time.Time) bool { return !d.Before(t) && d.Before(t.AddDate(0, 0, 7)) }
 
 func (w *world) priceOn(t time.Time) int64 {
 	for i := 0; i < 10; i++ {
@@ -226,7 +299,7 @@ func (w *world) addr(owner string) string {
 	if owner == "" {
 		return fmt.Sprintf("bc1qdemoexternal%06d", w.n)
 	}
-	return fmt.Sprintf("bc1qdemo%s%06d", map[string]string{cold: "cold", hot: "hot", vault: "vault", spend: "spend"}[owner], w.n)
+	return fmt.Sprintf("bc1qdemo%s%06d", map[string]string{ledger: "ledger", trezor: "trezor", coldcard: "coldcard", phone: "phone"}[owner], w.n)
 }
 
 // tx records a transaction: inputs are wallet coins (external inputs are
@@ -335,17 +408,22 @@ func (w *world) fee(inputs, outputs int) int64 {
 }
 
 func (w *world) withdraw(ex, to string, sats int64, t time.Time) {
-	txid, made := w.tx(t, nil, 1, []out{{to, sats}, {"", 1_000_000 + w.rnd.Int63n(9_000_000)}})
 	platformFee := int64(0)
 	if ex == coinbase {
 		platformFee = 1_000 + w.rnd.Int63n(2_000)
 	}
+	// The exchange's fee comes out of the balance too; never take more.
+	sats = min(sats, w.bal[ex]-platformFee)
+	if sats <= 0 {
+		return
+	}
+	txid, made := w.tx(t, nil, 1, []out{{to, sats}, {"", 1_000_000 + w.rnd.Int63n(9_000_000)}})
 	w.event(ex, importers.Event{Kind: importers.Withdrawal, Time: t.Add(-10 * time.Minute), Sats: sats, FeeSats: platformFee,
 		Txid: txid, Address: made[0].addr})
 }
 
 // pay sends an amount outside from one or more wallets, with change back to
-// the first. amount 0 means "most of what they hold".
+// the last. amount 0 means "most of what they hold".
 func (w *world) pay(t time.Time, from []string, amount int64) {
 	var ins []utxo
 	var have int64
@@ -354,7 +432,7 @@ func (w *world) pay(t time.Time, from []string, amount int64) {
 			got, s := w.pick(name, w.total(name)*3/4)
 			ins, have = append(ins, got...), have+s
 		} else {
-			got, s := w.pick(name, amount-have+5_000)
+			got, s := w.pick(name, amount-have+50_000) // room for the fee
 			ins, have = append(ins, got...), have+s
 		}
 	}
@@ -366,7 +444,9 @@ func (w *world) pay(t time.Time, from []string, amount int64) {
 	if len(ins) == 0 || change < 1_000 {
 		return
 	}
-	txid, _ := w.tx(t, ins, 0, []out{{"", amount}, {from[0], change}})
+	// Change goes back to the last wallet that paid in (savings, when the
+	// phone can't cover it alone).
+	txid, _ := w.tx(t, ins, 0, []out{{"", amount}, {from[len(from)-1], change}})
 	// Most payments are labeled; some are left for the Review queue.
 	if w.rnd.Intn(5) != 0 {
 		w.labels = append(w.labels, trace.Label{Key: fmt.Sprintf("tx:%s:0", txid), Category: trace.Spend})
@@ -375,7 +455,9 @@ func (w *world) pay(t time.Time, from []string, amount int64) {
 
 func (w *world) sweep(from, to string, t time.Time) {
 	ins := append([]utxo(nil), w.utxos[from]...)
-	if len(ins) < 2 {
+	// Moving to another wallet takes even a single coin; consolidating a
+	// wallet into itself needs two.
+	if len(ins) == 0 || from == to && len(ins) < 2 {
 		return
 	}
 	var have int64
@@ -385,21 +467,20 @@ func (w *world) sweep(from, to string, t time.Time) {
 	w.tx(t, ins, 0, []out{{to, have - w.fee(len(ins), 1)}})
 }
 
-func (w *world) batch(from string, t time.Time) {
-	have := w.total(from)
-	if have < 2_000_000 {
+// send moves an amount between two of the user's wallets, with change back.
+func (w *world) send(from, to string, amount int64, t time.Time) {
+	ins, sum := w.pick(from, amount+20_000)
+	f := w.fee(len(ins), 2)
+	if len(ins) == 0 || sum-amount-f < 1_000 {
 		return
 	}
-	// Pay out about a tenth of the vault; the rest comes back as change.
-	a, b, c := have/25, have/30, have/40
-	ins, sum := w.pick(from, a+b+c+50_000)
-	f := w.fee(len(ins), 4)
-	change := sum - a - b - c - f
-	if change < 10_000 {
-		return
-	}
-	txid, _ := w.tx(t, ins, 0, []out{{hot, a}, {spend, b}, {"", c}, {from, change}})
-	w.labels = append(w.labels, trace.Label{Key: fmt.Sprintf("tx:%s:2", txid), Category: trace.Spend, Note: "Supplier invoice"})
+	w.tx(t, ins, 0, []out{{to, amount}, {from, sum - amount - f}})
+}
+
+// sell sells some of an exchange balance at the day's price.
+func (w *world) sell(ex string, sats int64, t time.Time) {
+	cents := sats * w.priceOn(t) / 100_000_000
+	w.event(ex, importers.Event{Kind: importers.Sell, Time: t, Sats: sats, FiatCents: cents, FeeCents: cents / 200, Currency: "USD"})
 }
 
 func (w *world) depositAndSell(from, ex string, t time.Time) {
@@ -407,7 +488,7 @@ func (w *world) depositAndSell(from, ex string, t time.Time) {
 	if have < 2_000_000 {
 		return
 	}
-	amount := have / 4
+	amount := have / 6
 	ins, sum := w.pick(from, amount+10_000)
 	f := w.fee(len(ins), 2)
 	if sum-amount-f < 1_000 {
@@ -415,7 +496,5 @@ func (w *world) depositAndSell(from, ex string, t time.Time) {
 	}
 	txid, made := w.tx(t, ins, 0, []out{{"", amount}, {from, sum - amount - f}})
 	w.event(ex, importers.Event{Kind: importers.Deposit, Time: t.Add(40 * time.Minute), Sats: amount, Txid: txid, Address: made[0].addr})
-	sell := t.Add(3 * time.Hour)
-	cents := amount * w.priceOn(sell) / 100_000_000
-	w.event(ex, importers.Event{Kind: importers.Sell, Time: sell, Sats: amount, FiatCents: cents, FeeCents: cents / 200, Currency: "USD"})
+	w.sell(ex, amount, t.Add(3*time.Hour))
 }

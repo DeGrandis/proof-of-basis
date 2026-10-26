@@ -149,7 +149,7 @@ func TestAssistantChatWithTools(t *testing.T) {
 	first, second := fo.reqs[0], fo.reqs[1]
 	fo.mu.Unlock()
 	sys := first["messages"].([]any)[0].(map[string]any)["content"].(string)
-	for _, want := range []string{"## Accounts", "## Tax years", "The Review page", "Cold storage"} {
+	for _, want := range []string{"## Accounts", "## Tax years", "The Review page", "Coldcard"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("system prompt lacks %q", want)
 		}
@@ -230,9 +230,9 @@ func TestAssistantTools(t *testing.T) {
 	}{
 		{"search_transactions", map[string]any{"kind": "buy", "from": "2021-01-01", "to": "2021-12-31"}, "records match"},
 		{"get_tax_year", map[string]any{"year": float64(2021)}, "sales (grouped"},
-		{"get_account", map[string]any{"name": "cold storage"}, "Purchase lots"},
+		{"get_account", map[string]any{"name": "coldcard"}, "Purchase lots"},
 		{"list_review_items", map[string]any{}, "need a label"},
-		{"what_if_sale", map[string]any{"account": "Cold storage", "btc": 0.01}, "Estimated extra tax"},
+		{"what_if_sale", map[string]any{"account": "Coldcard", "btc": 0.01}, "Estimated extra tax"},
 		{"get_transaction", map[string]any{"id": "nope"}, "no record"},
 	}
 	for _, c := range cases {
@@ -315,7 +315,7 @@ func TestMoreTools(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"analyze_records", map[string]any{"source": "review", "measure": "account", "stat": "count"}, "Hot wallet"},
+		{"analyze_records", map[string]any{"source": "review", "measure": "account", "stat": "count"}, "Phone wallet"},
 		{"analyze_records", map[string]any{"group_by": "year", "measure": "price", "stat": "mean"}, "ALL"},
 		{"analyze_records", map[string]any{"source": "sales", "measure": "days_held", "stat": "median"}, "days"},
 		{"analyze_records", map[string]any{"measure": "usd", "stat": "mode"}, "most common"},
@@ -332,9 +332,9 @@ func TestMoreTools(t *testing.T) {
 		{"income_records", map[string]any{"year": float64(2021)}, "income"},
 		{"trace_coins", map[string]any{"id": buy}, "Where these coins went"},
 		{"trace_coins", map[string]any{"id": sale}, "came from"},
-		{"trace_coins", map[string]any{"account": "Cold storage"}, "came from"},
-		{"what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "highest_cost"}, "Estimated extra tax"},
-		{"what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "lowest_cost"}, "Estimated extra tax"},
+		{"trace_coins", map[string]any{"account": "Coldcard"}, "came from"},
+		{"what_if_sale_picks", map[string]any{"account": "Coldcard", "btc": 0.01, "strategy": "highest_cost"}, "Estimated extra tax"},
+		{"what_if_sale_picks", map[string]any{"account": "Coldcard", "btc": 0.01, "strategy": "lowest_cost"}, "Estimated extra tax"},
 	}
 	for _, c := range cases {
 		lk, out := tb.run(c.name, c.args)
@@ -344,7 +344,7 @@ func TestMoreTools(t *testing.T) {
 	}
 	// Highest-cost coins should never produce a larger gain than lowest-cost ones.
 	gain := func(strategy string) string {
-		_, out := tb.run("what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": strategy})
+		_, out := tb.run("what_if_sale_picks", map[string]any{"account": "Coldcard", "btc": 0.01, "strategy": strategy})
 		return out
 	}
 	if gain("highest_cost") == gain("lowest_cost") {
@@ -353,7 +353,7 @@ func TestMoreTools(t *testing.T) {
 	if lk, _ := tb.run("analyze_records", map[string]any{"stat": "vibes"}); lk.Error == "" {
 		t.Error("bad stat accepted")
 	}
-	if lk, _ := tb.run("what_if_sale_picks", map[string]any{"account": "Cold storage", "btc": 0.01, "strategy": "random"}); lk.Error == "" {
+	if lk, _ := tb.run("what_if_sale_picks", map[string]any{"account": "Coldcard", "btc": 0.01, "strategy": "random"}); lk.Error == "" {
 		t.Error("bad strategy accepted")
 	}
 	// The review count must match the report exactly.
@@ -397,15 +397,15 @@ func TestSellEverything(t *testing.T) {
 		t.Errorf("total %s not in: %s", btcStr(held), out)
 	}
 	// Names as a model writes them, and selling a whole account.
-	for _, n := range []string{"Cold storage (wallet)", "cold storage", "Vault (multisig) (wallet)", "Cold"} {
+	for _, n := range []string{"Coldcard (wallet)", "coldcard", "Phone wallet (wallet)", "Cold"} {
 		if _, err := tb.resolveAccount(n); err != nil {
 			t.Errorf("%q: %v", n, err)
 		}
 	}
-	if _, err := tb.resolveAccount("Nowhere"); err == nil || !strings.Contains(err.Error(), "Cold storage") {
+	if _, err := tb.resolveAccount("Nowhere"); err == nil || !strings.Contains(err.Error(), "Coldcard") {
 		t.Errorf("unknown account error should list names: %v", err)
 	}
-	lk, out = tb.run("what_if_sale", map[string]any{"account": "Cold storage (wallet)", "all": true})
+	lk, out = tb.run("what_if_sale", map[string]any{"account": "Coldcard (wallet)", "all": true})
 	if lk.Error != "" || !strings.Contains(out, "Estimated extra tax") {
 		t.Errorf("sell whole account: %q %s", lk.Error, out)
 	}
@@ -512,11 +512,11 @@ func TestClaimsChange(t *testing.T) {
 	if got := cleanAnswer("You bought most in 2019. A chart of your BTC holdings over time is available below.", false, false); got != "You bought most in 2019." {
 		t.Errorf("made-up chart kept: %q", got)
 	}
-	tools := "The Hot wallet holds 0.75 BTC.\n\nTo learn more, use the get_record function:\n\n{\"name\": \"get_record\", \"parameters\": {\"id\": \"x\"}}"
-	if got := cleanAnswer(tools, false, false); got != "The Hot wallet holds 0.75 BTC." {
+	tools := "The Phone wallet holds 0.75 BTC.\n\nTo learn more, use the get_record function:\n\n{\"name\": \"get_record\", \"parameters\": {\"id\": \"x\"}}"
+	if got := cleanAnswer(tools, false, false); got != "The Phone wallet holds 0.75 BTC." {
 		t.Errorf("tool talk kept: %q", got)
 	}
-	if got := cleanAnswer("1. [tx:ab12:0] - 2026-08-11 Hot wallet sent 0.0002 BTC\n2. [ex:895] Strike sent 0.0001 BTC", false, false); got != "1. 2026-08-11 Hot wallet sent 0.0002 BTC\n2. Strike sent 0.0001 BTC" {
+	if got := cleanAnswer("1. [tx:ab12:0] - 2026-08-11 Phone wallet sent 0.0002 BTC\n2. [ex:895] Strike sent 0.0001 BTC", false, false); got != "1. 2026-08-11 Phone wallet sent 0.0002 BTC\n2. Strike sent 0.0001 BTC" {
 		t.Errorf("record tags kept: %q", got)
 	}
 	if got := cleanAnswer("There are 61 items waiting for review, listed below, totaling 0.74352287 BTC. Most are small.", false, false); got != "Most are small." {
@@ -659,7 +659,7 @@ func TestNoneArgs(t *testing.T) {
 		t.Errorf("with nones:\n%s\nwithout:\n%s", nones, plain)
 	}
 	// A sale from one account lists the lots it would use.
-	if _, out := tb.run("simulate_sale", map[string]any{"account": "Hot wallet", "btc": "0.1"}); !strings.Contains(out, "Lots it would use") {
+	if _, out := tb.run("simulate_sale", map[string]any{"account": "Phone wallet", "btc": "0.1"}); !strings.Contains(out, "Lots it would use") {
 		t.Errorf("lots: %s", out)
 	}
 	// min = max reads as "at least".
@@ -669,7 +669,7 @@ func TestNoneArgs(t *testing.T) {
 		t.Errorf("min=max: %s vs %s", eq, atLeast)
 	}
 	// No account named: each account that holds enough, side by side.
-	if !strings.Contains(nones, "needs one account") || !strings.Contains(nones, "Hot wallet: proceeds") {
+	if !strings.Contains(nones, "needs one account") || !strings.Contains(nones, "Phone wallet: proceeds") {
 		t.Errorf("compare: %s", nones)
 	}
 }
