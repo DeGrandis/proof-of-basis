@@ -1190,6 +1190,13 @@ const KIND_NAMES = { buy: "Buy", sell: "Sale", income: "Income", transfer: "Tran
   "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refund" };
 const flowViews = {};
 let flowMode = (() => { try { const m = localStorage.getItem("flowMode"); return ["accounts", "custody"].includes(m) ? m : "accounts"; } catch { return "accounts"; } })();
+// scheduleDraw redraws Flow once on the next frame, however many times it's
+// asked before then: a pan or pinch sends far more moves than a phone can
+// redraw the timeline for, and drawing on each one froze the page.
+let drawQueued = 0;
+function scheduleDraw() {
+  if (!drawQueued) drawQueued = requestAnimationFrame(() => { drawQueued = 0; drawGraph(); });
+}
 function drawGraph() {
   if (!report || !$("#graph").classList.contains("on")) return;
   const box = { accounts: "#flow", custody: "#tg" };
@@ -1442,7 +1449,7 @@ function zoomAt(px, factor) {
   const f = (p - view.d0) / (view.d1 - view.d0);
   view.d0 = p - f * span; view.d1 = view.d0 + span;
   clampView();
-  drawGraph();
+  scheduleDraw();
 }
 function clampView() {
   const span = view.d1 - view.d0, pad = view.full * 0.02;
@@ -1467,7 +1474,7 @@ svgEl.addEventListener("wheel", (e) => {
   const rect = svgEl.getBoundingClientRect();
   if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { // horizontal scroll pans
     const { W } = geometry(), d = ((e.deltaX || e.deltaY) / (W - LEFT)) * (view.d1 - view.d0);
-    view.d0 += d; view.d1 += d; clampView(); drawGraph();
+    view.d0 += d; view.d1 += d; clampView(); scheduleDraw();
     return;
   }
   zoomAt(e.clientX - rect.left, Math.exp(e.deltaY * 0.0015));
@@ -1480,7 +1487,7 @@ window.addEventListener("pointermove", (e) => {
   if (Math.abs(dx) > 3) { drag.moved = true; svgEl.classList.add("panning"); }
   if (!drag.moved) return;
   const { W } = geometry(), d = (-dx / (W - LEFT - 40)) * (drag.d1 - drag.d0);
-  view.d0 = drag.d0 + d; view.d1 = drag.d1 + d; clampView(); drawGraph();
+  view.d0 = drag.d0 + d; view.d1 = drag.d1 + d; clampView(); scheduleDraw();
 });
 window.addEventListener("pointerup", () => { setTimeout(() => (drag = null), 0); svgEl.classList.remove("panning"); });
 // Pinch zooms Flow around the fingers, and moving them pans.
@@ -1496,7 +1503,7 @@ window.addEventListener("pointerup", () => { setTimeout(() => (drag = null), 0);
     const span = Math.max(0.5, Math.min(view.full * 1.05, (s.d1 - s.d0) * k));
     view.d0 = s.at - frac(cx) * span; view.d1 = view.d0 + span;
     clampView();
-    drawGraph();
+    scheduleDraw();
   });
 })();
 $("#zoom-in").addEventListener("click", () => zoomAt(geometry().W / 2 + LEFT / 2, 0.5));
@@ -1969,7 +1976,7 @@ $("#graph-detail").addEventListener("click", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) selectEvent(null); });
-window.addEventListener("resize", () => drawGraph());
+window.addEventListener("resize", scheduleDraw);
 
 // Settings
 async function loadSettings() {
