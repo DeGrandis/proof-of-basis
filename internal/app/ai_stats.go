@@ -448,6 +448,11 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 			// Models often send "max 1" meaning "just one": say what it did.
 			b.WriteString("min and max filter by value; they don't limit how many rows. For the largest or smallest N, leave them out and use stat top or bottom with top_n.\n")
 		}
+		if text != "" && src != "records" {
+			// "Coffee" searched in Review or buys finds nothing; it may be
+			// a labeled record or node activity.
+			fmt.Fprintf(&b, "Nothing in %s mentions %q; before saying there's none, search source records (every record) and, for Lightning, source lightning.\n", src, text)
+		}
 		return b.String(), summary, nil
 	}
 	if want, _ := a["export"].(bool); want {
