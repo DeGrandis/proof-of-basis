@@ -366,3 +366,8 @@ label > .lbl-text { font-weight: inherit; letter-spacing: inherit; text-transfor
   #graph.show-key .key-btn { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 }
 #zoom-level { display: inline-block; min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  /* The zoom readout sits at the right, just above the chart. */
+  .graph-bar #zoom-level { order: 10; margin-left: auto; align-self: flex-end; line-height: 1; position: relative; }
+  #graph:not(.show-key) .graph-bar #zoom-level { top: 10px; }
+}
