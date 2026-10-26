@@ -632,6 +632,7 @@ Rules:
 - The user sees only your answer, not tool results (each lookup shows as a small link). Put the records and figures they asked for in your answer; never say they are listed or shown above or below. Only a download or chart a tool says it made appears under your answer.
 - A follow-up about another day, record or year needs its own lookup; never say there is no record without looking.
 - When comparing years or amounts, give each figure as well as the difference.
+- Unrealized gain at a price P you're asked about: calculate "P * holdings - basis" exactly like that (basis is what the coins cost, not today's value).
 - "How much did I make" means realized gains (all years: add up the tax years below); mention income separately.
 - You can't delete data or start over; for backups and wiping, point to [Settings](#settings).
 - Amounts are in USD and BTC only. There is no exchange-rate data, so don't convert to other currencies; say so.
@@ -913,6 +914,7 @@ func eventDetail(rep *Report, key string) string {
 	}
 	lots := saleLots(rep, key)
 	if len(lots) > 0 {
+		b.WriteString("  " + saleSummary(rep, key) + "\n")
 		b.WriteString("  Lots used by this sale:\n")
 		for _, l := range lots {
 			b.WriteString("  - " + l + "\n")
@@ -924,10 +926,46 @@ func eventDetail(rep *Report, key string) string {
 	return b.String()
 }
 
+func ofSale(opID, key string) bool {
+	return opID == key || strings.HasPrefix(opID, key+":") || strings.HasPrefix(opID, key+">")
+}
+
+// saleSummary totals a sale's lots: how long the coins were held, and
+// its gain by term, so no one has to work it out from the lot list.
+func saleSummary(rep *Report, key string) string {
+	var sats, proceeds, basis, short, long int64
+	var minD, maxD, weighted float64
+	n := 0
+	for _, d := range rep.Disposals {
+		if !ofSale(d.OpID, key) {
+			continue
+		}
+		days := float64(int(d.Disposed.Sub(d.Acquired).Hours() / 24))
+		if n == 0 || days < minD {
+			minD = days
+		}
+		maxD = max(maxD, days)
+		weighted += days * float64(d.Sats)
+		sats, proceeds, basis = sats+d.Sats, proceeds+d.Proceeds, basis+d.Basis
+		if d.LongTerm {
+			long += d.Gain()
+		} else {
+			short += d.Gain()
+		}
+		n++
+	}
+	held := fmt.Sprintf("%.0f days", minD)
+	if maxD > minD {
+		held = fmt.Sprintf("%.0f to %.0f days (%.0f on average)", minD, maxD, weighted/float64(max(sats, 1)))
+	}
+	return fmt.Sprintf("Sale summary: %s from %d lots held %s; proceeds %s, basis %s, gain %s (short-term %s, long-term %s).",
+		btcStr(sats), n, held, usdStr(proceeds), usdStr(basis), usdStr(proceeds-basis), usdStr(short), usdStr(long))
+}
+
 func saleLots(rep *Report, key string) []string {
 	var out []string
 	for _, d := range rep.Disposals {
-		if d.OpID != key && !strings.HasPrefix(d.OpID, key+":") && !strings.HasPrefix(d.OpID, key+">") {
+		if !ofSale(d.OpID, key) {
 			continue
 		}
 		term := "short-term"
