@@ -7,12 +7,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Bake the latest daily BTC/USD history into the binary. If the source is
-# unreachable the build keeps the committed history file.
+# Bake the latest daily BTC/USD history into the binary: the committed file
+# plus the days since its last one. If the source is unreachable the build
+# keeps the committed history as it is.
 # Override with --build-arg PRICE_SOURCE=coinmetrics, or none to skip.
 ARG PRICE_SOURCE=yahoo
 RUN if [ "$PRICE_SOURCE" != "none" ]; then \
-      go run ./cmd/btctax prices fetch -source "$PRICE_SOURCE" \
+      go run ./cmd/btctax prices fetch -source "$PRICE_SOURCE" -from last \
       || echo "warning: price fetch failed; using the committed price history"; \
     fi
 RUN mkdir -p /out/data

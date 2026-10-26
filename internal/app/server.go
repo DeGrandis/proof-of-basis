@@ -54,8 +54,12 @@ type fulcrumStatus struct {
 }
 
 func New(st *store.Store, static fs.FS) *Server {
-	return &Server{st: st, static: static, bundled: prices.Bundled()}
+	return &Server{st: st, static: static, bundled: bundledPrices()}
 }
+
+// bundledPrices is the history built into the binary; tests swap it out so
+// their prices don't depend on the committed file.
+var bundledPrices = prices.Bundled
 
 var defaults = map[string]string{
 	"fulcrumHost":  "",

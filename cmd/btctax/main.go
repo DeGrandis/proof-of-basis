@@ -77,16 +77,12 @@ func main() {
 func fetchPrices(args []string) {
 	fs := flag.NewFlagSet("prices fetch", flag.ExitOnError)
 	src := fs.String("source", "yahoo", "price source: "+sourceIDs())
-	from := fs.String("from", "2010-07-17", "first day (YYYY-MM-DD)")
+	from := fs.String("from", "2010-07-17", "first day (YYYY-MM-DD), or last for the file's last day on (a quick top-up)")
 	out := fs.String("o", "internal/prices/data/btcusd-daily.csv", "output CSV; existing rows are kept unless refetched")
 	fs.Parse(args)
 	s, ok := prices.Get(*src)
 	if !ok {
 		log.Fatalf("unknown source %q (have %s)", *src, sourceIDs())
-	}
-	start, err := time.Parse("2006-01-02", *from)
-	if err != nil {
-		log.Fatal(err)
 	}
 	merged := map[string]int64{}
 	if f, err := os.Open(*out); err == nil {
@@ -95,6 +91,19 @@ func fetchPrices(args []string) {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+	if *from == "last" {
+		// Refetch the last day too: its close may have been taken mid-day.
+		*from = "2010-07-17"
+		for d := range merged {
+			if d > *from {
+				*from = d
+			}
+		}
+	}
+	start, err := time.Parse("2006-01-02", *from)
+	if err != nil {
+		log.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

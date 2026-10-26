@@ -222,14 +222,16 @@ Spends and income need a fair market value. Daily BTC/USD closes come from,
 in order: prices you imported or updated, the history built into the binary,
 then prices implied by your own trades that day.
 
-The image build fetches the latest history (`--build-arg PRICE_SOURCE=yahoo`
-by default, `coinmetrics` for data back to 2010, `none` to skip) and falls
-back to the committed `internal/prices/data/btcusd-daily.csv` if the source
-is unreachable. To refresh the committed file:
+The history is committed in `internal/prices/data/btcusd-daily.csv` (from
+July 2010). The image build only adds the days since its last one
+(`--build-arg PRICE_SOURCE=yahoo` by default, `coinmetrics`, or `none` to
+skip), and keeps the file as it is if the source is unreachable. To top up
+the committed file, or rebuild it from scratch:
 
 ```sh
-go run ./cmd/btctax prices fetch -source yahoo
-go run ./cmd/btctax prices fetch -source coinmetrics -from 2010-07-17   # fills 2010-2014
+go run ./cmd/btctax prices fetch -source yahoo -from last
+go run ./cmd/btctax prices fetch -source coinmetrics -from 2010-07-17   # then
+go run ./cmd/btctax prices fetch -source yahoo -from 2014-09-17         # Yahoo's closes from 2014
 ```
 
 New sources implement `prices.Source`.

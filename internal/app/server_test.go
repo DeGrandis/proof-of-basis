@@ -19,6 +19,13 @@ import (
 	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
+// Tests price days from their own trades, not the committed history,
+// which grows with every top-up.
+func TestMain(m *testing.M) {
+	bundledPrices = func() map[string]int64 { return nil }
+	os.Exit(m.Run())
+}
+
 // BIP84 test vector key (public test data, not anyone's wallet).
 const zpub = "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
 const xpub44 = "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj"
