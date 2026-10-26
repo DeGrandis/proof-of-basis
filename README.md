@@ -22,11 +22,12 @@
   <a href="https://github.com/DeGrandis/proof-of-basis-umbrel"><img src="https://img.shields.io/badge/Umbrel-community%20app%20store-5351FB" alt="Umbrel community app store"></a>
   <a href="https://github.com/DeGrandis/proof-of-basis-startos"><img src="https://img.shields.io/badge/StartOS-0.4%20package-1d1d1d" alt="StartOS 0.4 package"></a>
   <a href="#ask-it-anything"><img src="https://img.shields.io/badge/AI-local%20with%20Ollama-000000?logo=ollama&logoColor=white" alt="Local AI with Ollama"></a>
-  <a href="https://proofofbasis.degrand.is"><img src="https://img.shields.io/badge/demo-try%20it%20live-c6f55a" alt="Live demo"></a>
+  <a href="https://demo.proofofbasis.degrand.is"><img src="https://img.shields.io/badge/demo-try%20it%20live-c6f55a" alt="Live demo"></a>
 </p>
 
 <p align="center">
-  <a href="https://proofofbasis.degrand.is"><b>Try the live demo</b></a> ·
+  <a href="https://proofofbasis.degrand.is">Website</a> ·
+  <a href="https://demo.proofofbasis.degrand.is"><b>Try the live demo</b></a> ·
   <a href="#getting-started">Install</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#ask-it-anything">The assistant</a>
@@ -99,7 +100,7 @@
 
 ## Screenshots
 
-These come from the [live demo](https://proofofbasis.degrand.is), so the
+These come from the [live demo](https://demo.proofofbasis.degrand.is), so the
 data is invented (the red bar says so).
 
 <table>

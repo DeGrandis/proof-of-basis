@@ -1,16 +1,17 @@
 # .github/workflows/images.yml
 #
-# Tests, then builds both images from this commit and pushes them to
+# Tests, then builds the images from this commit and pushes them to
 # GitHub's container registry, tagged with its SHA (and :latest):
 #   ghcr.io/<owner>/<repo>       the app people run
 #   ghcr.io/<owner>/<repo>-demo  the public demo (the same app, in demo mode)
-# The names follow the repository, so renaming it renames the images. Both
+#   ghcr.io/<owner>/<repo>-site  the landing page (site/)
+# The names follow the repository, so renaming it renames the images. All
 # come from the same commit in the same run, so the demo is always exactly
-# the app at that commit. Pull requests test and build both without
+# the app at that commit. Pull requests test and build them without
 # pushing. No secrets are needed: the run's own token publishes the images.
 #
 # The app image is built for amd64 and arm64 (Umbrel and StartOS boxes run
-# both); the demo only for amd64, where it runs. Pushing a version tag
+# both); the demo and the landing page only for amd64, where they run. Pushing a version tag
 # (git tag v1.2.3) also publishes the images as :1.2.3, with the version
 # stamped into the app, for the Umbrel and StartOS packages to pin.
 #
@@ -68,6 +69,9 @@ jobs:
             platforms: linux/amd64,linux/arm64
           - target: demo
             suffix: "-demo"
+            platforms: linux/amd64
+          - target: site
+            suffix: "-site"
             platforms: linux/amd64
     steps:
       - uses: actions/checkout@v4
