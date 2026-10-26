@@ -11,6 +11,12 @@ professional one tidy package.
 It runs on your own machine and talks only to your own Bitcoin node. No
 account, no cloud, no tracking.
 
+> **Not tax advice.** BTC Tax is a self-help tool for organizing your
+> records. It is not a CPA, enrolled agent, law firm or tax preparer, and its
+> numbers may be incomplete or wrong. You are responsible for your own taxes;
+> check everything with a qualified tax professional before you file. See the
+> full [Disclaimer](#disclaimer).
+
 <!-- Screenshot: Overview (holdings chart and the "Now" card) — docs/images/overview.png -->
 
 ---
@@ -132,13 +138,41 @@ node packages (Umbrel, Start9, RaspiBlitz, myNode) offer one.
 
 ### Good to know
 
-- **It doesn't file your taxes.** It organizes and documents. Your tax
-  professional prepares the return.
+- **It doesn't file your taxes, and it isn't tax advice.** It organizes and
+  documents. Your tax professional prepares the return. See the
+  [Disclaimer](#disclaimer).
 - **Forgot your password?** On the server, run
   `docker compose exec btctax /btctax reset-password`, then set a new one on
   your next visit. Your data is untouched.
 - **Using it away from home?** Put it behind HTTPS (a reverse proxy, or
   Tailscale). Over plain `http://` your password isn't encrypted on the way.
+
+---
+
+## Disclaimer
+
+BTC Tax is software for organizing your own records, for informational and
+educational purposes only.
+
+- **Not professional advice.** It does not provide tax, legal, accounting or
+  financial advice. Using it does not create a professional-client
+  relationship with anyone.
+- **Not a CPA, enrolled agent, law firm or tax preparer.** It does not
+  prepare or file tax returns and does not guarantee any tax outcome.
+- **Its numbers are estimates.** Basis, gains, income, tax estimates, Form
+  8949 lines, 1099-DA checks and the assistant's answers depend on the
+  records you give it, outside price data and its own rules. They may be
+  incomplete or wrong.
+- **You are responsible.** You alone are responsible for checking your
+  numbers, knowing current tax law, your filings, and any tax, interest or
+  penalties owed. Tax law is complex and changes often.
+- **Talk to a professional.** Review your records and tax decisions with a
+  qualified CPA, enrolled agent or tax attorney before you file.
+- **No warranty.** The software is provided as is, without warranty of any
+  kind. Its authors are not liable for any loss arising from its use.
+
+The app shows this on first use, and it is always one click away in the
+footer.
 
 ---
 

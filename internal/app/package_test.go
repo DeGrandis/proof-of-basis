@@ -81,7 +81,7 @@ func TestAccountantPackage(t *testing.T) {
 		t.Errorf("income:\n%s", i)
 	}
 	readme := files["README.txt"]
-	for _, want := range []string{"tax year 2025", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River", "lots-sold-2025.csv"} {
+	for _, want := range []string{"tax year 2025", "PLEASE NOTE\n  This package was prepared with BTC Tax", "not tax, legal or accounting advice", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River", "lots-sold-2025.csv"} {
 		if !strings.Contains(readme, want) {
 			t.Errorf("README lacks %q:\n%s", want, readme)
 		}

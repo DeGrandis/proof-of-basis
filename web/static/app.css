@@ -409,3 +409,15 @@ main > .tab:not(#overview) { padding-top: calc(20px - var(--s-4)); }
 main > .tab > :first-child, main > .tab > :first-child > :first-child, main > .tab > [hidden]:first-child + *,
 main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type { margin-top: 0; }
 @media (max-width: 760px) { main > .tab:not(#overview) { padding-top: calc(20px - var(--s-2)); } }
+
+/* Disclaimer: its page, the first-use notice and the footer link. */
+.disclaimer-text { max-width: 70ch; font-size: var(--fs); line-height: 1.55; }
+.disclaimer-text ul { padding-left: 1.2em; margin: var(--s-3) 0 0; }
+.disclaimer-text li { margin: 0 0 var(--s-2); }
+#disclaimer-pop { width: min(640px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0; margin: auto; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto; }
+#disclaimer-pop::backdrop { background: rgba(0, 0, 0, .55); }
+#disclaimer-pop .detail-inner { padding: var(--s-5); }
+#disclaimer-pop h2 { margin: 0 0 var(--s-3); }
+#disclaimer-pop .row { justify-content: flex-end; margin-top: var(--s-3); }
+#foot { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 1px solid var(--line); text-align: center; }
+body.flow #foot { display: none; }

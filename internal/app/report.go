@@ -233,6 +233,7 @@ func (s *Server) pipeline() (*pipeline, error) {
 	tr := trace.Build(ex, wal, labels, trace.Options{Price: prices.lookup, PriceSource: prices.describe, Lightning: lnEvents, LightningAccount: s.lnAccount(),
 		Unlinked: s.unlinked()})
 	set := s.settings()
+	set[disclaimerKey] = s.st.Setting(disclaimerKey, "")
 	// Tax years and holding periods follow the user's calendar.
 	z := loc(set)
 	for i := range tr.Ops {

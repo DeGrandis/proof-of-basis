@@ -201,6 +201,20 @@
 
   <section id="lookup" class="tab"></section>
 
+  <section id="disclaimer" class="tab" data-title="Disclaimer">
+    <div class="disclaimer-text">
+      <p><b>BTC Tax is software for organizing your own records, for informational and educational purposes only.</b></p>
+      <ul>
+        <li><b>Not professional advice.</b> It does not provide tax, legal, accounting or financial advice. Using it does not create a professional-client relationship with anyone.</li>
+        <li><b>Not a CPA, enrolled agent, law firm or tax preparer.</b> It does not prepare or file tax returns and does not guarantee any tax outcome.</li>
+        <li><b>Its numbers are estimates.</b> Basis, gains, income, tax estimates, Form 8949 lines, 1099-DA checks and the assistant's answers depend on the records you give it, outside price data and its own rules. They may be incomplete or wrong.</li>
+        <li><b>You are responsible.</b> You alone are responsible for checking your numbers, knowing current tax law, your filings, and any tax, interest or penalties owed. Tax law is complex and changes often.</li>
+        <li><b>Talk to a professional.</b> Review your records and tax decisions with a qualified CPA, enrolled agent or tax attorney before you file.</li>
+        <li><b>No warranty.</b> The software is provided as is, without warranty of any kind. Its authors are not liable for any loss arising from its use.</li>
+      </ul>
+    </div>
+  </section>
+
   <section id="lightning" class="tab">
     <div id="ln-head"></div>
     <div class="row small"><label class="inline">Show <select id="ln-filter">
@@ -393,6 +407,14 @@
       <span class="small muted">Deletes all data.</span>
     </div>
   </section>
+  <footer id="foot" class="small muted">An informational tool, not tax advice. <a href="#disclaimer">Disclaimer</a></footer>
+
+  <!-- Shown once, on first use; the same text as the Disclaimer page. -->
+  <dialog id="disclaimer-pop" class="detail-pop" aria-label="Before you start">
+    <div class="detail-inner"><h2>Before you start</h2><div class="disclaimer-body"></div>
+      <div class="row"><button type="button" class="primary" id="disclaimer-ok">I understand</button></div></div>
+  </dialog>
+
   <!-- A record's details, over Flow or Overview. -->
   <dialog id="graph-detail" class="detail-pop" aria-label="Record details"></dialog>
 </main>

@@ -110,7 +110,7 @@ function show(route) {
   if (tab === "tx" || tab === "addr") { showLookup(tab, arg); return; }
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
-  $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || "";
+  $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || $(`#${CSS.escape(tab)}`)?.dataset.title || "";
   document.body.dataset.tab = tab;
   document.body.classList.toggle("flow", tab === "graph");
   scrollTo(0, 0); // the section's id matches the hash, so the browser scrolled it under the header
@@ -193,7 +193,25 @@ async function refresh() {
   }
   if ($("#graph").classList.contains("on")) drawGraph();
   if ($("#lookup").classList.contains("on")) renderLookup();
+  showDisclaimer();
 }
+
+// The disclaimer, once per install: it has to be accepted before first use,
+// and stays on its page, linked from the footer.
+function showDisclaimer() {
+  const box = $("#disclaimer-pop");
+  if (report?.settings?.disclaimerAccepted || box.open) return;
+  $(".disclaimer-body", box).innerHTML = $("#disclaimer .disclaimer-text").innerHTML;
+  box.showModal();
+}
+$("#disclaimer-pop").addEventListener("cancel", (e) => e.preventDefault()); // Escape doesn't dismiss it
+$("#disclaimer-ok").addEventListener("click", async () => {
+  try {
+    await post("/api/disclaimer", {});
+    report.settings.disclaimerAccepted = new Date().toISOString();
+    $("#disclaimer-pop").close();
+  } catch (err) { toast(err.message); }
+});
 
 let pickedYear = (() => { try { return Number(localStorage.getItem("year")) || 0; } catch { return 0; } })();
 $("#year-select").addEventListener("change", (e) => {

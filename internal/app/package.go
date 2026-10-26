@@ -365,7 +365,12 @@ func packageReadme(rep *Report, rd *Readiness, f *Forms, year int, files []strin
 	var b strings.Builder
 	set := rep.Settings
 	fmt.Fprintf(&b, "Bitcoin records for tax year %d\n", year)
-	fmt.Fprintf(&b, "Prepared with btctax on %s. This package documents the records; it is not a tax return.\n\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	fmt.Fprintf(&b, "Prepared with BTC Tax on %s. This package documents the records; it is not a tax return.\n\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	b.WriteString("PLEASE NOTE\n")
+	for _, line := range strings.Split(strings.TrimSpace(packageDisclaimer), "\n") {
+		b.WriteString("  " + line + "\n")
+	}
+	b.WriteString("\n")
 	var y YearSummary
 	for _, x := range rep.Years {
 		if x.Year == year {
