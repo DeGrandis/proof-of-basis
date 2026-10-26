@@ -574,3 +574,28 @@ func TestReviewDir(t *testing.T) {
 		}
 	}
 }
+
+// Node activity has dollar values, and a kind like "spend" means its
+// direction ("how much did I spend on coffee with Lightning").
+func TestLightningAnalysis(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := demo.SeedLightning(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, err := srv.buildReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolbox{s: srv, rep: rep}
+	_, out := tb.run("analyze_records", map[string]any{"source": "lightning", "kind": "spend", "text": "coffee", "measure": "usd", "stat": "sum"})
+	if !strings.Contains(out, "sum: $") || strings.Contains(out, "No rows match") {
+		t.Errorf("coffee spending: %s", out)
+	}
+	if _, out = tb.run("calculate", map[string]any{"expression": "150000 * 1.02295887 - 44110.78"}); !strings.Contains(out, "(rounded: 109,333.05)") {
+		t.Errorf("calculate: %s", out)
+	}
+}

@@ -87,7 +87,9 @@ func (tb *toolbox) runMore(name string, args map[string]any, lk *Lookup) (out st
 		expr := argStr(args, "expression")
 		v, err = calc(expr)
 		if err == nil {
-			out = fmt.Sprintf("%s = %s", expr, strconv.FormatFloat(round6(v), 'f', -1, 64))
+			// Give it rounded with commas too: models garble big numbers
+			// when they format them themselves.
+			out = fmt.Sprintf("%s = %s (rounded: %s)", expr, strconv.FormatFloat(round6(v), 'f', -1, 64), strings.Replace(usdStr(int64(math.Round(v*100))), "$", "", 1))
 			lk.Summary = "Calculated " + clip(expr, 30)
 		}
 	case "holdings_on":

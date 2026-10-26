@@ -383,7 +383,10 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		if acct != "" && !strings.EqualFold(r.acct, acct) {
 			continue
 		}
-		if kind != "" && !kindMatches(kind, r.kind) && !strings.EqualFold(kind, r.kind) && !(src == "review" && reviewDir(kind) == r.kind) {
+		// Node activity is tagged invoice, routed and so on: a kind like
+		// "spend" or "received" means its direction.
+		lnDir := src == "lightning" && (reviewDir(kind) == "out" && r.btc < 0 || reviewDir(kind) == "in" && r.btc > 0)
+		if kind != "" && !kindMatches(kind, r.kind) && !strings.EqualFold(kind, r.kind) && !(src == "review" && reviewDir(kind) == r.kind) && !lnDir {
 			continue
 		}
 		if text != "" && !strings.Contains(r.text, text) {
