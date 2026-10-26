@@ -68,6 +68,13 @@ function pinchZoom(el, onStart, onMove) {
   const mid = () => { const [a, b] = two(); return (a.x + b.x) / 2; };
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
+    // A new gesture's first finger: forget any finger whose lift was never
+    // seen, or two fingers would count as three and pinch never start again.
+    if (e.isPrimary) pts.clear();
+    // Hold the finger on the chart itself: the shape under it may be
+    // redrawn away, and Safari stops sending a touch's events once its
+    // target leaves the page.
+    try { el.setPointerCapture(e.pointerId); } catch {}
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 2) { base = Math.max(gap(), 1); onStart(mid()); }
   });
@@ -79,6 +86,7 @@ function pinchZoom(el, onStart, onMove) {
   const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) base = 0; };
   window.addEventListener("pointerup", up);
   window.addEventListener("pointercancel", up);
+  el.addEventListener("lostpointercapture", up);
   // Safari zooms the page from its own gesture and touch events.
   el.addEventListener("gesturestart", (e) => e.preventDefault());
   el.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
