@@ -6,3 +6,7 @@
 # Never commit real exports
 *.real.csv
 private/
+# Local working folders
+/_design_refs/
+/_logos_tmp/
+/_plans/
