@@ -134,3 +134,22 @@ func TestToolName(t *testing.T) {
 		}
 	}
 }
+
+// The app's note of an earlier answer's lookups goes as a note after it,
+// not as part of the answer the model would copy.
+func TestLookupsNoteApart(t *testing.T) {
+	_, out := toMessages([]ollama.Message{
+		{Role: "user", Content: "biggest sale?"},
+		{Role: "assistant", Content: "It was on 2025-10-04." + lookupsNote + `analyze_records {"source":"sales"} -> [ex:431]]`},
+		{Role: "user", Content: "which account?"},
+	}, false)
+	if len(out) != 3 {
+		t.Fatalf("%d messages", len(out))
+	}
+	if a := out[1].Content[0].(*types.ContentBlockMemberText).Value; a != "It was on 2025-10-04." {
+		t.Errorf("answer: %q", a)
+	}
+	if n := out[2].Content[0].(*types.ContentBlockMemberText).Value; !strings.Contains(n, "[Note from the app] Lookups behind that answer: analyze_records") {
+		t.Errorf("note: %q", n)
+	}
+}

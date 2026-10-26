@@ -387,6 +387,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	var thinkTime time.Duration
 	var thinkStart time.Time
 	corrections := 0
+	seen := map[string]bool{} // lookups made this turn, by name and arguments
 	for round := 0; ; round++ {
 		// Out of lookups: one last turn without tools so there is always
 		// an answer, never a plan that stops mid-sentence.
@@ -480,6 +481,15 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		}
 		msgs = append(msgs, reply)
 		for _, tc := range reply.ToolCalls {
+			// The same lookup again in one turn adds nothing; models
+			// sometimes repeat it until they run out of rounds.
+			sig, _ := json.Marshal(tc.Function.Arguments)
+			if sig := tc.Function.Name + string(sig); seen[sig] {
+				msgs = append(msgs, ollama.Message{Role: "tool", ToolName: tc.Function.Name, Content: "You already made this exact lookup; its result is above. Answer from it."})
+				continue
+			} else {
+				seen[sig] = true
+			}
 			had := len(tools.actions)
 			lk, result := tools.run(tc.Function.Name, tc.Function.Arguments)
 			lookups = append(lookups, lk)

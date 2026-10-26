@@ -596,6 +596,13 @@ func TestPartialSale(t *testing.T) {
 	if _, out := tb.run("simulate_sale", map[string]any{"btc": "0.1", "account": "all"}); !strings.Contains(out, "needs one account") || !strings.Contains(out, "Phone wallet: proceeds") {
 		t.Errorf("compare: %s", out)
 	}
+	// An amount wins over "all" sent along with it.
+	if _, out := tb.run("simulate_sale", map[string]any{"btc": 0.1, "all": true}); !strings.Contains(out, "needs one account") {
+		t.Errorf("all with an amount: %s", out)
+	}
+	if _, out := tb.run("simulate_sale", map[string]any{"account": "Coldcard", "btc": 0.1, "all": true}); !strings.Contains(out, "Selling 0.10000000 BTC from Coldcard") {
+		t.Errorf("account, all and an amount: %s", out)
+	}
 }
 
 // "How did I get my bitcoin?": every coin held, by how and where it was
@@ -611,7 +618,7 @@ func TestSourcesOverall(t *testing.T) {
 		t.Fatal(err)
 	}
 	tb := &toolbox{s: srv, rep: rep}
-	_, out := tb.run("accounts", map[string]any{"sources": true})
+	_, out := tb.run("accounts", map[string]any{"sources": true, "date": "2026-10-25"}) // the date sent along doesn't win
 	if !strings.Contains(out, "Where the "+btcStr(rep.Holdings)+" held now came from") || !strings.Contains(out, "bought in") {
 		t.Errorf("sources: %s", out)
 	}

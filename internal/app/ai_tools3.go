@@ -178,7 +178,8 @@ func (tb *toolbox) sourcesOverall() (string, string, error) {
 }
 
 func (tb *toolbox) accountsTool(a map[string]any) (string, string, error) {
-	if d := argStr(a, "date"); d != "" {
+	// Asking where coins came from wins over a date sent along with it.
+	if d := argStr(a, "date"); d != "" && a["sources"] != true {
 		return tb.holdingsOn(d)
 	}
 	if n := argStr(a, "name"); n != "" {
@@ -297,10 +298,16 @@ func (tb *toolbox) simulate(a map[string]any) (string, string, error) {
 	if _, ok := a["target_tax"]; ok {
 		return tb.solve(a, "tax", argNum(a, "target_tax"))
 	}
-	if strings.EqualFold(acct, "all") || acct == "" && all {
-		if !all && (argNum(a, "btc") > 0 || argNum(a, "usd") > 0) {
+	// An amount wins over "all" sent along with it: selling 0.1 BTC isn't
+	// selling everything.
+	if argNum(a, "btc") > 0 || argNum(a, "usd") > 0 {
+		all = false
+		a["all"] = false
+		if acct == "" || strings.EqualFold(acct, "all") {
 			return tb.compareAccounts(a)
 		}
+	}
+	if strings.EqualFold(acct, "all") || acct == "" && all {
 		return tb.sellEverything()
 	}
 	if acct == "" {

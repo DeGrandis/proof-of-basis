@@ -138,6 +138,10 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 	return reply, nil
 }
 
+// lookupsNote starts the note the app adds to earlier answers (see
+// lookupNote in internal/app).
+const lookupsNote = "\n\n[Lookups behind this answer: "
+
 var toolNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]+`)
 
 // toolName is a tool's name without a "functions." prefix or anything
@@ -257,6 +261,14 @@ func toMessages(in []ollama.Message, plain bool) ([]types.SystemContentBlock, []
 			add(types.ConversationRoleUser, text(m.Content)...)
 		case "assistant":
 			pending = pending[:0]
+			// An earlier answer ends with the app's note of the lookups
+			// behind it. Left in the answer, models copy it into their own,
+			// so it goes after it as a note from the app.
+			if body, note, ok := strings.Cut(m.Content, lookupsNote); ok && m.Raw == nil && len(m.ToolCalls) == 0 {
+				add(types.ConversationRoleAssistant, text(strings.TrimSpace(body))...)
+				add(types.ConversationRoleUser, text("[Note from the app] Lookups behind that answer: "+strings.TrimSuffix(note, "]"))...)
+				continue
+			}
 			if plain {
 				var b strings.Builder
 				if raw, ok := m.Raw.(types.Message); ok {
