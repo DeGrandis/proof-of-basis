@@ -24,7 +24,7 @@ func TestToMessages(t *testing.T) {
 		&types.ContentBlockMemberText{Value: "Looking."},
 		&types.ContentBlockMemberToolUse{Value: types.ToolUseBlock{ToolUseId: aws.String("tu_1"), Name: aws.String("tax_year"), Input: document.NewLazyDocument(map[string]any{"year": 2025})}},
 	}}
-	system, out := toMessages([]ollama.Message{
+	history := []ollama.Message{
 		{Role: "system", Content: "You are the assistant."},
 		{Role: "user", Content: "What did I owe in 2025?"},
 		{Role: "assistant", Content: "Looking.", ToolCalls: []ollama.ToolCall{call("tax_year")}, Raw: raw},
@@ -33,7 +33,8 @@ func TestToMessages(t *testing.T) {
 		{Role: "tool", Content: "found 2"},
 		{Role: "tool", Content: "no price"},
 		{Role: "system", Content: "Answer now."},
-	})
+	}
+	system, out := toMessages(history, false)
 	if len(system) != 1 || system[0].(*types.SystemContentBlockMemberText).Value != "You are the assistant." {
 		t.Fatalf("system %+v", system)
 	}
@@ -62,6 +63,19 @@ func TestToMessages(t *testing.T) {
 	}
 	if note, ok := out[4].Content[2].(*types.ContentBlockMemberText); !ok || note.Value != "[Note from the app] Answer now." {
 		t.Errorf("correction: %#v", out[4].Content[2])
+	}
+	// The last round offers no tools: Converse then refuses tool blocks,
+	// so the same history goes as text.
+	_, out = toMessages(history, true)
+	for _, m := range out {
+		for _, b := range m.Content {
+			if _, ok := b.(*types.ContentBlockMemberText); !ok {
+				t.Fatalf("plain history has a %T", b)
+			}
+		}
+	}
+	if s := out[1].Content[0].(*types.ContentBlockMemberText).Value; !strings.Contains(s, "Looking.") || !strings.Contains(s, "[Lookup: tax_year") {
+		t.Errorf("plain call: %q", s)
 	}
 }
 

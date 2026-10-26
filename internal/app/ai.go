@@ -1122,6 +1122,11 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 	if args == nil {
 		args = map[string]any{}
 	}
+	// Some models wrap a value in its schema ({"type": "string", "value":
+	// "spend"}); take the value out.
+	for k, v := range args {
+		args[k] = unwrapArg(v)
+	}
 	// Some models fill every optional argument with "none" or "null";
 	// those mean the argument wasn't given, not a value.
 	for k, v := range args {
@@ -1574,32 +1579,50 @@ func claimsChange(text string) bool {
 
 var (
 	lookupNoteRe = regexp.MustCompile(`\s*\[Lookups behind this answer:[^\n]*\]`)
-	fileClaimRe  = regexp.MustCompile(`(?i)[^.!?\n]*\b(csv|download|spreadsheet)\b[^.!?\n]*\b(below|above|attached|under (this|my|the) answer)\b[^.!?\n]*[.!]?`)
-	chartClaimRe = regexp.MustCompile(`(?i)[^.!?\n]*\b(chart|graph|plot)\b[^.!?\n]*\b(below|above|attached|under (this|my|the) answer)\b[^.!?\n]*[.!]?`)
+	fileClaimRe  = regexp.MustCompile(`(?i)\b(csv|download|spreadsheet)\b.*\b(below|above|attached|under (this|my|the) answer)\b`)
+	chartClaimRe = regexp.MustCompile(`(?i)\b(chart|graph|plot)\b.*\b(below|above|attached|under (this|my|the) answer)\b`)
 	blankLinesRe = regexp.MustCompile(`\n{3,}`)
-	listClaimRe  = regexp.MustCompile(`(?i)[^.!?\n]*\b((listed|shown|displayed) (above|below)|see (above|below))\b[^.!?\n]*[.!]?`)
-	listLineRe   = regexp.MustCompile(`(?m)^\s*([-*•]|\d+\.)\s`)
-	recordTagRe  = regexp.MustCompile(`\[(ex|tx|ln|rec):[^\]\s]*\]\s*(-\s+)?`)
+	listClaimRe  = regexp.MustCompile(`(?i)\b((listed|shown|displayed) (above|below)|see (above|below))\b`)
+	// A sentence runs to . ! or ? followed by a space or the end, so
+	// "0.74 BTC" stays whole; a line break is a piece of its own.
+	sentenceRe  = regexp.MustCompile(`(?:[^.!?\n]|[.!?][^\s])+[.!?]*[ \t]*|[.!?]+[ \t]*|\n`)
+	listLineRe  = regexp.MustCompile(`(?m)^\s*([-*•]|\d+\.)\s`)
+	recordTagRe = regexp.MustCompile(`\[(ex|tx|ln|rec):[^\]\s]*\]\s*(-\s+)?`)
 )
+
+// unwrapArg turns {"type": ..., "value": v} into v, inside objects too.
+func unwrapArg(v any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	if inner, has := m["value"]; has && (len(m) == 1 || len(m) == 2 && m["type"] != nil) {
+		return unwrapArg(inner)
+	}
+	for k, x := range m {
+		m[k] = unwrapArg(x)
+	}
+	return m
+}
 
 // cleanAnswer drops a copied lookups note, any sentence pointing to a
 // download or chart when this answer made none, and any paragraph about
 // the tools themselves (a tool's name, or a call written out as JSON).
 func cleanAnswer(text string, file, chart bool) string {
 	text = lookupNoteRe.ReplaceAllString(text, "")
-	if !file {
-		text = fileClaimRe.ReplaceAllString(text, "")
-	}
-	if !chart {
-		text = chartClaimRe.ReplaceAllString(text, "")
-	}
 	// Record tags like [ex:12] are for lookups; the app links records itself.
 	text = recordTagRe.ReplaceAllString(text, "")
 	// "They are listed above" with no list: the user never sees tool
 	// results, so there is nothing above.
-	if !listLineRe.MatchString(text) {
-		text = listClaimRe.ReplaceAllString(text, "")
+	noList := !listLineRe.MatchString(text)
+	var out strings.Builder
+	for _, s := range sentenceRe.FindAllString(text, -1) {
+		if !file && fileClaimRe.MatchString(s) || !chart && chartClaimRe.MatchString(s) || noList && listClaimRe.MatchString(s) {
+			continue
+		}
+		out.WriteString(s)
 	}
+	text = out.String()
 	paras := strings.Split(text, "\n\n")
 	kept := paras[:0]
 	for _, p := range paras {

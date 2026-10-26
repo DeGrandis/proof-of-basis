@@ -67,7 +67,9 @@ func DisplayName(model string) string {
 // text reaches onDelta in one piece. The reply's own form is kept on Raw so
 // the next round sends it back unchanged.
 func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onThink func(string)) (ollama.Message, error) {
-	system, msgs := toMessages(req.Messages)
+	// With no tools offered (the last round), Converse refuses tool blocks
+	// in the history, so earlier lookups go as plain text.
+	system, msgs := toMessages(req.Messages, len(req.Tools) == 0)
 	in := &bedrockruntime.ConverseInput{
 		ModelId:         aws.String(c.model),
 		Messages:        msgs,
@@ -191,7 +193,7 @@ func textToolCalls(text string, offered []ollama.Tool) []ollama.ToolCall {
 // app) becomes a note in the user's turn; tool results answer the tool
 // calls before them, in order; and turns by the same speaker are merged so
 // they alternate.
-func toMessages(in []ollama.Message) ([]types.SystemContentBlock, []types.Message) {
+func toMessages(in []ollama.Message, plain bool) ([]types.SystemContentBlock, []types.Message) {
 	var system []types.SystemContentBlock
 	var out []types.Message
 	var pending []string // tool-use ids waiting for their results
@@ -225,6 +227,24 @@ func toMessages(in []ollama.Message) ([]types.SystemContentBlock, []types.Messag
 			add(types.ConversationRoleUser, text(m.Content)...)
 		case "assistant":
 			pending = pending[:0]
+			if plain {
+				var b strings.Builder
+				if raw, ok := m.Raw.(types.Message); ok {
+					for _, blk := range raw.Content {
+						if t, ok := blk.(*types.ContentBlockMemberText); ok {
+							b.WriteString(t.Value)
+						}
+					}
+				} else {
+					b.WriteString(m.Content)
+				}
+				for _, tc := range m.ToolCalls {
+					args, _ := json.Marshal(tc.Function.Arguments)
+					fmt.Fprintf(&b, "\n[Lookup: %s %s]", tc.Function.Name, args)
+				}
+				add(types.ConversationRoleAssistant, text(b.String())...)
+				continue
+			}
 			if raw, ok := m.Raw.(types.Message); ok {
 				for _, b := range raw.Content {
 					if tu, ok := b.(*types.ContentBlockMemberToolUse); ok {

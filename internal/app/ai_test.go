@@ -519,6 +519,12 @@ func TestClaimsChange(t *testing.T) {
 	if got := cleanAnswer("1. [tx:ab12:0] - 2026-08-11 Hot wallet sent 0.0002 BTC\n2. [ex:895] Strike sent 0.0001 BTC", false, false); got != "1. 2026-08-11 Hot wallet sent 0.0002 BTC\n2. Strike sent 0.0001 BTC" {
 		t.Errorf("record tags kept: %q", got)
 	}
+	if got := cleanAnswer("There are 61 items waiting for review, listed below, totaling 0.74352287 BTC. Most are small.", false, false); got != "Most are small." {
+		t.Errorf("decimal split: %q", got)
+	}
+	if got := cleanAnswer("You hold 1.02 BTC worth $81,876.51.\nIt's up 3.5% today!", false, false); got != "You hold 1.02 BTC worth $81,876.51.\nIt's up 3.5% today!" {
+		t.Errorf("plain text changed: %q", got)
+	}
 	if got := cleanAnswer("You have 61 items waiting for review. They are listed above.", false, false); got != "You have 61 items waiting for review." {
 		t.Errorf("listed above kept: %q", got)
 	}
@@ -665,5 +671,20 @@ func TestNoneArgs(t *testing.T) {
 	// No account named: each account that holds enough, side by side.
 	if !strings.Contains(nones, "needs one account") || !strings.Contains(nones, "Hot wallet: proceeds") {
 		t.Errorf("compare: %s", nones)
+	}
+}
+
+// A value wrapped in its schema is taken out, inside objects too.
+func TestUnwrapArg(t *testing.T) {
+	got := unwrapArg(map[string]any{"type": "object", "value": map[string]any{"account": map[string]any{"type": "string", "value": "Strike"}, "direction": "out"}})
+	m, ok := got.(map[string]any)
+	if !ok || m["account"] != "Strike" || m["direction"] != "out" {
+		t.Errorf("unwrapped: %#v", got)
+	}
+	if v := unwrapArg(map[string]any{"type": "string", "value": "spend"}); v != "spend" {
+		t.Errorf("plain: %#v", v)
+	}
+	if v := unwrapArg(map[string]any{"min_usd": 5.0}); v.(map[string]any)["min_usd"] != 5.0 {
+		t.Errorf("ordinary object changed: %#v", v)
 	}
 }
