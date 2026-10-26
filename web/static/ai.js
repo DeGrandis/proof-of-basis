@@ -76,6 +76,7 @@ function aiContext() {
     year: Number($("#year-select")?.value) || new Date().getUTCFullYear(),
     selected: typeof selected === "string" && selected ? selected : "",
     focus: ai.focus,
+    lang: window.POB_I18N?.lang || "en",
   };
 }
 
@@ -262,15 +263,15 @@ $("#ai-list").addEventListener("click", async (e) => {
   const open = e.target.closest("[data-id]"), ren = e.target.closest("[data-rename]"), del = e.target.closest("[data-del]");
   if (open) aiLoadChat(Number(open.dataset.id));
   else if (ren) {
-    const t = prompt("Name this chat", ren.closest("li").querySelector("span").textContent);
+    const t = prompt(t("Name this chat"), ren.closest("li").querySelector("span").textContent);
     if (t && t.trim()) { try { await post(`/api/ai/chats/${ren.dataset.rename}/rename`, { title: t.trim() }); if (Number(ren.dataset.rename) === ai.chat) $("#ai-title").textContent = t.trim(); } catch (err) { toast(err.message); } $("#ai-list").hidden = true; aiShowList(); }
   } else if (del) {
-    if (!confirm("Delete this chat?")) return;
+    if (!confirm(t("Delete this chat?"))) return;
     try { await api(`/api/ai/chats/${del.dataset.del}`, { method: "DELETE" }); } catch (err) { toast(err.message); }
     if (Number(del.dataset.del) === ai.chat) aiLoadChat(null);
     $("#ai-list").hidden = true; aiShowList();
   } else if (e.target.id === "ai-del-all") {
-    if (!confirm("Delete every saved chat?")) return;
+    if (!confirm(t("Delete every saved chat?"))) return;
     try { await api("/api/ai/chats", { method: "DELETE" }); } catch (err) { toast(err.message); }
     aiLoadChat(null);
   }

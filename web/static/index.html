@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="app.css">
 <script src="theme-init.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js" defer></script>
 <script src="record.js" defer></script>
 <script src="deck.js" defer></script>
@@ -197,7 +198,7 @@
     <div id="legend" class="row small tg-legend" data-view="accounts"></div>
     <div id="tg-legend" class="row small tg-legend" data-view="custody"></div>
     <div class="graph-area">
-      <div id="graph-wrap"><svg id="flow" role="img" aria-label="Each account's balance over time with its events"></svg><div id="tg" style="display:none" aria-label="How coins moved between your accounts over time"></div></div>
+      <div id="graph-wrap"><svg id="flow" data-i18n-self role="img" aria-label="Each account's balance over time with its events"></svg><div id="tg" style="display:none" aria-label="How coins moved between your accounts over time"></div></div>
     </div>
   </section>
 
@@ -325,6 +326,7 @@
   <section id="settings" class="tab" data-title="Settings">
     <h2>Display</h2>
     <form id="display-form" class="card grid">
+      <label>Language <select name="lang"></select></label>
       <label>Dollar amounts <select name="cents"><option value="yes">With cents ($1,234.56)</option><option value="no">Whole dollars ($1,234)</option></select></label>
       <label>Bitcoin amounts <select name="unit"><option value="btc">BTC (0.00123456 BTC)</option><option value="sats">Sats (123,456 sats)</option><option value="bitcoin">Bitcoin sign (₿123,456)</option></select></label>
       <label>Colors <select name="colors"><option value="standard">Standard (green and red)</option><option value="cb">Color-blind friendly (blue and orange)</option></select></label>

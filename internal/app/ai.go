@@ -197,7 +197,11 @@ type PageContext struct {
 	Year     int    `json:"year"`     // the Overview's tax year
 	Selected string `json:"selected"` // the event picked in Flow, if any
 	Focus    string `json:"focus"`    // an item the user asked about directly
+	Lang     string `json:"lang"`     // the language the app is shown in
 }
+
+// answerLangs: the app's languages other than English, for the answer.
+var answerLangs = map[string]string{"es": "Spanish", "fr": "French", "de": "German", "pl": "Polish", "ru": "Russian"}
 
 // Lookup is one tool call, as shown under an answer.
 type Lookup struct {
@@ -637,8 +641,11 @@ Rules:
 - Short-term means held one year or less; long-term means more than a year (US rules).
 - This app untangles the user's records and prepares documents for their tax professional; it doesn't prepare returns. On [Taxes](#taxes): "Ready for your accountant?" lists what to fix for a year and downloads the accountant package; Form 8949 lines by box, checked against imported 1099-DAs; income by type; gifts and donations; the January 1, 2025 per-wallet split. On [Overview](#overview), "Plan a sale or spend" shows the coins a sale would use and can record that choice before the sale. Point to these when they answer the question.
 - To correct a record already labeled, or the value of imported income, use label_items with its id, category and usd.
-
 `, now.Format("2006-01-02"))
+	if name := answerLangs[pc.Lang]; name != "" {
+		fmt.Fprintf(&b, "- The user reads this app in %s: write your answers in %s. Keep account names, amounts, dates and links exactly as they are.\n", name, name)
+	}
+	b.WriteString("\n")
 
 	set := rep.Settings
 	fmt.Fprintf(&b, "## Settings\nJurisdiction %s. Cost basis method %s. Network fees on own transfers: %s. Tax rates used for estimates: short-term %s%%, long-term %s%%.\n\n",

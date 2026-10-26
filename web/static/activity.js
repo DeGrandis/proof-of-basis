@@ -51,7 +51,7 @@ async function actionDo(act, id) {
     try { a = await go(false); }
     catch (e) {
       if (!/changed again/.test(e.message)) throw e;
-      if (!confirm(`${e.message}.\n\n${act === "undo" ? "Undo" : "Redo"} anyway?`)) return null;
+      if (!confirm(`${t(e.message)}.\n\n${t(act === "undo" ? "Undo anyway?" : "Redo anyway?")}`)) return null;
       a = await go(true);
     }
     toast({ apply: "Applied", dismiss: "Dismissed", undo: "Undone", redo: "Redone" }[act]);

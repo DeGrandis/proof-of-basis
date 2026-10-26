@@ -220,7 +220,7 @@ function showDemo() {
   }
 }
 $("#demo-reset").addEventListener("click", async () => {
-  if (!confirm("Start over with a fresh copy of the demo? Your changes here are dropped.")) return;
+  if (!confirm(t("Start over with a fresh copy of the demo? Your changes here are dropped."))) return;
   try { await post("/api/demo/reset", {}); } catch {}
   location.hash = "";
   location.reload();
@@ -480,7 +480,7 @@ $("#ln-form").addEventListener("submit", async (e) => {
   } catch (err) { toast(err.message); }
 });
 $("#ln-forget").addEventListener("click", async () => {
-  if (!confirm("Disconnect the node and forget its rune? Its synced history stays until you remove it with Wipe everything.")) return;
+  if (!confirm(t("Disconnect the node and forget its rune? Its synced history stays until you remove it with Wipe everything."))) return;
   await post("/api/settings", { clnForget: "1" });
   toast("Node disconnected; rune forgotten.");
   loadSettings(); refresh();
@@ -795,7 +795,7 @@ $("#wallets-table").addEventListener("click", async (e) => {
     } catch (err) { toast(err.message); }
     refresh();
   }
-  if (del && confirm("Remove this wallet and its scanned transactions?")) {
+  if (del && confirm(t("Remove this wallet and its scanned transactions?"))) {
     await api(`/api/accounts/${del}`, { method: "DELETE" });
     refresh();
   }
@@ -879,7 +879,7 @@ async function renderImports() {
 }
 $("#imports-table").addEventListener("click", async (e) => {
   const id = e.target.dataset.delImport;
-  if (id && confirm("Remove this import and all its rows?")) {
+  if (id && confirm(t("Remove this import and all its rows?"))) {
     await api(`/api/imports/${id}`, { method: "DELETE" });
     refresh();
   }
@@ -1372,7 +1372,7 @@ function drawTimeline() {
   const svg = $("#flow");
   if (!report || !$("#graph").classList.contains("on")) return;
   const ev = report.graph || [];
-  if (!ev.length) { svg.setAttribute("width", 600); svg.setAttribute("height", 60); svg.innerHTML = `<text x="16" y="34">Nothing to draw yet.</text>`; return; }
+  if (!ev.length) { svg.setAttribute("width", 600); svg.setAttribute("height", 60); svg.innerHTML = `<text x="16" y="34">${esc(t("Nothing to draw yet."))}</text>`; return; }
   const sig = ev.length + ":" + ev[0].t + ":" + ev.at(-1).t;
   if (view.key !== sig) { // new data: rebuild the timeline and show everything
     axis = buildAxis(ev);
@@ -1393,7 +1393,7 @@ function drawTimeline() {
     yy += head;
     for (const l of b.lanes) { laneTop[l] = yy; yy += laneH; }
     out += `<rect class="band" x="0" y="${top}" width="${W}" height="${yy - top}" rx="8"/>`;
-    labels += `<text class="band-label" x="10" y="${top + (narrow ? 12 : 15)}">${esc(b.label)}</text>`;
+    labels += `<text class="band-label" x="10" y="${top + (narrow ? 12 : 15)}">${esc(t(b.label))}</text>`;
     yy += narrow ? 8 : 12;
   }
   const nameY = (top) => narrow ? top + 14 : top + laneH / 2;
@@ -1426,14 +1426,14 @@ function drawTimeline() {
     }
     // The line stops at zero, so ring the point where it first went below.
     const dip = pts.find((p) => p.bal < 0);
-    if (dip && visible(posOf(dip.t))) out += `<circle class="dip" cx="${xOf(posOf(dip.t), W)}" cy="${yOf(0)}" r="9"><title>${esc(`Below zero from ${day(dip.t)}: ${amt(dip.bal)}`)}</title></circle>`;
+    if (dip && visible(posOf(dip.t))) out += `<circle class="dip" cx="${xOf(posOf(dip.t), W)}" cy="${yOf(0)}" r="9"><title>${esc(t(`Below zero from ${day(dip.t)}: ${amt(dip.bal)}`))}</title></circle>`;
     for (const p of pts) {
       const pp = posOf(p.t);
       if (!visible(pp)) continue;
       const [cls, glyph] = ledgerIcon(p);
       const e = p.e;
       const what = e.kind === "transfer" ? (p.dir === "in" ? `Moved in from ${e.account}` : `Moved out to ${e.to}`) : KIND_NAMES[e.label || e.kind] || e.kind;
-      out += `<text class="lg-icon ${cls}" data-key="${esc(e.key)}" x="${xOf(pp, W)}" y="${yOf(p.bal) + 4}" text-anchor="middle"><title>${esc(`${what}: ${amt(e.sats)}\n${day(e.t)}\nBalance after: ${amt(p.bal)}`)}</title>${glyph}</text>`;
+      out += `<text class="lg-icon ${cls}" data-key="${esc(e.key)}" x="${xOf(pp, W)}" y="${yOf(p.bal) + 4}" text-anchor="middle"><title>${esc(t(`${what}: ${amt(e.sats)}\n${day(e.t)}\nBalance after: ${amt(p.bal)}`))}</title>${glyph}</text>`;
     }
     nowBal[acct] = pts.length ? pts.at(-1).bal : 0;
   }
@@ -2026,7 +2026,7 @@ $("#settings-form").addEventListener("submit", async (e) => {
 let priceHosts = {};
 $("#fetch-prices-btn").addEventListener("click", async () => {
   const src = $("#price-source").value;
-  if (!confirm(`This contacts ${priceHosts[src] || src} to download BTC/USD daily prices. Nothing about you or your wallets is sent. Continue?`)) return;
+  if (!confirm(t(`This contacts ${priceHosts[src] || src} to download BTC/USD daily prices. Nothing about you or your wallets is sent. Continue?`))) return;
   try {
     await post("/api/settings", { priceSource: src });
     const r = await post("/api/prices/fetch", {});
@@ -2043,7 +2043,7 @@ $("#backup-form").addEventListener("submit", async (e) => {
   const f = e.target, encrypt = f.encrypt.checked;
   if (encrypt && f.pass.value.length < 8) { toast("Choose a passphrase of at least 8 characters."); return; }
   if (encrypt && f.pass.value !== f.pass2.value) { toast("The passphrases don't match."); return; }
-  if (!encrypt && !confirm("Without encryption, anyone with the file can see your wallets' public keys, your history and your Lightning rune. Download it unencrypted anyway?")) return;
+  if (!encrypt && !confirm(t("Without encryption, anyone with the file can see your wallets' public keys, your history and your Lightning rune. Download it unencrypted anyway?"))) return;
   const btn = $("button[type=submit]", f);
   btn.disabled = true; btn.textContent = "Preparing…";
   try {
@@ -2063,7 +2063,7 @@ $("#backup-form").addEventListener("submit", async (e) => {
 $("#restore-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
-  const typed = prompt("Restoring replaces ALL data in this app with the backup's: wallets, imports, labels, settings and Lightning history. A copy of the current data is saved first.\n\nType REPLACE to continue.");
+  const typed = prompt(t("Restoring replaces ALL data in this app with the backup's: wallets, imports, labels, settings and Lightning history. A copy of the current data is saved first.\n\nType REPLACE to continue."));
   if (typed !== "REPLACE") { if (typed !== null) toast("Nothing was changed."); return; }
   const fd = new FormData(f);
   fd.append("confirm", "REPLACE");
@@ -2108,7 +2108,7 @@ $("#test-btn").addEventListener("click", async () => {
 });
 
 $("#wipe-btn").addEventListener("click", async () => {
-  const typed = prompt("This deletes every wallet, import, label, price and setting, including your Fulcrum address. It cannot be undone.\n\nType WIPE to continue.");
+  const typed = prompt(t("This deletes every wallet, import, label, price and setting, including your Fulcrum address. It cannot be undone.\n\nType WIPE to continue."));
   if (typed !== "WIPE") { if (typed !== null) toast("Nothing deleted."); return; }
   try {
     await post("/api/wipe", { confirm: "WIPE" });
@@ -2129,6 +2129,12 @@ checkFulcrum();
 (() => {
   const f = $("#display-form");
   if (!f) return;
+  // Language: the browser's ("System") unless one is picked; a change
+  // reloads the page in it (i18n.js translates as the page draws).
+  const L = window.POB_I18N;
+  f.lang.innerHTML = `<option value="">System (${esc(L.LANGS[L.system])})</option>` +
+    Object.entries(L.LANGS).map(([c, name]) => `<option value="${c}" data-no-i18n>${esc(name)}</option>`).join("");
+  f.lang.value = L.chosen;
   f.cents.value = prefs.cents ? "yes" : "no";
   f.unit.value = prefs.unit;
   f.colors.value = prefs.colors;
@@ -2136,6 +2142,11 @@ checkFulcrum();
   sample(); setUnitLabels();
   f.addEventListener("submit", (e) => e.preventDefault());
   f.addEventListener("change", () => {
+    if (f.lang.value !== L.chosen) {
+      try { if (f.lang.value) localStorage.setItem("lang", f.lang.value); else localStorage.removeItem("lang"); } catch {}
+      location.reload();
+      return;
+    }
     prefs.cents = f.cents.value === "yes";
     prefs.unit = f.unit.value;
     prefs.colors = f.colors.value;
@@ -2164,7 +2175,7 @@ $("#logout-btn").addEventListener("click", async () => {
   location.href = "/login";
 });
 $("#logout-all-btn").addEventListener("click", async () => {
-  if (!confirm("Sign out on every device, including this one?")) return;
+  if (!confirm(t("Sign out on every device, including this one?"))) return;
   try { await post("/api/auth/logout-all", {}); } catch {}
   location.href = "/login";
 });
