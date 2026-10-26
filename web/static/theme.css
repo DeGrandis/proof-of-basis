@@ -406,8 +406,15 @@ details summary { cursor: pointer; color: var(--text-2); }
 /* Hero: swap dollars and bitcoin */
 #hero .worth-row { position: relative; display: flex; align-items: center; justify-content: center; max-width: 100%; }
 #hero .worth-row .hero-swap { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: var(--s-3); }
-@media (max-width: 760px) { #hero .worth-row { gap: var(--s-2); } #hero .worth-row .hero-swap { position: static; transform: none; margin: 0; } }
-#hero .worth { overflow-wrap: anywhere; }
+/* On a phone the button keeps one place at the row's right edge, and the
+   amount stays on one line between equal margins (fitHero shrinks it if it
+   must), so swapping moves nothing. */
+@media (max-width: 760px) {
+  #hero .worth-row { width: 100%; padding: 0 48px; box-sizing: border-box; min-height: var(--fs-hero); }
+  #hero .worth-row .hero-swap { left: auto; right: 0; margin: 0; }
+}
+#hero .worth { white-space: nowrap; }
+#hero .worth .unit { font-size: .5em; font-weight: 600; letter-spacing: 0; margin-left: .2em; color: var(--text-2); }
 .hero-swap { flex: none; width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; border: 1px solid var(--line); background: var(--bg); color: var(--text-2); cursor: pointer; }
 .hero-swap:hover { color: var(--text); border-color: var(--text-2); }
 .hero-swap svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

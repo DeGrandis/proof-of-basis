@@ -115,7 +115,7 @@ function show(route) {
   document.body.classList.toggle("flow", tab === "graph");
   scrollTo(0, 0); // the section's id matches the hash, so the browser scrolled it under the header
   requestAnimationFrame(() => scrollTo(0, 0));
-  if (tab === "overview" && report) { drawHistory(); if (typeof drawSummary === "function") drawSummary(); }
+  if (tab === "overview" && report) { fitHero(); drawHistory(); if (typeof drawSummary === "function") drawSummary(); }
   if (tab === "graph") drawGraph();
 }
 function showLookup(kind, arg) {
@@ -239,6 +239,19 @@ $("#year-select").addEventListener("change", (e) => {
 
 let heroBTC = (() => { try { return localStorage.getItem("heroFirst") === "btc"; } catch { return false; } })();
 
+// fitHero shrinks the big amount to fit its row when it's too wide (a long
+// sats or BTC figure on a phone) instead of letting it wrap.
+function fitHero() {
+  const w = $("#hero .worth");
+  if (!w) return;
+  w.style.fontSize = "";
+  const row = w.parentElement, cs = getComputedStyle(row);
+  const room = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (room > 0 && w.scrollWidth > room) w.style.fontSize = Math.floor(parseFloat(getComputedStyle(w).fontSize) * room / w.scrollWidth) + "px";
+}
+window.addEventListener("resize", fitHero);
+document.fonts?.ready.then(fitHero); // measured again once the display font is in
+
 function renderOverview() {
   const r = report;
   const thisYear = new Date().getFullYear();
@@ -251,7 +264,8 @@ function renderOverview() {
   // The swap button puts dollars or bitcoin first; the choice is remembered.
   const swapTip = heroBTC ? "Show dollars first" : "Show bitcoin first";
   const swap = `<button type="button" id="hero-swap" class="hero-swap" title="${swapTip}" aria-label="${swapTip}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v14m0 0-3-3m3 3 3-3M17 20V6m0 0-3 3m3-3 3 3"/></svg></button>`;
-  const big = (v, label) => `<div class="worth-row"><div class="worth">${v}</div>${r.price ? swap : ""}</div><div class="label">${label}</div>`;
+  // The unit (BTC, sats) is set smaller so the number carries the size.
+  const big = (v, label) => `<div class="worth-row"><div class="worth">${v.replace(/ (BTC|sats?)$/, ' <span class="unit">$1</span>')}</div>${r.price ? swap : ""}</div><div class="label">${label}</div>`;
   const priceLine = `${usd(r.price)} per BTC <span class="muted">(${esc(r.priceDay)})</span>`;
   $("#hero").innerHTML = r.price
     ? (heroBTC ? big(amt(r.holdingsSats), "Bitcoin held") + `<div class="held">${usd(worth)} · ${priceLine}</div>`
@@ -263,6 +277,7 @@ function renderOverview() {
     try { localStorage.setItem("heroFirst", heroBTC ? "btc" : "usd"); } catch {}
     renderOverview();
   });
+  fitHero();
   const tiles = [
     [`${yr} realized`, ys ? usd(ys.shortProceeds - ys.shortBasis + ys.longProceeds - ys.longBasis) : usd(0)],
     [`${yr} est. tax`, ys ? usd(ys.estimatedTax) : usd(0)],
