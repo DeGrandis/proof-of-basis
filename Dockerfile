@@ -21,6 +21,10 @@ RUN if [ "$PRICE_SOURCE" != "none" ]; then \
       || echo "warning: price fetch failed; using the committed price history"; \
     fi
 RUN mkdir -p /out/data
+# Empty mount points. Docker makes these itself, but StartOS runs the image's
+# own filesystem and mounts into them, so a scratch image must ship them.
+RUN mkdir -p /out/rootfs/proc /out/rootfs/dev /out/rootfs/sys /out/rootfs/tmp \
+    && chmod 1777 /out/rootfs/tmp
 
 FROM build AS build-app
 ARG TARGETOS TARGETARCH
@@ -45,6 +49,7 @@ ENTRYPOINT ["/btctax-demo"]
 
 # The app (the default target, so it stays last).
 FROM scratch AS app
+COPY --from=build /out/rootfs/ /
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build-app /out/btctax /btctax
 COPY --from=build --chown=65532:65532 /out/data /data
