@@ -42,7 +42,7 @@ func toolSpecs() []ollama.Tool {
 		t("accounts", "Accounts: with no arguments, every account with balance, cost basis, wallets' scan dates and exchanges' imported files. With name: that account's lots and latest records (sources=true: where its coins came from). With date: holdings and cost basis per account on that day.", obj(map[string]any{
 			"name":    str("one account (optional)"),
 			"date":    str("YYYY-MM-DD for holdings on that day (optional)"),
-			"sources": boolean("with name: trace where the account's coins came from"),
+			"sources": boolean("where coins came from: with name, that account's; without, all the bitcoin held now (\"how did I get my btc?\")"),
 		})),
 		t("get_tax_year", "A tax year's totals and its sales (largest gains and losses first), short/long term and income.", obj(map[string]any{
 			"year": num("the year"),
@@ -135,6 +135,48 @@ func (tb *toolbox) getRecord(a map[string]any, lk *Lookup) (string, string, erro
 
 // --- accounts ---
 
+// sourcesOverall answers "how did I get my bitcoin?": the coins held now,
+// grouped by how and where each was first acquired.
+func (tb *toolbox) sourcesOverall() (string, string, error) {
+	origin := map[string]GraphEvent{}
+	for _, g := range tb.rep.Graph {
+		origin[g.Key] = g
+	}
+	type key struct{ how, acct string }
+	sums := map[key]*[2]int64{}
+	var total int64
+	for _, l := range tb.rep.OpenLots {
+		if l.Sats <= 0 || l.Account == trace.UntrackedAccount {
+			continue
+		}
+		k := key{"other", ""}
+		if g, ok := origin[l.OriginID]; ok {
+			k = key{kindName(g.Kind), g.Account}
+		}
+		if sums[k] == nil {
+			sums[k] = &[2]int64{}
+		}
+		sums[k][0] += l.Sats
+		sums[k][1] += l.Basis
+		total += l.Sats
+	}
+	keys := make([]key, 0, len(sums))
+	for k := range sums {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return sums[keys[i]][0] > sums[keys[j]][0] })
+	var b strings.Builder
+	fmt.Fprintf(&b, "Where the %s held now came from (how and where each coin was first acquired, before any moves between accounts):\n", btcStr(total))
+	for _, k := range keys {
+		where := ""
+		if k.acct != "" {
+			where = " in " + k.acct
+		}
+		fmt.Fprintf(&b, "- %s%s: %s, cost basis %s\n", k.how, where, btcStr(sums[k][0]), usdStr(sums[k][1]))
+	}
+	return b.String(), "Traced where your bitcoin came from", nil
+}
+
 func (tb *toolbox) accountsTool(a map[string]any) (string, string, error) {
 	if d := argStr(a, "date"); d != "" {
 		return tb.holdingsOn(d)
@@ -148,6 +190,9 @@ func (tb *toolbox) accountsTool(a map[string]any) (string, string, error) {
 			return tb.trace("", name)
 		}
 		return tb.account(name)
+	}
+	if src, _ := a["sources"].(bool); src {
+		return tb.sourcesOverall()
 	}
 	var b strings.Builder
 	imports := map[string][]store.Import{}

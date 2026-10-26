@@ -688,3 +688,22 @@ func TestUnwrapArg(t *testing.T) {
 		t.Errorf("ordinary object changed: %#v", v)
 	}
 }
+
+// "How did I get my bitcoin?": every coin held, by how and where it was
+// first acquired, adding up to the holdings.
+func TestSourcesOverall(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, err := srv.buildReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolbox{s: srv, rep: rep}
+	_, out := tb.run("accounts", map[string]any{"sources": true})
+	if !strings.Contains(out, "Where the "+btcStr(rep.Holdings)+" held now came from") || !strings.Contains(out, "bought in") {
+		t.Errorf("sources: %s", out)
+	}
+}
