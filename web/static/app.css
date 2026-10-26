@@ -373,7 +373,7 @@ label > .lbl-text { font-weight: inherit; letter-spacing: inherit; text-transfor
 }
 
 /* Review on a phone: one item at a time (deck.js); desktop keeps the table. */
-.deck { display: none; }
+.deck { display: none; scroll-margin-top: calc(var(--nav-h) + 12px); }
 @media (max-width: 760px) {
   #review .review-table-wrap { display: none; }
   .deck { display: block; margin-bottom: var(--s-6); }

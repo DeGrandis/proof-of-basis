@@ -3,7 +3,7 @@
 // Skip and Back step through without labeling; Undo takes back the last
 // label. Desktop keeps the table.
 
-const deck = { key: null, skipped: new Set(), last: null, busy: false };
+const deck = { key: null, skipped: new Set(), last: null, busy: false, toTop: false };
 
 // Short names for the buttons; the table keeps the long ones.
 const DECK_LABELS = {
@@ -21,7 +21,7 @@ function renderDeck() {
   if (!box) return;
   const items = deckItems();
   const undo = deck.last ? `<div class="deck-undo small">Labeled <b>${esc(deck.last.name)}</b> <button type="button" class="link" data-deck="undo">Undo</button></div>` : "";
-  if (!items.length) { box.innerHTML = undo + `<p class="muted">Nothing to label.</p>`; return; }
+  if (!items.length) { box.innerHTML = undo + `<p class="muted">Nothing to label.</p>`; deckScroll(); return; }
   let i = items.findIndex((x) => x.Key === deck.key);
   if (i < 0) i = Math.max(0, items.findIndex((x) => !deck.skipped.has(x.Key)));
   const it = items[i];
@@ -50,6 +50,14 @@ function renderDeck() {
     <div class="deck-choices">${choices}</div>
     <div class="deck-follow" hidden></div>
     <div class="deck-nav"><button type="button" data-deck="back"${i === 0 ? " disabled" : ""}>← Back</button><button type="button" data-deck="skip"${items.length < 2 ? " disabled" : ""}>Skip →</button></div>`;
+  deckScroll();
+}
+// After moving to another item, bring its card back into view: the
+// buttons that moved on are below it.
+function deckScroll() {
+  if (!deck.toTop) return;
+  deck.toTop = false;
+  $("#review-deck").scrollIntoView({ block: "start" });
 }
 
 // The follow-up a label needs before it can be saved, or null.
@@ -85,6 +93,7 @@ async function deckSave(label, name) {
   // Next comes the item after this one, skipping ones set aside.
   const rest = [...items.slice(i + 1), ...items.slice(0, i)].filter((x) => x.Key !== label.Counterpart);
   deck.key = (rest.find((x) => !deck.skipped.has(x.Key)) || rest[0])?.Key || null;
+  deck.toTop = true;
   try {
     await post("/api/labels", label);
     deck.last = { key: label.Key, name };
@@ -100,12 +109,13 @@ $("#review-deck").addEventListener("click", async (e) => {
   if (act === "skip" || act === "back") {
     if (act === "skip") deck.skipped.add(deck.key);
     deck.key = items[(i + (act === "skip" ? 1 : -1) + items.length) % items.length]?.Key;
+    deck.toTop = true;
     renderDeck();
     return;
   }
   if (act === "undo") {
     const k = deck.last.key;
-    try { await api(`/api/labels/${encodeURIComponent(k)}`, { method: "DELETE" }); deck.last = null; deck.key = k; await refresh(); } catch (err) { toast(err.message); }
+    try { await api(`/api/labels/${encodeURIComponent(k)}`, { method: "DELETE" }); deck.last = null; deck.key = k; deck.toTop = true; await refresh(); } catch (err) { toast(err.message); }
     return;
   }
   const cp = e.target.closest("[data-cp]")?.dataset.cp;
