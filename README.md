@@ -298,17 +298,22 @@ with the commit). `docker-compose.demo.yml` runs the demo image.
   makes no outside connections except the assistant's: node settings,
   price updates, uploads (CSVs, 1099-DA PDFs, proof files), restore, wipe
   and passwords are off.
-- The assistant runs on Claude in Amazon Bedrock (Claude Haiku by default)
-  instead of Ollama, with 20 questions per visitor and 300 per day overall.
-  It signs in with the usual AWS credential chain; on EC2, the instance
-  role needs `bedrock-mantle:CreateInference` on the model, and containers
-  need the instance metadata hop limit set to 2. Without credentials the
-  demo runs with the assistant off.
+- The assistant runs on a model in Amazon Bedrock instead of Ollama, with
+  20 questions per visitor and 300 per day overall. The default is Llama
+  3.3 70B (`us.meta.llama3-3-70b-instruct-v1:0`), through Bedrock's
+  Converse API; any Converse model with tool use works (Amazon Nova, for
+  example), and `anthropic.*` IDs go through Anthropic's SDK instead. It
+  signs in with the usual AWS credential chain. On EC2 the instance role
+  needs `bedrock:InvokeModel` on the model's inference profile and its
+  foundation models (Claude models need `bedrock-mantle:CreateInference`
+  and Anthropic's one-time use-case form instead), and containers need the
+  instance metadata hop limit set to 2. Without credentials the demo runs
+  with the assistant off.
 
 | Variable | Default | |
 |---|---|---|
 | `AWS_REGION` / `BTCTAX_BEDROCK_REGION` | `us-east-1` | Bedrock region |
-| `BTCTAX_BEDROCK_MODEL` | `anthropic.claude-haiku-5-5` | Bedrock model ID |
+| `BTCTAX_BEDROCK_MODEL` | `us.meta.llama3-3-70b-instruct-v1:0` | Bedrock model ID |
 | `BTCTAX_DEMO_AI` | `true` | `false` turns the assistant off |
 | `BTCTAX_DEMO_AI_PER_VISITOR` / `_PER_DAY` | `20` / `300` | Assistant questions allowed |
 | `BTCTAX_DEMO_MAX_COPIES` / `BTCTAX_DEMO_IDLE_HOURS` | `100` / `3` | Visitors' copies kept, and for how long idle |
@@ -374,7 +379,8 @@ internal/tax        jurisdiction rules (US)
 internal/prices     price sources (Yahoo, Coin Metrics) and the built-in history
 internal/store      SQLite persistence
 internal/app        HTTP API, report, tax forms, accountant package, assistant, demo mode
-internal/claude     the assistant on Claude in Amazon Bedrock (demo mode)
+internal/claude     the demo's assistant on Claude in Amazon Bedrock
+internal/converse   the demo's assistant on other Bedrock models (Llama, Nova)
 internal/sandbox    the public demo: a private copy per visitor
 web/static          UI (plain JavaScript, no build step)
 ```

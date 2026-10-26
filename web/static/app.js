@@ -204,7 +204,7 @@ function showDemo() {
   document.body.classList.toggle("demo", on);
   if (on) {
     $("#demo-ai-note").textContent = report.settings.demoAllowance
-      ? `In the demo, the assistant runs on Claude Haiku through AWS Bedrock, up to ${report.settings.demoAllowance}. Your own copy uses a model on your own Ollama server.`
+      ? `In the demo, the assistant runs on ${report.settings.demoModel}, up to ${report.settings.demoAllowance}. Your own copy uses a model on your own Ollama server.`
       : "The assistant is off in this demo. Your own copy uses a model on your own Ollama server.";
   }
 }

@@ -238,6 +238,8 @@ func (s *Server) pipeline() (*pipeline, error) {
 		set["demo"], set["demoAllowance"] = "true", s.demo.Allowance
 		if s.demo.AI == nil {
 			set["demoAllowance"] = ""
+		} else {
+			set["demoModel"] = s.demo.AI.Name()
 		}
 	}
 	// Tax years and holding periods follow the user's calendar.

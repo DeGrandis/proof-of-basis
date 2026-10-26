@@ -43,7 +43,7 @@ jobs:
 
       - name: The app people run carries no demo code
         run: |
-          if go list -deps ./cmd/btctax | grep -E '/internal/(sandbox|claude)$|anthropic-sdk-go|aws-sdk-go'; then
+          if go list -deps ./cmd/btctax | grep -E '/internal/(sandbox|claude|converse)$|anthropic-sdk-go|aws-sdk-go'; then
             echo "cmd/btctax imports demo-only packages (listed above); keep them in cmd/btctax-demo."
             exit 1
           fi

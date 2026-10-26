@@ -10,9 +10,10 @@
 # `docker login ghcr.io` with a token that can read packages. To build it
 # locally instead: docker build --target demo -t btctax-demo .
 #
-# The assistant uses Claude in Amazon Bedrock with the machine's AWS role,
-# which needs bedrock-mantle:CreateInference on the model. Put the demo
-# behind HTTPS (your reverse proxy), not straight on the internet.
+# The assistant uses a model in Amazon Bedrock (Llama 3.3 70B by default)
+# with the machine's AWS role, which needs bedrock:InvokeModel on the model's
+# inference profile and its foundation models. Put the demo behind HTTPS
+# (your reverse proxy), not straight on the internet.
 services:
   btctax-demo:
     image: ${BTCTAX_DEMO_IMAGE:?set BTCTAX_DEMO_IMAGE, e.g. ghcr.io/<owner>/<repo>-demo:latest}
@@ -21,7 +22,7 @@ services:
       - "127.0.0.1:8090:8080"   # your reverse proxy forwards to this
     environment:
       AWS_REGION: us-east-1
-      # BTCTAX_BEDROCK_MODEL: anthropic.claude-haiku-5-5
+      # BTCTAX_BEDROCK_MODEL: us.meta.llama3-3-70b-instruct-v1:0   # or us.amazon.nova-pro-v1:0, anthropic.claude-haiku-5-5...
       # BTCTAX_DEMO_AI: "false"            # turn the assistant off
       # BTCTAX_DEMO_AI_PER_VISITOR: "20"   # questions per visitor
       # BTCTAX_DEMO_AI_PER_DAY: "300"      # questions per day, for everyone

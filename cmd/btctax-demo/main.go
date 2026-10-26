@@ -1,6 +1,6 @@
 // Command btctax-demo serves the public demo of btctax: the same app,
 // with invented data, a private copy per visitor, no login, a simulated
-// node, and the assistant on Claude in Amazon Bedrock (with the machine's
+// node, and the assistant on a model in Amazon Bedrock (with the machine's
 // AWS role) within a daily allowance.
 //
 // It is a separate program so the app people run never carries the demo
@@ -17,10 +17,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DeGrandis/proof-of-basis/internal/app"
 	"github.com/DeGrandis/proof-of-basis/internal/claude"
+	"github.com/DeGrandis/proof-of-basis/internal/converse"
 	"github.com/DeGrandis/proof-of-basis/internal/sandbox"
 	"github.com/DeGrandis/proof-of-basis/web"
 )
@@ -47,9 +49,18 @@ func main() {
 	ctx := context.Background()
 	var ai app.ChatModel
 	region := env("BTCTAX_BEDROCK_REGION", env("AWS_REGION", "us-east-1"))
-	model := env("BTCTAX_BEDROCK_MODEL", "anthropic.claude-haiku-5-5")
+	// Claude models (anthropic.*) go through Anthropic's SDK; any other
+	// Bedrock model (Llama, Amazon Nova...) through Bedrock's Converse API.
+	model := env("BTCTAX_BEDROCK_MODEL", "us.meta.llama3-3-70b-instruct-v1:0")
 	if env("BTCTAX_DEMO_AI", "true") == "true" {
-		if c, err := claude.New(ctx, region, model); err != nil {
+		var c app.ChatModel
+		var err error
+		if strings.HasPrefix(model, "anthropic.") {
+			c, err = claude.New(ctx, region, model)
+		} else {
+			c, err = converse.New(ctx, region, model)
+		}
+		if err != nil {
 			log.Printf("assistant off: %v", err)
 		} else {
 			ai = c

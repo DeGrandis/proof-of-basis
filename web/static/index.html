@@ -370,7 +370,7 @@
       <div class="wide small muted">Signs out other devices. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Forgot it? On the server, run <code>docker compose exec btctax /btctax reset-password</code> and set a new one on the next visit. Over plain http the password isn't encrypted in transit; use HTTPS (a reverse proxy or Tailscale) to reach this app from outside your home.</span></span></div>
     </form>
     <h2>Assistant (optional)</h2>
-    <p class="demo-only small muted demo-note" id="demo-ai-note">In the demo, the assistant runs on Claude Haiku through AWS Bedrock. Your own copy uses a model on your own Ollama server.</p>
+    <p class="demo-only small muted demo-note" id="demo-ai-note">In the demo, the assistant runs on a hosted model. Your own copy uses a model on your own Ollama server.</p>
     <form id="ai-settings" class="card grid no-demo">
       <label class="wide">Ollama server address <input name="aiUrl" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false"></label>
       <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
