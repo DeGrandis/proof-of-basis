@@ -38,8 +38,10 @@ async function renderSeason() {
   if (!report) return;
   const thisYear = new Date().getFullYear();
   const years = [...new Set([...(report.years || []).map((y) => y.year)])].sort((a, b) => b - a);
-  // Default to the last finished year: the one being filed.
-  if (!years.includes(formsYear)) formsYear = years.find((y) => y < thisYear) || years[0] || thisYear - 1;
+  // Default to the current tax season: last year's return until the
+  // extended deadline (October 15), then this year's.
+  const now = new Date(), season = now.getMonth() > 9 || (now.getMonth() === 9 && now.getDate() > 15) ? thisYear : thisYear - 1;
+  if (!years.includes(formsYear)) formsYear = years.includes(season) ? season : years.find((y) => y < season) || years[0] || season;
   $("#season-year").innerHTML = (years.length ? years : [formsYear])
     .map((y) => `<option value="${y}"${y === formsYear ? " selected" : ""}>${y}${y === thisYear ? " (in progress)" : ""}</option>`).join("");
   const year = formsYear;
