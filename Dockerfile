@@ -44,13 +44,13 @@ ENV BTCTAX_ADDR=0.0.0.0:8080 BTCTAX_DATA=/data
 EXPOSE 8080
 ENTRYPOINT ["/btctax-demo"]
 
-# The landing page: site/ with the app's font, icon and screenshots, behind
-# nginx. Static files only; it never talks to the app.
+# The landing page: site/ (with its own screenshots, taken without the demo
+# bar) and the app's font and icon, behind nginx. Static files only; it
+# never talks to the app.
 FROM nginx:1.27-alpine AS site
 COPY site/ /usr/share/nginx/html/
 COPY web/static/fonts/ /usr/share/nginx/html/fonts/
 COPY web/static/favicon.svg /usr/share/nginx/html/favicon.svg
-COPY docs/images/overview-dark.png docs/images/mobile-overview.png docs/images/mobile-review.png docs/images/mobile-flow.png docs/images/mobile-assistant.png /usr/share/nginx/html/img/
 
 # The app (the default target, so it stays last). On a small standard base
 # rather than scratch: StartOS runs the image's own filesystem and expects

@@ -65,6 +65,36 @@
     </div>
   </section>
 
+  <section id="untangle" class="trace reveal">
+    <h2>Trace every coin, from buy to sale.</h2>
+    <p class="sub">Your coins hop between exchanges and wallets. Proof of Basis follows each one, so every sale is matched to the purchases it really came from.</p>
+    <div class="flow">
+      <svg class="edges" aria-hidden="true"></svg>
+      <div class="col">
+        <h3>Buy</h3>
+        <div class="node" id="n-b1" data-to="cold 0.10"><span class="where">Coinbase</span><b>0.10 BTC</b><span>bought at $80,000</span><span>basis $8,000</span></div>
+        <div class="node" id="n-b2" data-to="cold 0.05"><span class="where">River</span><b>0.05 BTC</b><span>bought at $90,000</span><span>basis $4,500</span></div>
+        <div class="node" id="n-b3" data-to="phone 0.05"><span class="where">Strike</span><b>0.05 BTC</b><span>bought at $100,000</span><span>basis $5,000</span></div>
+      </div>
+      <div class="col">
+        <h3>Withdraw</h3>
+        <div class="node" id="n-cold" data-to="cons 0.15"><span class="where">Cold wallet</span><b>0.15 BTC</b><span>basis $12,500</span></div>
+        <div class="node" id="n-phone" data-to="cons 0.04, spend 0.01"><span class="where">Phone wallet</span><b>0.05 BTC</b><span>basis $5,000</span></div>
+      </div>
+      <div class="col">
+        <h3>Spend and consolidate</h3>
+        <div class="node" id="n-cons" data-to="sell 0.12, keep 0.07"><span class="where">Consolidate</span><b>0.19 BTC</b><span>one coin in cold storage, basis $16,500 carried over</span><span class="tag">not taxed</span></div>
+        <div class="node" id="n-spend"><span class="where">Spend</span><b>0.01 BTC</b><span>worth $1,100, basis $1,000</span><span class="tag tax">gain $100</span></div>
+      </div>
+      <div class="col">
+        <h3>Sell</h3>
+        <div class="node sale" id="n-sell"><span class="where">Sell on Kraken</span><b>0.12 BTC</b><span>for $14,400 at $120,000</span><span>basis $9,800: 0.10 from Coinbase, 0.02 from River</span><span class="gain">gain $4,600</span></div>
+        <div class="node" id="n-keep"><span class="where">Still held</span><b>0.07 BTC</b><span>basis $6,700: 0.03 from River, 0.04 from Strike</span></div>
+      </div>
+    </div>
+    <p class="small">Sales use each wallet's oldest coins first (FIFO), the app's default.</p>
+  </section>
+
   <section class="steps reveal">
     <h2>How it works</h2>
     <ol>
@@ -147,8 +177,8 @@
   </section>
 
   <section class="closing reveal">
-    <h2>See it with invented data first.</h2>
-    <p>The demo is a private copy for you, full of made-up exchanges and wallets. Nothing you do there is kept.</p>
+    <h2>Try it before you install.</h2>
+    <p>No sign-up and nothing to set up. Walk through a tax year, follow a coin across wallets in Flow, or ask the assistant where a sale's coins came from.</p>
     <a class="btn btn-primary" data-demo href="https://demo.proofofbasis.degrand.is">Open the demo</a>
   </section>
 </main>

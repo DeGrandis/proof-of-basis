@@ -263,6 +263,80 @@ section:not(.hero) { max-width: var(--max); margin: 0 auto; padding: 90px 16px; 
 section h2 { font-size: clamp(30px, 3.6vw, 46px); font-weight: 800; margin-bottom: 36px; }
 .sub { color: var(--muted); margin: -20px 0 30px; }
 
+/* The worked example: buys to a sale, drawn as a graph. Columns side by
+   side on wide screens, stacked rows on phones; site.js draws the lines. */
+.trace .sub { margin-top: -20px; max-width: 46em; }
+.flow {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 64px;
+  margin-top: 64px;
+}
+.edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.edges path { fill: none; stroke: rgba(185, 240, 74, .45); stroke-width: 1.6; }
+.edges path.pulse { stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: .03 .97; stroke-dashoffset: 1; opacity: 0; }
+.edges rect { fill: var(--bg); stroke: rgba(185, 240, 74, .35); }
+.edges text { fill: var(--fg); font: 700 12px "Urbanist", system-ui, sans-serif; }
+.col { position: relative; display: flex; flex-direction: column; justify-content: space-around; gap: 18px; }
+.col h3 {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  position: absolute;
+  top: -32px;
+  left: 0;
+  margin: 0;
+}
+.node {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: #bdbbb1;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.node .where { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.node b { color: var(--fg); font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+.node .tag {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+}
+.node .tag.tax { color: var(--accent); border-color: rgba(185, 240, 74, .35); }
+.node.sale { border-color: rgba(185, 240, 74, .55); box-shadow: 0 0 40px rgba(185, 240, 74, .14); }
+.node .gain { margin-top: 6px; color: var(--accent); font-size: 18px; font-weight: 800; }
+.trace > .small { margin-top: 28px; }
+
+/* Columns appear one after another, then the coins start moving. */
+.trace .node, .trace .col h3 { opacity: 0; transform: translateY(10px); transition: opacity .6s ease, transform .6s ease; }
+.trace.in .node, .trace.in .col h3 { opacity: 1; transform: none; }
+.trace .col:nth-of-type(2) > * { transition-delay: .5s; }
+.trace .col:nth-of-type(3) > * { transition-delay: 1s; }
+.trace .col:nth-of-type(4) > * { transition-delay: 1.5s; }
+.edges .edge { opacity: 0; transition: opacity .6s ease; }
+.edges path.line { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .7s ease; }
+.trace.in .edges .edge { opacity: 1; }
+.trace.in .edges path.line { stroke-dashoffset: 0; }
+.trace.in .edges path.pulse { animation: coin 2.8s linear infinite; }
+@keyframes coin {
+  0% { stroke-dashoffset: 1; opacity: 0; }
+  10%, 85% { opacity: 1; }
+  100% { stroke-dashoffset: .03; opacity: 0; }
+}
+
 .steps ol {
   list-style: none;
   counter-reset: step;
@@ -369,6 +443,19 @@ footer p { max-width: 760px; margin: 0 auto 12px; }
   .glow { right: 50%; top: 52%; transform: translateX(50%); width: 90vmin; height: 90vmin; }
   .steps ol { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px 18px; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .flow { column-gap: 40px; }
+  .node { padding: 11px 12px; font-size: 13px; }
+  .node b { font-size: 17px; }
+}
+/* Phones: each stage is a row, read top to bottom. */
+@media (max-width: 760px) {
+  .flow { grid-template-columns: minmax(0, 1fr); row-gap: 48px; margin-top: 30px; }
+  .col { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0 10px; align-items: start; }
+  .col h3 { display: none; } /* each node says what it is; the lines need the room */
+  .node { padding: 10px 11px; font-size: 12.5px; }
+  .node .where { font-size: 11px; letter-spacing: .04em; }
+  .node b { font-size: 16px; }
+  .node .gain { font-size: 16px; }
 }
 @media (max-width: 640px) {
   body { font-size: 16px; }
@@ -390,4 +477,7 @@ footer p { max-width: 760px; margin: 0 auto 12px; }
   .phone { animation: none; }
   .shot, .reveal, .browser, .phone { transition: none; }
   .reveal { opacity: 1; transform: none; }
+  .trace .node, .trace .col h3, .edges .edge { opacity: 1; transform: none; transition: none; }
+  .edges path.line { stroke-dashoffset: 0; transition: none; }
+  .edges path.pulse { display: none; }
 }
