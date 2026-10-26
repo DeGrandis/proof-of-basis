@@ -37,6 +37,12 @@ function recordHeadline(e) {
 const ACQ_VERB = { buy: "Bought", income: "Earned", "gift-in": "Gift received", purchase: "Bought from a person", refund: "Refunded", untracked: "Old wallet" };
 const stat = (k, v, c = "") => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${c ? `<div class="c">${c}</div>` : ""}</div>`;
 const sum = (xs, f) => xs.reduce((s, x) => s + f(x), 0);
+// A gain with its change on the basis: "$7,413.45 +444%".
+const gainPct = (gain, basis) => {
+  if (!(basis > 0)) return signed(gain);
+  const p = gain / basis * 100, n = Math.abs(p) >= 100 ? Math.round(p).toLocaleString("en-US") : p.toFixed(1);
+  return `${signed(gain)} <span class="pct ${gain < 0 ? "neg" : gain > 0 ? "pos" : ""}">${p > 0 ? "+" : p < 0 ? "−" : ""}${n.replace("-", "")}%</span>`;
+};
 
 // The numbers that matter for this kind of record.
 function recordStats(d) {
@@ -51,7 +57,7 @@ function recordStats(d) {
       + (known.length < fromLots.length ? ` <span class="warn">· ${amt(sum(fromLots.filter((l) => l.Missing), (l) => l.Sats))} with no purchase</span>` : "")));
     const st = sum(known.filter((l) => !l.LongTerm), (l) => l.Proceeds - l.Basis), lt = sum(known.filter((l) => l.LongTerm), (l) => l.Proceeds - l.Basis);
     const longs = known.filter((l) => l.LongTerm).length;
-    out.push(stat("Gain", signed(st + lt), longs === known.length ? "long term" : longs === 0 ? "short term" : `${usd(st)} short · ${usd(lt)} long`));
+    out.push(stat("Gain", gainPct(st + lt, sum(known, (l) => l.Basis)), longs === known.length ? "long term" : longs === 0 ? "short term" : `${usd(st)} short · ${usd(lt)} long`));
   } else if (fromGifts.length || fromLots.length) {
     const v = e.cents || e.value;
     if (v) out.push(stat("Value", usd(v), source || "that day's price"));
@@ -63,7 +69,7 @@ function recordStats(d) {
     if (e.kind === "income") out.push(stat("Taxed as", "Income", esc(e.incomeType || "")));
     const heldSats = sum(held, (l) => l.Sats);
     if (sold.length || gone.length || held.length) out.push(stat("Still held", amt(heldSats), heldSats === e.sats ? "all of it" : heldSats ? "" : "none left"));
-    if (sold.length) out.push(stat("Gain so far", signed(sum(sold, (s) => s.Proceeds - s.Basis)), `on ${sold.length} sale${sold.length === 1 ? "" : "s"}`));
+    if (sold.length) out.push(stat("Gain so far", gainPct(sum(sold, (s) => s.Proceeds - s.Basis), sum(sold, (s) => s.Basis)), `on ${sold.length} sale${sold.length === 1 ? "" : "s"}`));
   } else {
     out.push(stat("Amount", amt(e.sats)));
     if (e.value || e.cents) out.push(stat("Value", usd(e.cents || e.value), source || "that day's price"));

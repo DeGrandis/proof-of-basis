@@ -340,3 +340,4 @@ a.button.primary { background: var(--ink); color: var(--on-ink); border-color: v
     padding: var(--s-2); border-radius: var(--pill); background: var(--glass-fill-2); border: 1px solid var(--glass-border); box-shadow: var(--glass-hi), var(--shadow-pop);
     -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
 }
+.stat .pct { font-size: var(--fs-sm); font-weight: 600; margin-left: 4px; }
