@@ -1243,10 +1243,11 @@ function timeOf(p) {
   return times[lo] + ((p - pos[lo]) / (pos[hi] - pos[lo] || 1)) * (times[hi] - times[lo]);
 }
 
-const LEFT = 150;
+let LEFT = 150; // the account names' column
 function geometry() {
-  const wrap = $("#graph-wrap");
-  return { W: Math.max(400, wrap.clientWidth), H: Math.max(260, wrap.clientHeight) };
+  const wrap = $("#graph-wrap"), narrow = matchMedia("(max-width: 760px)").matches;
+  LEFT = narrow ? 104 : 150;
+  return { W: Math.max(narrow ? 300 : 400, wrap.clientWidth), H: Math.max(260, wrap.clientHeight) };
 }
 const xOf = (p, W) => LEFT + 20 + ((p - view.d0) / (view.d1 - view.d0)) * (W - LEFT - 40);
 const pOfX = (x, W) => view.d0 + ((x - LEFT - 20) / (W - LEFT - 40)) * (view.d1 - view.d0);
@@ -1366,15 +1367,16 @@ function drawTimeline() {
     nowBal[acct] = pts.length ? pts.at(-1).bal : 0;
   }
   // Lane names and the current balance stay put while the timeline pans.
-  labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="16" y="${nameY(top)}"><title>${esc(l)}</title>${esc(l.length > 19 ? l.slice(0, 18) + "…" : l)}</text>`
-    + `<text class="lane-bal${(nowBal[l] || 0) < 0 ? " neg" : ""}" x="16" y="${nameY(top) + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
+  const nx = narrow ? 8 : 16, nmax = narrow ? 14 : 19;
+  labels += Object.entries(laneTop).map(([l, top]) => `<text class="lane-name" x="${nx}" y="${nameY(top)}"><title>${esc(l)}</title>${esc(l.length > nmax ? l.slice(0, nmax - 1) + "…" : l)}</text>`
+    + `<text class="lane-bal${(nowBal[l] || 0) < 0 ? " neg" : ""}" x="${nx}" y="${nameY(top) + 14}">${amt(nowBal[l] || 0)}</text>`).join("");
   out += `<rect class="gutter" x="0" y="0" width="${LEFT}" height="${bottom + 20}"/>` + labels;
   svg.setAttribute("width", W);
   svg.setAttribute("height", H);
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = out;
   const span = timeOf(Math.min(view.d1, view.full)) - timeOf(Math.max(view.d0, 0));
-  $("#zoom-level").textContent = span > 2 * 365 * 86400 ? `${(span / 365 / 86400).toFixed(1)} years shown` : span > 60 * 86400 ? `${Math.round(span / 30 / 86400)} months shown` : `${Math.max(1, Math.round(span / 86400))} days shown`;
+  $("#zoom-level").textContent = span > 2 * 365 * 86400 ? `${(span / 365 / 86400).toFixed(1)} yrs` : span > 60 * 86400 ? `${Math.round(span / 30 / 86400)} mos` : `${Math.max(1, Math.round(span / 86400))} days`;
   if (selected && ev.some((e) => e.key === selected)) highlight(selected);
 }
 

@@ -365,3 +365,4 @@ label > .lbl-text { font-weight: inherit; letter-spacing: inherit; text-transfor
   #graph .tg-legend { gap: 4px 12px; font-size: var(--fs-xs); }
   #graph.show-key .key-btn { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 }
+#zoom-level { display: inline-block; min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
