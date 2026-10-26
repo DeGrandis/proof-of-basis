@@ -27,8 +27,7 @@ func analyzeToolSpec() ollama.Tool {
 		Description: "List, count, total or describe records with exact math. Pick the records (source and filters), what to measure, and the statistic; optionally group, export or chart. " +
 			"Use it for searches, counts, totals, averages, medians, most common values, largest/smallest, distributions and per-year/per-account questions. Examples: " +
 			"most common buy amount = source buys, measure usd, stat mode; average price paid per year = source buys, measure price, stat mean, group_by year; " +
-			"biggest buy = source buys, stat top, top_n 1 (smallest: stat bottom); oldest coins still held = source lots, measure days_held, stat top; " +
-			"which weekday I buy on = measure weekday, stat count;usual holding time = source sales, measure days_held, stat median; " +
+			"which weekday I buy on = measure weekday, stat count; usual holding time = source sales, measure days_held, stat median; " +
 			"lots turning long-term in 60 days = source lots, measure days_to_long_term, max 60, stat list; lots at a loss = source lots, measure gain, max 0, stat list; " +
 			"find a record = stat list with filters (from, to, account, kind, text).",
 		Parameters: obj(map[string]any{
@@ -41,8 +40,8 @@ func analyzeToolSpec() ollama.Tool {
 			"account":  str("account name"),
 			"kind":     str("kind: buy, sell, transfer, income, spend, unmatched…; for review: in or out"),
 			"text":     str("text in the note, label, txid, address or id"),
-			"min":      num("filter: keep only records whose measure is at least this value (not a count)"),
-			"max":      num("filter: keep only records whose measure is at most this value (not a count; for the N largest use stat top with top_n)"),
+			"min":      num("measure at least this"),
+			"max":      num("measure at most this"),
 			"round_to": num("bucket size for mode/histogram, e.g. 10 for $10"),
 			"top_n":    num("rows for list/top/bottom, default 10 (list: 40)"),
 			"sort":     str("for list: newest (default), oldest, largest, smallest"),
@@ -334,16 +333,6 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	if !validStats[stat] {
 		return "", "", fmt.Errorf("unknown stat %q", stat)
 	}
-	switch m {
-	case "fee_usd", "usd_fee", "fees", "fee_usd_total":
-		m = "fee"
-	case "fee_sats", "fees_btc", "btc_fee":
-		m = "fee_btc"
-	case "amount", "value", "usd_value", "amount_usd", "cost", "proceeds":
-		m = "usd"
-	case "amount_btc", "btc_amount", "sats", "quantity":
-		m = "btc"
-	}
 	if !validMeasures[m] {
 		// An unknown measure would match nothing and read as zero.
 		return "", "", fmt.Errorf("unknown measure %q; use one of usd, btc, price, fee, fee_btc, gain, days_held, days_to_long_term, weekday, month, year, account, kind", m)
@@ -374,11 +363,6 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	_, hasMin := a["min"]
 	_, hasMax := a["max"]
 	lo, hi := argNum(a, "min"), argNum(a, "max")
-	// min = max ("transfers over $1000" as min 1000, max 1000) would keep
-	// only that exact value: read it as "at least".
-	if hasMin && hasMax && lo == hi && lo != 0 {
-		hasMax = false
-	}
 	categorical := map[string]bool{"weekday": true, "month": true, "year": true, "account": true, "kind": true}[m]
 	if categorical && stat != "count" && stat != "mode" && stat != "summary" && stat != "histogram" && stat != "list" {
 		return "", "", fmt.Errorf("%s is a category: use stat count or mode", m)
@@ -438,14 +422,6 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		}
 		b.WriteString(")")
 	}
-	switch {
-	case hasMin && hasMax:
-		fmt.Fprintf(&b, " [only values %g to %g]", lo, hi)
-	case hasMin:
-		fmt.Fprintf(&b, " [only values at least %g]", lo)
-	case hasMax:
-		fmt.Fprintf(&b, " [only values at most %g]", hi)
-	}
 	b.WriteString(":\n")
 	summary := fmt.Sprintf("Analyzed %s (%s of %s)", src, stat, unit)
 	if stat == "list" {
@@ -453,15 +429,6 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	}
 	if len(all) == 0 {
 		b.WriteString("No rows match.\n")
-		if hasMin || hasMax {
-			// Models often send "max 1" meaning "just one": say what it did.
-			b.WriteString("min and max filter by value; they don't limit how many rows. For the largest or smallest N, leave them out and use stat top or bottom with top_n.\n")
-		}
-		if text != "" && src != "records" {
-			// "Coffee" searched in Review or buys finds nothing; it may be
-			// a labeled record or node activity.
-			fmt.Fprintf(&b, "Nothing in %s mentions %q; before saying there's none, search source records (every record) and, for Lightning, source lightning.\n", src, text)
-		}
 		return b.String(), summary, nil
 	}
 	if want, _ := a["export"].(bool); want {

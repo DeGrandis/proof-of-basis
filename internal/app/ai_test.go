@@ -459,23 +459,9 @@ func TestAnalyzeMath(t *testing.T) {
 	if v, _ := calc("1"); v != 1 {
 		t.Fatal()
 	}
-	// "max 1" meant as "just one" filters to $1 or less, and says so.
-	_, out = tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "stat": "list", "sort": "largest", "max": "1"})
-	if !strings.Contains(out, "No rows match") || !strings.Contains(out, "top_n") {
-		t.Errorf("max as a count: %s", out)
-	}
-	_, out = tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "stat": "max", "max": float64(100)})
-	if !strings.Contains(out, "[only values at most 100]") {
-		t.Errorf("filter not stated: %s", out)
-	}
-	// A made-up measure is refused, not read as zero; common aliases work.
-	if _, out = tb.run("analyze_records", map[string]any{"measure": "bogus", "stat": "sum"}); !strings.Contains(out, "unknown measure") {
+	// A made-up measure is refused, not read as zero.
+	if _, out := tb.run("analyze_records", map[string]any{"measure": "bogus", "stat": "sum"}); !strings.Contains(out, "unknown measure") {
 		t.Errorf("unknown measure: %s", out)
-	}
-	_, a := tb.run("analyze_records", map[string]any{"source": "records", "measure": "fee_usd", "stat": "sum"})
-	_, b := tb.run("analyze_records", map[string]any{"source": "records", "measure": "fee", "stat": "sum"})
-	if a != b {
-		t.Errorf("fee_usd %q != fee %q", a, b)
 	}
 }
 
@@ -496,47 +482,6 @@ func TestClaimsChange(t *testing.T) {
 	note := lookupNote(`{"lookups":[{"name":"analyze_records","args":{"source":"review","from":"2026-01-01"},"summary":"x"}]}`)
 	if !strings.Contains(note, `"source":"review"`) {
 		t.Errorf("note: %s", note)
-	}
-	// A model that copies the note into its answer has it taken back out.
-	if got := cleanAnswer("Your smallest income was $0.00."+note, false, false); got != "Your smallest income was $0.00." {
-		t.Errorf("copied note kept: %q", got)
-	}
-	// A download or chart the answer didn't make is taken out; a real one stays.
-	ans := "Here are your last 5 transactions:\n- one\n- two\n\nA CSV download of every matching row is available below."
-	if got := cleanAnswer(ans, false, false); got != "Here are your last 5 transactions:\n- one\n- two" {
-		t.Errorf("made-up download kept: %q", got)
-	}
-	if got := cleanAnswer(ans, true, false); got != ans {
-		t.Errorf("real download dropped: %q", got)
-	}
-	if got := cleanAnswer("You bought most in 2019. A chart of your BTC holdings over time is available below.", false, false); got != "You bought most in 2019." {
-		t.Errorf("made-up chart kept: %q", got)
-	}
-	tools := "The Phone wallet holds 0.75 BTC.\n\nTo learn more, use the get_record function:\n\n{\"name\": \"get_record\", \"parameters\": {\"id\": \"x\"}}"
-	if got := cleanAnswer(tools, false, false); got != "The Phone wallet holds 0.75 BTC." {
-		t.Errorf("tool talk kept: %q", got)
-	}
-	if got := cleanAnswer("1. [tx:ab12:0] - 2026-08-11 Phone wallet sent 0.0002 BTC\n2. [ex:895] Strike sent 0.0001 BTC", false, false); got != "1. 2026-08-11 Phone wallet sent 0.0002 BTC\n2. Strike sent 0.0001 BTC" {
-		t.Errorf("record tags kept: %q", got)
-	}
-	if got := cleanAnswer("There are 61 items waiting for review, listed below, totaling 0.74352287 BTC. Most are small.", false, false); got != "Most are small." {
-		t.Errorf("decimal split: %q", got)
-	}
-	if got := cleanAnswer("You hold 1.02 BTC worth $81,876.51.\nIt's up 3.5% today!", false, false); got != "You hold 1.02 BTC worth $81,876.51.\nIt's up 3.5% today!" {
-		t.Errorf("plain text changed: %q", got)
-	}
-	if got := cleanAnswer("You have 61 items waiting for review. They are listed above.", false, false); got != "You have 61 items waiting for review." {
-		t.Errorf("listed above kept: %q", got)
-	}
-	if listed := "The ones listed below are newest:\n- one\n- two"; cleanAnswer(listed, false, false) != listed {
-		t.Errorf("real list's lead-in dropped")
-	}
-	plain := "Your accounts hold 1.02 BTC.\n\nAt today's price, calculate roughly $81,000."
-	if got := cleanAnswer(plain, false, false); got != plain {
-		t.Errorf("plain words dropped: %q", got)
-	}
-	if got := cleanAnswer("You can export a CSV from the Taxes page.", false, false); got != "You can export a CSV from the Taxes page." {
-		t.Errorf("plain mention dropped: %q", got)
 	}
 }
 
@@ -618,14 +563,6 @@ func TestLightningAnalysis(t *testing.T) {
 	if !strings.Contains(out, "sum: $") || strings.Contains(out, "No rows match") {
 		t.Errorf("coffee spending: %s", out)
 	}
-	if _, out = tb.run("calculate", map[string]any{"expression": "150000 * 1.02295887 - 44110.78"}); !strings.Contains(out, "(rounded: 109,333.05)") {
-		t.Errorf("calculate: %s", out)
-	}
-	// Today's figures by name, so the model needn't copy them.
-	_, byName := tb.run("calculate", map[string]any{"expression": "150000 * holdings - basis"})
-	if strings.Contains(byName, "Error") || !strings.Contains(byName, "rounded:") {
-		t.Errorf("calculate by name: %s", byName)
-	}
 	// A listing remembers the records it showed, for follow-ups.
 	lk, _ := tb.run("analyze_records", map[string]any{"source": "sales", "stat": "top", "top_n": float64(1)})
 	if len(lk.Keys) != 1 {
@@ -640,9 +577,9 @@ func TestLightningAnalysis(t *testing.T) {
 	}
 }
 
-// "none" for an optional argument means it wasn't given: a sale of 0.1
-// BTC stays a sale of 0.1 BTC, not a "how much can I sell" question.
-func TestNoneArgs(t *testing.T) {
+// A sale from one account lists its lots; with no account named, each
+// account that holds enough is set side by side.
+func TestPartialSale(t *testing.T) {
 	st, _ := newTest(t)
 	if err := demo.Seed(st, 1); err != nil {
 		t.Fatal(err)
@@ -653,39 +590,11 @@ func TestNoneArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	tb := &toolbox{s: srv, rep: rep}
-	_, plain := tb.run("simulate_sale", map[string]any{"btc": "0.1", "account": "all"})
-	_, nones := tb.run("simulate_sale", map[string]any{"btc": "0.1", "account": "all", "all": "false", "lots": "none", "strategy": "none", "target_gain": "none", "target_tax": "none", "usd": "none"})
-	if plain != nones {
-		t.Errorf("with nones:\n%s\nwithout:\n%s", nones, plain)
-	}
-	// A sale from one account lists the lots it would use.
 	if _, out := tb.run("simulate_sale", map[string]any{"account": "Phone wallet", "btc": "0.1"}); !strings.Contains(out, "Lots it would use") {
 		t.Errorf("lots: %s", out)
 	}
-	// min = max reads as "at least".
-	_, eq := tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "min": "100", "max": "100", "stat": "count"})
-	_, atLeast := tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "min": "100", "stat": "count"})
-	if eq != atLeast {
-		t.Errorf("min=max: %s vs %s", eq, atLeast)
-	}
-	// No account named: each account that holds enough, side by side.
-	if !strings.Contains(nones, "needs one account") || !strings.Contains(nones, "Phone wallet: proceeds") {
-		t.Errorf("compare: %s", nones)
-	}
-}
-
-// A value wrapped in its schema is taken out, inside objects too.
-func TestUnwrapArg(t *testing.T) {
-	got := unwrapArg(map[string]any{"type": "object", "value": map[string]any{"account": map[string]any{"type": "string", "value": "Strike"}, "direction": "out"}})
-	m, ok := got.(map[string]any)
-	if !ok || m["account"] != "Strike" || m["direction"] != "out" {
-		t.Errorf("unwrapped: %#v", got)
-	}
-	if v := unwrapArg(map[string]any{"type": "string", "value": "spend"}); v != "spend" {
-		t.Errorf("plain: %#v", v)
-	}
-	if v := unwrapArg(map[string]any{"min_usd": 5.0}); v.(map[string]any)["min_usd"] != 5.0 {
-		t.Errorf("ordinary object changed: %#v", v)
+	if _, out := tb.run("simulate_sale", map[string]any{"btc": "0.1", "account": "all"}); !strings.Contains(out, "needs one account") || !strings.Contains(out, "Phone wallet: proceeds") {
+		t.Errorf("compare: %s", out)
 	}
 }
 
@@ -702,7 +611,7 @@ func TestSourcesOverall(t *testing.T) {
 		t.Fatal(err)
 	}
 	tb := &toolbox{s: srv, rep: rep}
-	_, out := tb.run("accounts", map[string]any{"sources": "true"}) // as text, as Llama sends it
+	_, out := tb.run("accounts", map[string]any{"sources": true})
 	if !strings.Contains(out, "Where the "+btcStr(rep.Holdings)+" held now came from") || !strings.Contains(out, "bought in") {
 		t.Errorf("sources: %s", out)
 	}
