@@ -282,9 +282,9 @@ income; on-chain deposits and withdrawals match your wallets and exchanges.
 A public demo for people to try before running their own copy. It is a
 separate program (`cmd/btctax-demo`, image target `demo`) around the same
 app code, so the app people run carries none of it, and both images are
-built from the same commit (`.github/workflows/images.yml` pushes
-`degrandis/btctax` and `degrandis/btctax-demo`, each tagged with the
-commit). `docker-compose.demo.yml` runs the demo image.
+built from the same commit (`.github/workflows/images.yml` publishes
+`ghcr.io/<owner>/<repo>` and `ghcr.io/<owner>/<repo>-demo`, each tagged
+with the commit). `docker-compose.demo.yml` runs the demo image.
 
 - Every visitor gets a private copy of an invented history (seven years,
   three exchanges, four wallets and a Lightning node), found again by a
@@ -315,9 +315,11 @@ commit). `docker-compose.demo.yml` runs the demo image.
 `.github/workflows/images.yml` runs on every push to `master`: vet and
 tests (including the demo's, which walk every screen's data in a demo
 copy), a check that the app's program imports no demo code, then both
-images built with the Actions layer cache and pushed as `:<commit>` and
-`:latest`. It needs the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets.
-Pull requests run the same steps without pushing.
+images built with the Actions layer cache and published to GitHub's
+container registry as `ghcr.io/<owner>/<repo>` and `ghcr.io/<owner>/<repo>-demo`,
+tagged `:<commit>` and `:latest`. The names follow the repository, and the
+run's own token publishes them, so no secrets are needed. Pull requests
+run the same steps without pushing.
 
 ```sh
 docker build -t btctax .                       # the app (default target)
