@@ -468,6 +468,15 @@ func TestAnalyzeMath(t *testing.T) {
 	if !strings.Contains(out, "[only values at most 100]") {
 		t.Errorf("filter not stated: %s", out)
 	}
+	// A made-up measure is refused, not read as zero; common aliases work.
+	if _, out = tb.run("analyze_records", map[string]any{"measure": "bogus", "stat": "sum"}); !strings.Contains(out, "unknown measure") {
+		t.Errorf("unknown measure: %s", out)
+	}
+	_, a := tb.run("analyze_records", map[string]any{"source": "records", "measure": "fee_usd", "stat": "sum"})
+	_, b := tb.run("analyze_records", map[string]any{"source": "records", "measure": "fee", "stat": "sum"})
+	if a != b {
+		t.Errorf("fee_usd %q != fee %q", a, b)
+	}
 }
 
 func TestClaimsChange(t *testing.T) {
@@ -489,8 +498,22 @@ func TestClaimsChange(t *testing.T) {
 		t.Errorf("note: %s", note)
 	}
 	// A model that copies the note into its answer has it taken back out.
-	if got := lookupNoteRe.ReplaceAllString("Your smallest income was $0.00."+note, ""); got != "Your smallest income was $0.00." {
+	if got := cleanAnswer("Your smallest income was $0.00."+note, false, false); got != "Your smallest income was $0.00." {
 		t.Errorf("copied note kept: %q", got)
+	}
+	// A download or chart the answer didn't make is taken out; a real one stays.
+	ans := "Here are your last 5 transactions:\n- one\n- two\n\nA CSV download of every matching row is available below."
+	if got := cleanAnswer(ans, false, false); got != "Here are your last 5 transactions:\n- one\n- two" {
+		t.Errorf("made-up download kept: %q", got)
+	}
+	if got := cleanAnswer(ans, true, false); got != ans {
+		t.Errorf("real download dropped: %q", got)
+	}
+	if got := cleanAnswer("You bought most in 2019. A chart of your BTC holdings over time is available below.", false, false); got != "You bought most in 2019." {
+		t.Errorf("made-up chart kept: %q", got)
+	}
+	if got := cleanAnswer("You can export a CSV from the Taxes page.", false, false); got != "You can export a CSV from the Taxes page." {
+		t.Errorf("plain mention dropped: %q", got)
 	}
 }
 

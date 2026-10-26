@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/DeGrandis/proof-of-basis/internal/lightning"
+	"github.com/DeGrandis/proof-of-basis/internal/prices"
 	"github.com/DeGrandis/proof-of-basis/internal/store"
+	"github.com/DeGrandis/proof-of-basis/internal/trace"
 )
 
 // SeedLightning adds an invented Core Lightning node: an on-chain deposit
@@ -52,6 +54,18 @@ func SeedLightning(st *store.Store, seed int64) error {
 	evs := lightning.Normalise(raw)
 	if _, err := st.PutLightning(evs); err != nil {
 		return err
+	}
+	// The deposit came from a wallet that isn't added, at the day's price.
+	// Left unlabeled, the node would count its payments but not its
+	// funding, and show a negative balance.
+	for _, e := range evs {
+		if e.Tag == "deposit" {
+			p := (&world{price: prices.Bundled()}).priceOn(time.Unix(e.Time, 0).UTC())
+			if err := st.SetLabel(trace.Label{Key: "ln:" + e.UID, Category: trace.Untracked, FiatCents: p * e.CreditSats / 100_000_000,
+				Note: "Funded the node from a hardware wallet not added here"}); err != nil {
+				return err
+			}
+		}
 	}
 	var onchain, inChannel int64
 	for _, e := range evs {

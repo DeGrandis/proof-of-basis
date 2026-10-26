@@ -249,6 +249,9 @@ type Chart struct {
 var validStats = map[string]bool{"summary": true, "list": true, "count": true, "sum": true, "mean": true, "median": true, "mode": true, "min": true, "max": true,
 	"stddev": true, "percentiles": true, "histogram": true, "top": true, "bottom": true}
 
+var validMeasures = map[string]bool{"": true, "usd": true, "btc": true, "price": true, "fee": true, "fee_btc": true, "gain": true, "days_held": true,
+	"days_to_long_term": true, "weekday": true, "month": true, "year": true, "account": true, "kind": true}
+
 // normalizeAnalyzeArgs accepts the label tool's wording too, which small
 // models mix up: a nested match, min_usd/max_usd, min_btc/max_btc,
 // direction and network.
@@ -303,6 +306,20 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	}
 	if !validStats[stat] {
 		return "", "", fmt.Errorf("unknown stat %q", stat)
+	}
+	switch m {
+	case "fee_usd", "usd_fee", "fees", "fee_usd_total":
+		m = "fee"
+	case "fee_sats", "fees_btc", "btc_fee":
+		m = "fee_btc"
+	case "amount", "value", "usd_value", "amount_usd", "cost", "proceeds":
+		m = "usd"
+	case "amount_btc", "btc_amount", "sats", "quantity":
+		m = "btc"
+	}
+	if !validMeasures[m] {
+		// An unknown measure would match nothing and read as zero.
+		return "", "", fmt.Errorf("unknown measure %q; use one of usd, btc, price, fee, fee_btc, gain, days_held, days_to_long_term, weekday, month, year, account, kind", m)
 	}
 	rows, src, err := tb.statRows(src)
 	if err != nil {

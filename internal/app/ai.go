@@ -530,8 +530,13 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	}
 	text := strings.TrimSpace(answer.String())
 	// Some models copy the lookups note from earlier answers into their
-	// own; take it back out.
-	if clean := strings.TrimSpace(lookupNoteRe.ReplaceAllString(text, "")); clean != text {
+	// own, or point to a download or chart that wasn't made; take those
+	// back out.
+	var file, chart bool
+	for _, lk := range lookups {
+		file, chart = file || lk.File != nil, chart || lk.Chart != nil
+	}
+	if clean := cleanAnswer(text, file, chart); clean != text {
 		text = clean
 		out.send(map[string]any{"type": "reset"})
 		out.send(map[string]any{"type": "delta", "text": text})
@@ -1464,7 +1469,25 @@ func claimsChange(text string) bool {
 	return claimRe.MatchString(strings.NewReplacer("**", "", "__", "", "*", "", "`", "").Replace(text))
 }
 
-var lookupNoteRe = regexp.MustCompile(`\s*\[Lookups behind this answer:[^\n]*\]`)
+var (
+	lookupNoteRe = regexp.MustCompile(`\s*\[Lookups behind this answer:[^\n]*\]`)
+	fileClaimRe  = regexp.MustCompile(`(?i)[^.!?\n]*\b(csv|download|spreadsheet)\b[^.!?\n]*\b(below|above|attached|under (this|my|the) answer)\b[^.!?\n]*[.!]?`)
+	chartClaimRe = regexp.MustCompile(`(?i)[^.!?\n]*\b(chart|graph|plot)\b[^.!?\n]*\b(below|above|attached|under (this|my|the) answer)\b[^.!?\n]*[.!]?`)
+	blankLinesRe = regexp.MustCompile(`\n{3,}`)
+)
+
+// cleanAnswer drops a copied lookups note, and any sentence pointing to a
+// download or chart when this answer made none.
+func cleanAnswer(text string, file, chart bool) string {
+	text = lookupNoteRe.ReplaceAllString(text, "")
+	if !file {
+		text = fileClaimRe.ReplaceAllString(text, "")
+	}
+	if !chart {
+		text = chartClaimRe.ReplaceAllString(text, "")
+	}
+	return strings.TrimSpace(blankLinesRe.ReplaceAllString(text, "\n\n"))
+}
 
 // lookupNote tells the model which lookups an earlier answer used, so a
 // follow-up like "label those" can repeat the same filters.
