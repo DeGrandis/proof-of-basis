@@ -1576,8 +1576,9 @@ var (
 	blankLinesRe = regexp.MustCompile(`\n{3,}`)
 )
 
-// cleanAnswer drops a copied lookups note, and any sentence pointing to a
-// download or chart when this answer made none.
+// cleanAnswer drops a copied lookups note, any sentence pointing to a
+// download or chart when this answer made none, and any paragraph about
+// the tools themselves (a tool's name, or a call written out as JSON).
 func cleanAnswer(text string, file, chart bool) string {
 	text = lookupNoteRe.ReplaceAllString(text, "")
 	if !file {
@@ -1586,7 +1587,34 @@ func cleanAnswer(text string, file, chart bool) string {
 	if !chart {
 		text = chartClaimRe.ReplaceAllString(text, "")
 	}
+	paras := strings.Split(text, "\n\n")
+	kept := paras[:0]
+	for _, p := range paras {
+		if !toolTalkRe().MatchString(p) {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) > 0 { // never drop the whole answer
+		text = strings.Join(kept, "\n\n")
+	}
 	return strings.TrimSpace(blankLinesRe.ReplaceAllString(text, "\n\n"))
+}
+
+var toolTalk *regexp.Regexp
+
+// toolTalkRe matches a tool's name, or a call written out as JSON.
+func toolTalkRe() *regexp.Regexp {
+	if toolTalk == nil {
+		var names []string
+		for _, t := range toolSpecs() {
+			// Only names like get_record: "accounts" or "price" are words.
+			if strings.Contains(t.Function.Name, "_") {
+				names = append(names, regexp.QuoteMeta(t.Function.Name))
+			}
+		}
+		toolTalk = regexp.MustCompile(`\b(` + strings.Join(names, "|") + `)\b|\{\s*"name"\s*:`)
+	}
+	return toolTalk
 }
 
 // lookupNote tells the model which lookups an earlier answer used, so a

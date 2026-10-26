@@ -512,6 +512,14 @@ func TestClaimsChange(t *testing.T) {
 	if got := cleanAnswer("You bought most in 2019. A chart of your BTC holdings over time is available below.", false, false); got != "You bought most in 2019." {
 		t.Errorf("made-up chart kept: %q", got)
 	}
+	tools := "The Hot wallet holds 0.75 BTC.\n\nTo learn more, use the get_record function:\n\n{\"name\": \"get_record\", \"parameters\": {\"id\": \"x\"}}"
+	if got := cleanAnswer(tools, false, false); got != "The Hot wallet holds 0.75 BTC." {
+		t.Errorf("tool talk kept: %q", got)
+	}
+	plain := "Your accounts hold 1.02 BTC.\n\nAt today's price, calculate roughly $81,000."
+	if got := cleanAnswer(plain, false, false); got != plain {
+		t.Errorf("plain words dropped: %q", got)
+	}
 	if got := cleanAnswer("You can export a CSV from the Taxes page.", false, false); got != "You can export a CSV from the Taxes page." {
 		t.Errorf("plain mention dropped: %q", got)
 	}
