@@ -11,6 +11,7 @@
 <script src="theme-init.js"></script>
 <script src="app.js" defer></script>
 <script src="record.js" defer></script>
+<script src="deck.js" defer></script>
 <script src="season.js" defer></script>
 <script src="sankey.js" defer></script>
 <script src="vendor/vis-network.min.js" defer></script>
@@ -169,7 +170,8 @@
   <section id="review" class="tab">
     <h2>Needs a label</h2>
     <p class="small muted">Didn't match another account.</p>
-    <div class="scroll"><table id="review-table"><thead><tr><th><button class="sort" data-sort="date">Date</button></th><th><button class="sort" data-sort="account">Account</button></th><th><button class="sort" data-sort="type">Type</button></th><th class="num"><button class="sort" data-sort="amount"><span class="unit-name">BTC</span></button></th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
+    <div id="review-deck" class="deck"></div>
+    <div class="scroll review-table-wrap"><table id="review-table"><thead><tr><th><button class="sort" data-sort="date">Date</button></th><th><button class="sort" data-sort="account">Account</button></th><th><button class="sort" data-sort="type">Type</button></th><th class="num"><button class="sort" data-sort="amount"><span class="unit-name">BTC</span></button></th><th>What was it?</th><th>Details</th></tr></thead><tbody></tbody></table></div>
     <h2>Matched transfers</h2>
     <p class="small muted">Wrong match? Unlink it. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Both records come back to Review to label or link by hand, and that pair is never matched automatically again.</span></span></p>
     <div class="scroll"><table id="links-table"><thead><tr><th>From</th><th>To</th><th class="num">Fee</th><th>How</th><th></th></tr></thead><tbody></tbody></table></div>

@@ -962,6 +962,7 @@ function renderReview() {
       <td class="small">${byKey[l.From]?.to ? `${day(byKey[l.From].t)} ${esc(byKey[l.From].to)} ${amt(byKey[l.From].sats)}` : rec(l.To)}</td><td class="num small">${l.FeeSats ? amt(l.FeeSats) : ""}</td><td class="small">${esc(l.Method)}</td>
       <td>${l.Method === "manual" ? `<button class="link" data-unlink="${esc(l.From)}" data-unlink2="${esc(l.To)}">undo</button>` : `<button class="link" data-autounlink="${esc(l.From)}" data-autounlink2="${esc(l.To)}">Unlink</button>`}</td></tr>`).join("")
     || `<tr><td colspan="5" class="muted">No transfers matched yet.</td></tr>`;
+  if (typeof renderDeck === "function") renderDeck();
   $("#unlinked-list").innerHTML = (report.unlinked || []).length
     ? `<h3>Not to be matched</h3>` + report.unlinked.map((p) => { const [a, b] = p.split(">"); return `<div>${rec(a)} → ${rec(b)} <button class="link small" data-allow="${esc(a)}" data-allow2="${esc(b)}">Allow again</button></div>`; }).join("")
     : "";

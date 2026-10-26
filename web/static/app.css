@@ -371,3 +371,33 @@ label > .lbl-text { font-weight: inherit; letter-spacing: inherit; text-transfor
   .graph-bar #zoom-level { order: 10; margin-left: auto; align-self: flex-end; line-height: 1; position: relative; }
   #graph:not(.show-key) .graph-bar #zoom-level { top: 10px; }
 }
+
+/* Review on a phone: one item at a time (deck.js); desktop keeps the table. */
+.deck { display: none; }
+@media (max-width: 760px) {
+  #review .review-table-wrap { display: none; }
+  .deck { display: block; margin-bottom: var(--s-6); }
+}
+.deck-top { display: flex; align-items: center; gap: 8px; margin: var(--s-2) 0 var(--s-3); font-size: var(--fs-sm); }
+.deck-top progress { flex: 1; height: 4px; margin-left: var(--s-2); accent-color: var(--accent); }
+.deck-undo { display: flex; gap: 8px; align-items: center; padding: 8px 12px; margin-bottom: var(--s-3); border-radius: var(--r-sm); background: var(--panel-2); }
+.deck-undo button { margin-left: auto; }
+.deck-card { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); padding: var(--s-4); }
+.deck-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.deck-when { margin-left: auto; }
+.deck-acct { margin-top: var(--s-3); font-size: var(--fs-sm); color: var(--muted); }
+.deck-amt { font-size: var(--fs-xl); font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.deck-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: var(--s-3) 0 0; font-size: var(--fs-sm); }
+.deck-facts dt { color: var(--muted); }
+.deck-facts dd { margin: 0; overflow-wrap: anywhere; }
+.deck-links { display: flex; gap: var(--s-4); margin-top: var(--s-3); }
+.deck-q { margin: var(--s-4) 0 var(--s-2); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--track); text-transform: uppercase; color: var(--muted); }
+.deck-choices, .deck-pick { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.deck-pick { grid-template-columns: 1fr; }
+.deck-choice { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 52px; padding: 8px 12px; text-align: left;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel); color: var(--text); font-weight: 600; }
+.deck-choice .small { font-weight: 400; }
+.deck-choice.on { border-color: var(--text); background: var(--panel-2); }
+.deck-follow { margin-top: var(--s-3); padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-sm); display: grid; gap: var(--s-2); }
+.deck-follow > p { margin: 0; }
+.deck-nav { display: flex; justify-content: space-between; margin-top: var(--s-4); }
