@@ -2,7 +2,11 @@
 # Two images from the same source: the app people run (the default target)
 # and the public demo (--target demo). Building one never builds the other,
 # and the app's image carries none of the demo's code or libraries.
-FROM golang:1.24-alpine AS build
+#
+# Multi-arch (amd64 and arm64, for Umbrel and StartOS boxes): Go runs on the
+# build machine's own platform and cross-compiles for the target, so an
+# arm64 image needs no emulation. The final images hold only the binary.
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -19,10 +23,14 @@ RUN if [ "$PRICE_SOURCE" != "none" ]; then \
 RUN mkdir -p /out/data
 
 FROM build AS build-app
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/btctax ./cmd/btctax
+ARG TARGETOS TARGETARCH
+# The release tag (v1.2.3) the app reports, or "dev".
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o /out/btctax ./cmd/btctax
 
 FROM build AS build-demo
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/btctax-demo ./cmd/btctax-demo
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/btctax-demo ./cmd/btctax-demo
 
 # The public demo: invented data, a private copy per visitor, the assistant
 # on Claude in Amazon Bedrock. Nothing is kept between restarts.

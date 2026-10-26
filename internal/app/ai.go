@@ -38,7 +38,7 @@ func (s *Server) aiClient() (*ollama.Client, string, error) {
 	if s.demo != nil {
 		return nil, "", errors.New("in the demo, the assistant runs on a hosted model")
 	}
-	url, model := s.st.Setting("aiUrl", ""), s.st.Setting("aiModel", "")
+	url, model := s.setting("aiUrl"), s.st.Setting("aiModel", "")
 	if url == "" || model == "" {
 		return nil, "", errors.New("the assistant isn't set up: add an Ollama address and model in Settings")
 	}
@@ -349,7 +349,7 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 
 	caps := ollama.Model{Name: model, Tools: true}
 	if c != nil {
-		caps = s.modelCaps(r.Context(), c, s.st.Setting("aiUrl", ""), model)
+		caps = s.modelCaps(r.Context(), c, s.setting("aiUrl"), model)
 	}
 	numCtx, _ := strconv.Atoi(s.st.Setting("aiCtx", "16384"))
 	if caps.Context > 0 && numCtx > caps.Context {

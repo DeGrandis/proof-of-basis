@@ -188,6 +188,15 @@ project's short code name, `btctax`.
 | `BTCTAX_ADDR` | `127.0.0.1:8080` (the image uses `0.0.0.0:8080`) | Listen address |
 | `BTCTAX_DATA` | `./data` (the image uses `/data`) | Data directory; everything is one SQLite file here |
 | `BTCTAX_PASSWORD` | unset | If set, becomes the login password each time the app starts |
+| `BTCTAX_ELECTRUM_URL` | unset | The node's Electrum server, `tcp://host:50001` or `ssl://host:50002` |
+| `BTCTAX_OLLAMA_URL` | unset | The node's Ollama, `http://host:11434` |
+| `BTCTAX_CLN_URL` | unset | The node's Core Lightning CLNRest, `https://host:3010` (the rune is still entered in Settings) |
+
+The last three are for app platforms such as Umbrel and StartOS, which run
+the app next to the node's own services: they fill in those settings on a
+fresh install, and Settings marks them "Found on your node". A value saved
+in Settings always wins. `GET /api/health` answers without a session
+(`{"ok":true,"version":"…"}`) for platform health checks.
 
 The app is one static Go binary with the UI embedded; the Docker image is
 built `FROM scratch`. `docker-compose.yml` publishes port 8080 on your LAN
@@ -330,7 +339,11 @@ tests (including the demo's, which walk every screen's data in a demo
 copy), a check that the app's program imports no demo code, then both
 images built with the Actions layer cache and published to GitHub's
 container registry as `ghcr.io/<owner>/<repo>` and `ghcr.io/<owner>/<repo>-demo`,
-tagged `:<commit>` and `:latest`. The names follow the repository, and the
+tagged `:<commit>` and `:latest`. The app image is built for `linux/amd64`
+and `linux/arm64` (Go cross-compiles, so no emulation); the demo for
+`linux/amd64` only. Pushing a version tag (`git tag v1.2.3`) also publishes
+the images as `:1.2.3`, with the version stamped into the app, for the
+Umbrel and StartOS packages to pin. The names follow the repository, and the
 run's own token publishes them, so no secrets are needed. Pull requests
 run the same steps without pushing.
 

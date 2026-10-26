@@ -16,7 +16,7 @@ func (s *Server) lightningSync(ctx context.Context) (map[string]any, error) {
 	if s.demo != nil {
 		return nil, errNoNode
 	}
-	u := s.st.Setting("clnUrl", "")
+	u := s.setting("clnUrl")
 	if u == "" {
 		return nil, errors.New("set your node's CLNRest address in Settings first")
 	}

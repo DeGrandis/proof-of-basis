@@ -400,7 +400,7 @@ func (s *Server) buildReport() (*Report, error) {
 			r.Accounts = append(r.Accounts, AccountView{Name: name, Kind: "other", Sats: sats, Basis: basis[name]})
 		}
 	}
-	if len(p.ln) > 0 || s.st.Setting("clnUrl", "") != "" {
+	if len(p.ln) > 0 || s.setting("clnUrl") != "" {
 		lv := &LightningView{Account: s.lnAccount(), Alias: s.st.Setting("clnAlias", ""), Synced: s.st.Setting("clnSynced", ""), Events: p.ln}
 		json.Unmarshal([]byte(s.st.Setting("clnChannels", "[]")), &lv.Channels)
 		for _, c := range lv.Channels {

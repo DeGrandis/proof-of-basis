@@ -32,6 +32,8 @@ import (
 type Server struct {
 	st      *store.Store
 	static  fs.FS
+	// nodeDefaults are the platform's service addresses (UseNodeServices).
+	nodeDefaults map[string]string
 	scanMu  sync.Mutex
 	authMu  sync.Mutex
 	limit   limiter
@@ -89,14 +91,15 @@ var defaults = map[string]string{
 
 func (s *Server) settings() map[string]string {
 	m := map[string]string{}
-	for k, d := range defaults {
-		m[k] = s.st.Setting(k, d)
+	for k := range defaults {
+		m[k] = s.setting(k)
 	}
 	return m
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("POST /api/settings", s.postSettings)
 	mux.HandleFunc("POST /api/fulcrum/test", s.testFulcrum)
@@ -236,6 +239,7 @@ func decode(r *http.Request, v any) error {
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	m := s.settings()
 	m["clnRuneSet"] = strconv.FormatBool(s.st.Setting("clnRune", "") != "")
+	m["fromNode"] = s.fromNode()
 	writeJSON(w, m)
 }
 
@@ -408,7 +412,7 @@ func (s *Server) testFulcrum(w http.ResponseWriter, r *http.Request) {
 func (s *Server) fulcrumStatus(w http.ResponseWriter, r *http.Request) {
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
-	host := s.st.Setting("fulcrumHost", "") + ":" + s.st.Setting("fulcrumPort", "") + ":" + s.st.Setting("fulcrumTLS", "")
+	host := s.setting("fulcrumHost") + ":" + s.setting("fulcrumPort") + ":" + s.setting("fulcrumTLS")
 	if s.status.host == host && time.Since(s.status.Checked) < 30*time.Second && r.URL.Query().Get("fresh") == "" {
 		writeJSON(w, s.status)
 		return

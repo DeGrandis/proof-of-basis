@@ -437,7 +437,7 @@ func (s *Server) startRecheck(w http.ResponseWriter, r *http.Request) {
 	s.recheck.st = recheckState{Running: true, Total: len(ids), Errors: []string{}}
 	s.recheck.mu.Unlock()
 	go func() {
-		if s.st.Setting("clnUrl", "") != "" {
+		if s.setting("clnUrl") != "" {
 			s.recheck.mu.Lock()
 			s.recheck.st.Current = s.lnAccount()
 			s.recheck.mu.Unlock()

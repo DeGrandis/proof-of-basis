@@ -20,6 +20,9 @@ import (
 	"github.com/DeGrandis/proof-of-basis/web"
 )
 
+// version is the release tag, set at build time (-ldflags -X main.version=…).
+var version = "dev"
+
 func env(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
@@ -59,7 +62,17 @@ func main() {
 		log.Printf("re-read imports: %d rows updated", n)
 	}
 
+	app.Version = version
 	srv := app.New(st, web.Static())
+	// An app platform (Umbrel, StartOS) passes its node's services here.
+	nodeSet, notes := app.NodeDefaults(os.Getenv)
+	for _, n := range notes {
+		log.Print(n)
+	}
+	if len(nodeSet) > 0 {
+		srv.UseNodeServices(nodeSet)
+		log.Printf("using the node's services as defaults: %d settings", len(nodeSet))
+	}
 	if err := srv.ApplyEnvPassword(os.Getenv("BTCTAX_PASSWORD")); err != nil {
 		log.Fatal(err)
 	}

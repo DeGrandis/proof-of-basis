@@ -2004,6 +2004,12 @@ async function loadSettings() {
   lf.elements.clnUrl.value = s.clnUrl || ""; lf.elements.clnName.value = s.clnName || "";
   lf.elements.clnRune.placeholder = s.clnRuneSet === "true" ? "saved (paste a new one to replace it)" : "paste a read-only rune";
   $("#ln-cert-line").textContent = s.clnCert ? `Pinned node certificate SHA-256: ${s.clnCert}` : "";
+  // Addresses the app platform (Umbrel, StartOS) gave for the node's own
+  // services, until one is saved here.
+  $$("#settings .node-note").forEach((n) => n.remove());
+  for (const k of (s.fromNode || "").split(",").filter((k) => ["fulcrumHost", "clnUrl", "aiUrl"].includes(k))) {
+    $(`#settings [name="${k}"]`)?.closest("label")?.insertAdjacentHTML("beforeend", `<span class="small muted node-note">Found on your node</span>`);
+  }
   const hs = handlers = await api("/api/handlers");
   $("#handler-select").innerHTML = `<option value="">Detect automatically</option>` + hs.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("");
 }

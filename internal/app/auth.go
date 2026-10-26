@@ -188,10 +188,11 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// public paths work without a session: the login page, its assets and
-// the login endpoints. Static assets are the app's code and hold no data.
+// public paths work without a session: the login page, its assets, the
+// login endpoints and the health check (up, and its version). Static assets
+// are the app's code and hold no data.
 func public(p string) bool {
-	if p == "/login" || p == "/login.html" || strings.HasPrefix(p, "/api/auth/") {
+	if p == "/login" || p == "/login.html" || strings.HasPrefix(p, "/api/auth/") || p == "/api/health" {
 		return true
 	}
 	switch path.Ext(p) {
