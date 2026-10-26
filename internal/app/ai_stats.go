@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DeGrandis/proof-of-basis/internal/lots"
 	"github.com/DeGrandis/proof-of-basis/internal/ollama"
 )
 
@@ -74,9 +75,15 @@ func (tb *toolbox) statRows(src string) ([]statRow, string, error) {
 			if src != "records" && g.Kind != "buy" && g.Kind != "purchase" {
 				continue
 			}
-			rows = append(rows, statRow{key: g.Key, acct: g.Account, kind: g.Kind, t: time.Unix(g.Time, 0).UTC(),
+			r := statRow{key: g.Key, acct: g.Account, kind: g.Kind, t: time.Unix(g.Time, 0).UTC(),
 				usd: float64(g.Cents) / 100, btc: float64(g.Sats) / 1e8, hasUSD: g.Cents != 0, fee: float64(g.FeeCents) / 100, feeBTC: float64(g.FeeSats) / 1e8,
-				text: strings.ToLower(g.Note + " " + g.Label + " " + g.Txid + " " + g.Address + " " + g.Key + " " + g.To), line: graphLine(g)})
+				text: strings.ToLower(g.Note + " " + g.Label + " " + g.Txid + " " + g.Address + " " + g.Key + " " + g.To), line: graphLine(g)}
+			if p, ok := tb.priceOn(r.t); ok && !r.hasUSD && g.Sats != 0 {
+				c := lots.MulDiv(max(g.Sats, -g.Sats), p, 100_000_000)
+				r.usd, r.hasUSD = float64(c)/100, true
+				r.line += ", worth about " + usdStr(c)
+			}
+			rows = append(rows, r)
 		}
 		if src == "" {
 			src = "buys"
@@ -135,14 +142,34 @@ func (tb *toolbox) statRows(src string) ([]statRow, string, error) {
 		if ln := tb.rep.Lightning; ln != nil {
 			for _, e := range ln.Events {
 				net := e.CreditSats - e.DebitSats
-				rows = append(rows, statRow{key: e.UID, acct: ln.Account, kind: e.Tag, t: time.Unix(e.Time, 0).UTC(), btc: float64(net) / 1e8, text: strings.ToLower(e.Description + " " + e.Tag + " " + e.Txid),
-					line: fmt.Sprintf("%s %s: in %s, out %s %s", dayOf(time.Unix(e.Time, 0)), e.Tag, btcStr(e.CreditSats), btcStr(e.DebitSats), clip(e.Description, 60))})
+				t := time.Unix(e.Time, 0).UTC()
+				r := statRow{key: e.UID, acct: ln.Account, kind: e.Tag, t: t, btc: float64(net) / 1e8, text: strings.ToLower(e.Description + " " + e.Tag + " " + e.Txid),
+					line: fmt.Sprintf("%s %s: in %s, out %s", dayOf(t), e.Tag, btcStr(e.CreditSats), btcStr(e.DebitSats))}
+				// Node activity has no dollar amounts: value it at the day's
+				// price, so "how much did I spend on X" has an answer.
+				if p, ok := tb.priceOn(t); ok && net != 0 {
+					c := lots.MulDiv(max(net, -net), p, 100_000_000)
+					r.usd, r.hasUSD = float64(c)/100, true
+					r.line += ", worth about " + usdStr(c)
+				}
+				if e.Description != "" {
+					r.line += ", " + clip(e.Description, 60)
+				}
+				rows = append(rows, r)
 			}
 		}
 	default:
 		return nil, "", errors.New("source must be buys, sales, records, income, review, lots or lightning")
 	}
 	return rows, src, nil
+}
+
+// priceOn is the BTC/USD close the report uses for a day.
+func (tb *toolbox) priceOn(t time.Time) (int64, bool) {
+	if tb.rep.prices == nil {
+		return 0, false
+	}
+	return tb.rep.prices.lookup(t)
 }
 
 func statValue(r statRow, m string) (v float64, cat string, ok bool) {

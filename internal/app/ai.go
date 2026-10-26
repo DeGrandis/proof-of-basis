@@ -621,7 +621,7 @@ Rules:
 - To refer to a record, give its date, account and amount in plain words. Don't paste record ids (the [ex:..] or [tx:..] tags) or long txids into answers unless the user asks; the app already links your lookups.
 - You are not a tax advisor. Only when the user asks what they should do (sell, harvest losses, how to file), explain the numbers and trade-offs and add one short line suggesting a tax professional. Don't add disclaimers to factual answers.
 - Don't narrate that you are about to look something up; just call the tool, then answer.
-- For searches, totals, counts, averages, medians, most common values, largest/smallest, "which has the most", lots turning long-term or at a loss, income, Review items and Lightning activity, call analyze_records. Set export=true when the user wants a file, chart=true when a chart would help (with group_by or a histogram). For any arithmetic (sums, differences, comparing gains or losses), call calculate rather than working it out yourself. Remember a loss is a negative gain: -$76 is larger than -$81.
+- For searches, totals, counts, averages, medians, most common values, largest/smallest, "which has the most", lots turning long-term or at a loss, income, Review items and Lightning activity, call analyze_records. Set export=true when the user wants a file, chart=true when a chart would help (with group_by or a histogram). For any arithmetic (sums, differences, comparing gains or losses), call calculate rather than working it out yourself, but when the data below already states a figure (such as the average cost per BTC), use it as written instead of recomputing it. Remember a loss is a negative gain: -$76 is larger than -$81.
 - For one record (details, where its coins came from or went, possible matches), call get_record. For accounts, holdings on a date, wallets and imported files, call accounts.
 - For selling: simulate_sale. "Sell everything" = account "all" with all=true (one call). A whole account = all=true. "How much can I sell and stay under $X gain/tax" = target_gain or target_tax.
 - To undo a change ("undo that"), call undo_action.
@@ -793,7 +793,13 @@ func (s *Server) pageSlice(rep *Report, pc PageContext) string {
 }
 
 func itemLine(key string, t time.Time, acct, dir string, sats, fee, value int64, network, note, txid string) string {
-	s := fmt.Sprintf("[%s] %s %s %s %s", key, dayOf(t), acct, dir, btcStr(sats))
+	// Say "received/sent, not yet labeled": models read a bare in/out as a
+	// buy or a sale.
+	verb := map[string]string{"in": "received (not yet labeled)", "out": "sent (not yet labeled)"}[dir]
+	if verb == "" {
+		verb = dir
+	}
+	s := fmt.Sprintf("[%s] %s %s %s %s", key, dayOf(t), acct, verb, btcStr(sats))
 	if fee > 0 {
 		s += ", fee " + btcStr(fee)
 	}

@@ -117,6 +117,8 @@ type Report struct {
 	Identifications []IdentView `json:"identifications"`
 	// Unlinked are pairs the user said aren't one transfer.
 	Unlinked []string `json:"unlinked"`
+	// prices values records that carry no USD amount, for the assistant.
+	prices *priceTable
 }
 
 // DipView is the first record that took an account below zero. Key is the
@@ -319,7 +321,7 @@ func (s *Server) buildReport() (*Report, error) {
 		return nil, err
 	}
 	r := &Report{Disposals: res.Disposals, OpenLots: res.Open, Removals: res.Removals, Income: tr.Income, Unmatched: tr.Unmatched,
-		Links: tr.Links, Warnings: tr.Warnings, Settings: set}
+		Links: tr.Links, Warnings: tr.Warnings, Settings: set, prices: prices}
 	for _, w := range res.Warnings {
 		r.Warnings = append(r.Warnings, w.OpID+": "+w.Message)
 	}
