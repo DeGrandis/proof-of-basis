@@ -277,10 +277,14 @@ never logged. Payments count as spends at market value and received
 payments as income unless you label them otherwise; routing fees are
 income; on-chain deposits and withdrawals match your wallets and exchanges.
 
-### Public demo mode
+### Public demo
 
-`BTCTAX_DEMO=true` turns the app into a public demo for people to try
-before running their own copy (`docker-compose.demo.yml` is an example):
+A public demo for people to try before running their own copy. It is a
+separate program (`cmd/btctax-demo`, image target `demo`) around the same
+app code, so the app people run carries none of it, and both images are
+built from the same commit (`.github/workflows/images.yml` pushes
+`degrandis/btctax` and `degrandis/btctax-demo`, each tagged with the
+commit). `docker-compose.demo.yml` runs the demo image.
 
 - Every visitor gets a private copy of an invented history (seven years,
   three exchanges, four wallets and a Lightning node), found again by a
@@ -300,12 +304,25 @@ before running their own copy (`docker-compose.demo.yml` is an example):
 
 | Variable | Default | |
 |---|---|---|
-| `BTCTAX_DEMO` | unset | `true` for demo mode |
 | `AWS_REGION` / `BTCTAX_BEDROCK_REGION` | `us-east-1` | Bedrock region |
 | `BTCTAX_BEDROCK_MODEL` | `anthropic.claude-haiku-5-5` | Bedrock model ID |
 | `BTCTAX_DEMO_AI` | `true` | `false` turns the assistant off |
 | `BTCTAX_DEMO_AI_PER_VISITOR` / `_PER_DAY` | `20` / `300` | Assistant questions allowed |
 | `BTCTAX_DEMO_MAX_COPIES` / `BTCTAX_DEMO_IDLE_HOURS` | `100` / `3` | Visitors' copies kept, and for how long idle |
+
+### Images and CI
+
+`.github/workflows/images.yml` runs on every push to `master`: vet and
+tests (including the demo's, which walk every screen's data in a demo
+copy), a check that the app's program imports no demo code, then both
+images built with the Actions layer cache and pushed as `:<commit>` and
+`:latest`. It needs the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets.
+Pull requests run the same steps without pushing.
+
+```sh
+docker build -t btctax .                       # the app (default target)
+docker build --target demo -t btctax-demo .    # the demo
+```
 
 ### Development
 
@@ -340,7 +357,8 @@ test/regtest/scenario.sh ./out      # plays a synthetic buy/withdraw/spend/depos
 ### Layout
 
 ```
-cmd/btctax          entrypoint
+cmd/btctax          the app
+cmd/btctax-demo     the public demo (same app, demo mode)
 internal/wallet     extended keys, descriptors, address derivation, Electrum script hashes
 internal/electrum   minimal Electrum protocol client
 internal/scan       gap-limit wallet scan, per-transaction summaries

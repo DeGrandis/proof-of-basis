@@ -10,15 +10,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"btctax/internal/app"
-	"btctax/internal/claude"
 	"btctax/internal/demo"
 	"btctax/internal/prices"
-	"btctax/internal/sandbox"
 	"btctax/internal/store"
 	"btctax/web"
 )
@@ -49,10 +46,6 @@ func main() {
 
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		log.Fatal(err)
-	}
-	if env("BTCTAX_DEMO", "") == "true" {
-		runDemo(*addr, *data)
-		return
 	}
 	st, err := store.Open(filepath.Join(*data, "btctax.db"))
 	if err != nil {
@@ -170,41 +163,4 @@ func resetPassword(args []string) {
 	if os.Getenv("BTCTAX_PASSWORD") != "" {
 		fmt.Println("Note: BTCTAX_PASSWORD is set, so the app will use it again the next time it starts.")
 	}
-}
-
-// runDemo serves the public demo: invented data, a private copy per
-// visitor, no login, a simulated node, and the assistant on Claude in
-// Amazon Bedrock (with the machine's AWS role) within a daily allowance.
-func runDemo(addr, data string) {
-	ctx := context.Background()
-	var ai app.ChatModel
-	region := env("BTCTAX_BEDROCK_REGION", env("AWS_REGION", "us-east-1"))
-	model := env("BTCTAX_BEDROCK_MODEL", "anthropic.claude-haiku-5-5")
-	if env("BTCTAX_DEMO_AI", "true") == "true" {
-		if c, err := claude.New(ctx, region, model); err != nil {
-			log.Printf("demo: assistant off: %v", err)
-		} else {
-			ai = c
-		}
-	}
-	hub, err := sandbox.New(sandbox.Config{
-		Dir: filepath.Join(data, "demo"), Static: web.Static(), AI: ai,
-		MaxCopies:    envInt("BTCTAX_DEMO_MAX_COPIES", 100),
-		IdleTTL:      time.Duration(envInt("BTCTAX_DEMO_IDLE_HOURS", 3)) * time.Hour,
-		AIPerVisitor: envInt("BTCTAX_DEMO_AI_PER_VISITOR", 20),
-		AIPerDay:     envInt("BTCTAX_DEMO_AI_PER_DAY", 300),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	hs := &http.Server{Addr: addr, Handler: app.LogRequests(hub), ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("btctax demo listening on http://%s (assistant: %v, model %s in %s)", addr, ai != nil, model, region)
-	log.Fatal(hs.ListenAndServe())
-}
-
-func envInt(k string, d int) int {
-	if n, err := strconv.Atoi(os.Getenv(k)); err == nil && n > 0 {
-		return n
-	}
-	return d
 }

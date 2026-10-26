@@ -168,3 +168,42 @@ func TestAssistantAllowance(t *testing.T) {
 }
 
 func itoa(n int64) string { b, _ := json.Marshal(n); return string(b) }
+
+// The demo is the app: every page and every read the app's screens make
+// answers in a demo copy, so a feature added to the app can't quietly
+// break or go missing in the demo.
+func TestDemoServesTheWholeApp(t *testing.T) {
+	_, srv := newHub(t, Config{AIPerVisitor: 1, AIPerDay: 1})
+	v := visitor(t)
+	var rep struct {
+		Graph []struct {
+			Key, Txid, Address string
+		}
+		Years []struct{ Year int }
+	}
+	if code := get(t, v, srv.URL+"/api/report", &rep); code != 200 || len(rep.Graph) == 0 || len(rep.Years) == 0 {
+		t.Fatalf("report: %d", code)
+	}
+	var txid, addr, exKey string
+	for _, g := range rep.Graph {
+		if txid == "" && g.Txid != "" {
+			txid = g.Txid
+		}
+		if addr == "" && g.Address != "" && !strings.HasPrefix(g.Address, "ln") {
+			addr = g.Address
+		}
+		if exKey == "" && strings.HasPrefix(g.Key, "ex:") {
+			exKey = g.Key
+		}
+	}
+	year := itoa(int64(rep.Years[0].Year))
+	for _, p := range []string{"/", "/api/settings", "/api/handlers", "/api/imports", "/api/imports/freshness", "/api/prices",
+		"/api/forms?year=" + year, "/api/readiness?year=" + year, "/api/taxforms?year=" + year, "/api/1099da",
+		"/api/actions", "/api/recheck", "/api/fulcrum/status", "/api/ai/status", "/api/ai/chats",
+		"/api/attachments?key=" + exKey, "/api/records/" + exKey + "/source", "/api/tx/" + txid, "/api/address/" + addr,
+		"/api/package/" + year, "/api/export/8949.csv?year=" + year} {
+		if code := get(t, v, srv.URL+p, nil); code != 200 {
+			t.Errorf("%s: %d", p, code)
+		}
+	}
+}
