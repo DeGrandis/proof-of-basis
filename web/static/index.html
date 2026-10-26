@@ -28,6 +28,7 @@
     <svg class="sun" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></svg>
     <svg class="moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
   </button>
+  <a id="settings-link" class="icon-btn" href="#settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg></a>
 </header>
   <nav id="tabs" aria-label="Pages">
     <button data-tab="overview" class="on" aria-label="Overview"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"/></svg><span class="lbl">Overview</span></button>
@@ -38,7 +39,6 @@
     <button data-tab="wallets" aria-label="Wallets"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h13v10H3zM3 6l9-3v3M13 11h1"/></svg><span class="lbl">Wallets</span></button>
     <button data-tab="lightning" aria-label="Lightning"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.5 2 4.5 11h5l-1 7 7-9h-5z"/></svg><span class="lbl">Lightning</span></button>
     <button data-tab="imports" aria-label="Imports"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V3M6 7l4-4 4 4M3 13v4h14v-4"/></svg><span class="lbl">Imports</span></button>
-    <button data-tab="settings" aria-label="Settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14M7 4v4M13 12v4"/></svg><span class="lbl">Settings</span></button>
   </nav>
 <div id="demo-banner" class="demo-only" role="note"><b>Demo:</b> all data here is fake and synthetic. <button type="button" class="link" id="demo-reset">Start over</button></div>
 <div id="page">
@@ -322,7 +322,7 @@
     <div class="seg act-filter" id="activity-filter" role="group" aria-label="Show changes by"><button type="button" data-actor="">Everyone</button><button type="button" data-actor="user">You</button><button type="button" data-actor="assistant">Assistant</button></div>
     <div id="activity-list"></div>
   </section>
-  <section id="settings" class="tab">
+  <section id="settings" class="tab" data-title="Settings">
     <h2>Display</h2>
     <form id="display-form" class="card grid">
       <label>Dollar amounts <select name="cents"><option value="yes">With cents ($1,234.56)</option><option value="no">Whole dollars ($1,234)</option></select></label>

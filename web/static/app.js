@@ -118,6 +118,9 @@ function show(route) {
   if (tab === "tx" || tab === "addr") { showLookup(tab, arg); return; }
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  // Settings lives in the header, by the theme toggle, and lights up the same way.
+  $("#settings-link").classList.toggle("on", tab === "settings");
+  if (tab === "settings") $("#settings-link").setAttribute("aria-current", "page"); else $("#settings-link").removeAttribute("aria-current");
   $("#tab-title").textContent = $(`#tabs button[data-tab="${tab}"] .lbl`)?.textContent || $(`#${CSS.escape(tab)}`)?.dataset.title || "";
   document.body.dataset.tab = tab;
   document.body.classList.toggle("flow", tab === "graph");
