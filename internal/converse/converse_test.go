@@ -119,3 +119,18 @@ func TestTextToolCalls(t *testing.T) {
 		t.Errorf("arguments from a string: %+v", c[0].Function.Arguments)
 	}
 }
+
+// Tool names Converse can take back: no prefix, no format tags.
+func TestToolName(t *testing.T) {
+	for in, want := range map[string]string{
+		"analyze_records":                      "analyze_records",
+		"functions.get_record":                 "get_record",
+		"analyze_records<|channel|>commentary": "analyze_records",
+		" calculate json":                      "calculate",
+		"<|call|>":                             "unknown_tool",
+	} {
+		if got := toolName(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}

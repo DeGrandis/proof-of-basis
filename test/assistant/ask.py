@@ -1,7 +1,7 @@
 """Ask the public demo's assistant a fixed set of questions and record what
 it answered and which lookups it made, to compare models or check a change.
 
-    python test/assistant/ask.py https://proofofbasis.degrand.is out.jsonl
+    python test/assistant/ask.py https://proofofbasis.degrand.is out.jsonl [first conversation]
 
 Each conversation in questions.txt starts on a fresh demo copy ("Start
 over"), so it stays within the demo's 20 questions per visitor. Every
@@ -74,12 +74,16 @@ class Visitor:
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # answers aren't always ASCII
     base = sys.argv[1] if len(sys.argv) > 1 else "https://proofofbasis.degrand.is"
     out = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "answers.jsonl")
+    first = int(sys.argv[3]) if len(sys.argv) > 3 else 1
     questions = pathlib.Path(__file__).with_name("questions.txt")
     v = Visitor(base)
-    with out.open("w", encoding="utf-8") as f:
+    with out.open("a" if first > 1 else "w", encoding="utf-8") as f:
         for n, conv in enumerate(conversations(questions), 1):
+            if n < first:
+                continue
             chat = v.fresh()
             for q in conv:
                 r = v.ask(chat, q)

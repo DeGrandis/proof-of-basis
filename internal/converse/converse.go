@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -107,6 +108,10 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 		case *types.ContentBlockMemberText:
 			text.WriteString(x.Value)
 		case *types.ContentBlockMemberToolUse:
+			// gpt-oss can name a tool "functions.get_record" or with a
+			// format tag stuck on; Converse rejects such a name when the
+			// reply is sent back, so it's cleaned in both places.
+			x.Value.Name = aws.String(toolName(aws.ToString(x.Value.Name)))
 			var tc ollama.ToolCall
 			tc.Function.Name = aws.ToString(x.Value.Name)
 			tc.Function.Arguments = map[string]any{}
@@ -131,6 +136,18 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 		onDelta(reply.Content)
 	}
 	return reply, nil
+}
+
+var toolNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]+`)
+
+// toolName is a tool's name without a "functions." prefix or anything
+// after it that a name can't hold.
+func toolName(s string) string {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "functions.")
+	if n := toolNameRe.FindString(s); n != "" {
+		return n
+	}
+	return "unknown_tool"
 }
 
 // textToolCalls reads a reply that is nothing but tool calls written as
