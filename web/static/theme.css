@@ -199,6 +199,7 @@ code { font-family: var(--mono); font-size: var(--fs-xs); background: var(--pane
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-family: var(--font-display); font-size: 17px; letter-spacing: -.01em; white-space: nowrap; margin-right: var(--s-3); }
 .brand svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .brand .mark { fill: var(--accent); stroke: none; }
+.brand svg path { stroke: var(--accent-ink); } /* the B: dark on the green in both themes */
 #tabs { display: flex; align-items: center; gap: 5px; }
 #search { margin-left: auto; }
 /* Keep the right cluster clear of the centred nav on narrower desktops */
@@ -460,6 +461,9 @@ body.ai-ready .ai-ask { display: block; }
 .ai-fab:hover { transform: translateY(-2px); }
 .ai-fab svg, .ai-icon svg, .ai-send svg, .ai-empty-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .ai-fab svg path:first-child { fill: var(--accent); stroke: var(--accent); }
+/* Dark mode: a green button with black sparkles (green on near-white was hard to see). */
+:root[data-theme="dark"] .ai-fab { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+:root[data-theme="dark"] .ai-fab svg path:first-child { fill: var(--accent-ink); stroke: var(--accent-ink); }
 .ai-panel { position: fixed; right: 24px; bottom: 24px; z-index: 41; width: min(440px, calc(100vw - 48px)); height: min(720px, calc(100vh - var(--nav-h) - 48px));
   display: flex; flex-direction: column; background: var(--bg); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r);
   box-shadow: var(--shadow-pop); overflow: hidden; }
