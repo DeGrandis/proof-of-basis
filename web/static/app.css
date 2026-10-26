@@ -417,7 +417,7 @@ main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type {
 #disclaimer-pop { width: min(640px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0; margin: auto; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto; }
 #disclaimer-pop::backdrop { background: rgba(0, 0, 0, .55); }
 #disclaimer-pop .detail-inner { padding: var(--s-5); }
-#disclaimer-pop h2 { margin: 0 0 var(--s-3); }
+#disclaimer-pop h2 { margin: 0 0 var(--s-3); outline: none; } /* focused on open, to start at the top */
 #disclaimer-pop .row { justify-content: flex-end; margin-top: var(--s-3); }
 #foot { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 1px solid var(--line); text-align: center; }
 body.flow #foot { display: none; }

@@ -220,6 +220,8 @@ function showDisclaimer() {
   if (report?.settings?.disclaimerAccepted || box.open) return;
   $(".disclaimer-body", box).innerHTML = $("#disclaimer .disclaimer-text").innerHTML;
   box.showModal();
+  // Open at the top (focus is on the heading), so it reads down to the button.
+  box.scrollTop = 0;
 }
 $("#disclaimer-pop").addEventListener("cancel", (e) => e.preventDefault()); // Escape doesn't dismiss it
 $("#disclaimer-ok").addEventListener("click", async () => {
