@@ -87,9 +87,9 @@ func TestConsolidatedTools(t *testing.T) {
 			t.Errorf("%s %v: error=%q out=%.300s", c.name, c.args, lk.Error, out)
 		}
 	}
-	// Partial sales need an account.
-	if lk, _ := tb.run("simulate_sale", map[string]any{"account": "all", "btc": 0.1}); lk.Error == "" {
-		t.Error("partial sale across all accounts accepted")
+	// Partial sales need an account: without one, each is compared.
+	if lk, out := tb.run("simulate_sale", map[string]any{"account": "all", "btc": 0.1}); lk.Error != "" || !strings.Contains(out, "needs one account") {
+		t.Errorf("partial sale across all accounts: %s %s", lk.Error, out)
 	}
 
 	// Working backwards: the verified gain stays under the limit.

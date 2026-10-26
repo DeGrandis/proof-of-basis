@@ -1119,6 +1119,16 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 	if args == nil {
 		args = map[string]any{}
 	}
+	// Some models fill every optional argument with "none" or "null";
+	// those mean the argument wasn't given, not a value.
+	for k, v := range args {
+		if s, ok := v.(string); ok {
+			switch strings.ToLower(strings.TrimSpace(s)) {
+			case "", "none", "null", "nil", "n/a", "undefined":
+				delete(args, k)
+			}
+		}
+	}
 	lk := Lookup{Name: name, Args: args}
 	var out string
 	var err error

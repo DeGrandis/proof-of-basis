@@ -254,7 +254,7 @@ func (tb *toolbox) simulate(a map[string]any) (string, string, error) {
 	}
 	if strings.EqualFold(acct, "all") || acct == "" && all {
 		if !all && (argNum(a, "btc") > 0 || argNum(a, "usd") > 0) {
-			return "", "", errors.New("to sell part of your bitcoin, name the account, or use target_gain/target_tax to let me choose")
+			return tb.compareAccounts(a)
 		}
 		return tb.sellEverything()
 	}
@@ -265,6 +265,40 @@ func (tb *toolbox) simulate(a map[string]any) (string, string, error) {
 		return tb.whatIfPicks(a)
 	}
 	return tb.whatIf(a)
+}
+
+// compareAccounts answers "if I sell 0.1 BTC" with no account named:
+// basis is tracked per wallet, so it sells the amount from each account
+// that holds enough and sets the results side by side.
+func (tb *toolbox) compareAccounts(a map[string]any) (string, string, error) {
+	sats := int64(math.Round(argNum(a, "btc") * 1e8))
+	if sats <= 0 && tb.rep.Price > 0 {
+		sats = int64(math.Round(argNum(a, "usd") * 100 * 1e8 / float64(tb.rep.Price)))
+	}
+	if sats <= 0 {
+		return "", "", errors.New("give the amount to sell in btc or usd")
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Selling %s needs one account (cost basis is tracked per wallet). Sold today from each account that holds enough:\n", btcStr(sats))
+	n := 0
+	for _, acc := range tb.rep.Accounts {
+		if acc.Sats < sats {
+			continue
+		}
+		r, err := tb.simulateSales([]saleSpec{{Account: acc.Name, Sats: sats}})
+		if err != nil {
+			return "", "", err
+		}
+		short, long := r.Short[1]-r.Short[2], r.Long[1]-r.Long[2]
+		fmt.Fprintf(&b, "- %s: proceeds %s, gain %s (short-term %s, long-term %s), adds %s to %d's estimated tax\n",
+			acc.Name, usdStr(r.Short[1]+r.Long[1]), usdStr(short+long), usdStr(short), usdStr(long), usdStr(r.After-r.Before), time.Now().Year())
+		n++
+	}
+	if n == 0 {
+		return "", "", fmt.Errorf("no single account holds %s; name the accounts to sell from", btcStr(sats))
+	}
+	b.WriteString("Show the user these options and ask which account they mean (or point out the cheapest).\n")
+	return b.String(), fmt.Sprintf("Compared selling %s by account", btcStr(sats)), nil
 }
 
 type saleSpec struct {

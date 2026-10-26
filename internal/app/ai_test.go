@@ -616,3 +616,27 @@ func TestLightningAnalysis(t *testing.T) {
 		t.Errorf("sale key not found: %s", out)
 	}
 }
+
+// "none" for an optional argument means it wasn't given: a sale of 0.1
+// BTC stays a sale of 0.1 BTC, not a "how much can I sell" question.
+func TestNoneArgs(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, err := srv.buildReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolbox{s: srv, rep: rep}
+	_, plain := tb.run("simulate_sale", map[string]any{"btc": "0.1", "account": "all"})
+	_, nones := tb.run("simulate_sale", map[string]any{"btc": "0.1", "account": "all", "all": "false", "lots": "none", "strategy": "none", "target_gain": "none", "target_tax": "none", "usd": "none"})
+	if plain != nones {
+		t.Errorf("with nones:\n%s\nwithout:\n%s", nones, plain)
+	}
+	// No account named: each account that holds enough, side by side.
+	if !strings.Contains(nones, "needs one account") || !strings.Contains(nones, "Hot wallet: proceeds") {
+		t.Errorf("compare: %s", nones)
+	}
+}
