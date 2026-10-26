@@ -67,6 +67,9 @@ function toast(msg) {
 
 function show(route) {
   const [tab, ...rest] = route.split("/");
+  // Flow's popup is modal: left open on a hidden tab, it would leave the
+  // rest of the page unclickable.
+  if (tab !== "graph" && $("#graph-detail")?.open) $("#graph-detail").close();
   const arg = decodeURIComponent(rest.join("/"));
   if (tab === "tx" || tab === "addr") { showLookup(tab, arg); return; }
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
