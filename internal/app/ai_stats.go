@@ -354,6 +354,15 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	}
 	from, hasFrom := parseDay(argStr(a, "from"))
 	to, hasTo := parseDay(argStr(a, "to"))
+	// A date that doesn't exist (2020-02-30) would otherwise drop the
+	// filter and match every record.
+	for _, k := range []string{"from", "to"} {
+		if s := argStr(a, k); s != "" {
+			if _, ok := parseDay(s); !ok {
+				return "", "", fmt.Errorf("%s %q isn't a real date (YYYY-MM-DD); nothing can match it", k, s)
+			}
+		}
+	}
 	acct := argStr(a, "account")
 	if acct != "" {
 		if n, err := tb.resolveAccount(acct); err == nil {

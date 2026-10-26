@@ -707,3 +707,20 @@ func TestSourcesOverall(t *testing.T) {
 		t.Errorf("sources: %s", out)
 	}
 }
+
+// A date that doesn't exist is an error, not a filter quietly dropped.
+func TestImpossibleDate(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, err := srv.buildReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolbox{s: srv, rep: rep}
+	if lk, out := tb.run("analyze_records", map[string]any{"source": "buys", "stat": "list", "from": "2020-02-30", "to": "2020-02-30"}); lk.Error == "" {
+		t.Errorf("impossible date accepted: %s", out)
+	}
+}
