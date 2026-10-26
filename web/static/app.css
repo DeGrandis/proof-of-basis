@@ -53,6 +53,7 @@
 #history .buy-dot { fill: var(--bg); fill-opacity: .6; stroke: var(--chart-up); stroke-width: 1.5; }
 #history .sell-dot { fill: var(--chart-down); fill-opacity: .85; stroke: var(--bg); stroke-width: 1; }
 #history .buy-dot.hot { fill: var(--chart-up); fill-opacity: 1; }
+#history.dot-hover #history-hit { cursor: pointer; }
 #history .sell-dot.hot { stroke: var(--chart-line); stroke-width: 1.5; fill-opacity: 1; }
 #history-hit { cursor: crosshair; touch-action: pan-y; }
 .chart-key { display: inline-flex; gap: 14px; align-items: center; font-size: var(--fs-sm); color: var(--muted); }

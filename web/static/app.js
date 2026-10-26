@@ -94,9 +94,9 @@ function toast(msg) {
 
 function show(route) {
   const [tab, ...rest] = route.split("/");
-  // Flow's popup is modal: left open on a hidden tab, it would leave the
-  // rest of the page unclickable.
-  if (tab !== "graph" && $("#graph-detail")?.open) $("#graph-detail").close();
+  // The record popup is modal: left open over a page that's gone, it would
+  // leave everything unclickable.
+  if ($("#graph-detail")?.open) $("#graph-detail").close();
   const arg = decodeURIComponent(rest.join("/"));
   if (tab === "tx" || tab === "addr") { showLookup(tab, arg); return; }
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === tab));
@@ -364,7 +364,7 @@ function renderLightning() {
   }
   const worth = report.price ? usd(Math.round(ln.balanceSats * report.price / 1e8)) : "";
   const rows = lnLedger();
-  const line = (r) => `<tr><td>${day(r.e.t)}</td><td>${r.g ? `<a href="${pageLink(r.g)}">${esc(r.what)}</a>` : esc(r.what)}</td>
+  const line = (r) => `<tr><td>${day(r.e.t)}</td><td>${r.g ? `<a href="${pageLink(r.g)}" data-flowpick="${esc(r.g.key)}">${esc(r.what)}</a>` : esc(r.what)}</td>
     <td class="num in">${r.delta > 0 ? btc(r.delta) : ""}</td><td class="num out">${r.delta < 0 ? btc(-r.delta) : ""}</td><td class="num">${btc(r.balance)}</td><td class="small">${r.counts}</td></tr>`;
   const head = `<div class="bal"><div><div class="small muted">Balance</div><div class="big">${amt(ln.balanceSats)}</div></div>${worth ? `<div><div class="small muted">Worth</div><div class="big">${worth}</div></div>` : ""}
     <div class="small muted">${ln.alias ? esc(ln.alias) + " · " : ""}${ln.synced ? `synced ${esc(ln.synced.replace("T", " ").slice(0, 16))} UTC` : "not synced yet"}</div></div>`;
@@ -510,7 +510,7 @@ function histDragMove(e) {
   drawHistory();
 }
 window.addEventListener("pointermove", histDragMove);
-window.addEventListener("pointerup", () => { hist.drag = null; $("#history")?.classList.remove("dragging"); });
+window.addEventListener("pointerup", () => { hist.dragged = !!hist.drag?.moved; hist.drag = null; $("#history")?.classList.remove("dragging"); });
 window.addEventListener("pointercancel", () => { hist.drag = null; });
 
 function drawHistory() {
@@ -625,6 +625,7 @@ function drawHistory() {
     // A dot under the pointer wins over the plain readout.
     let best = null, bd = Infinity;
     for (const d of dots) { const dist = Math.hypot(d.cx - mx, d.cyP - my) - d.r; if (dist < bd) { bd = dist; best = d; } }
+    svg.classList.toggle("dot-hover", !!best && bd < 6);
     if (hot != null) $$(`#history [data-dot="${hot}"]`).forEach((c) => c.classList.remove("hot"));
     hot = null;
     tip.hidden = false;
@@ -652,7 +653,7 @@ function drawHistory() {
       <div class="tip-cap">${day(p.t)} · ${p.price && firstPriced ? "price" : "holdings"} since ${day((p.price && firstPriced ? firstPriced : first).t)}</div>`;
     placeTip(xx, y1(p.sats));
   });
-  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; band.setAttribute("width", 0); });
+  hit.addEventListener("pointerleave", () => { svg.classList.remove("dot-hover"); cross.setAttribute("visibility", "hidden"); tip.hidden = true; band.setAttribute("width", 0); });
   // Wheel zooms around the pointer; dragging pans; the scrubber's frame
   // pans and its handles resize. Each leaves the presets.
   hit.addEventListener("wheel", (e) => {
@@ -667,9 +668,17 @@ function drawHistory() {
   const startDrag = (e, mode, pxPerSec) => { e.preventDefault(); hist.drag = { mode, x: e.clientX, t0, t1, pxPerSec }; svg.classList.add("dragging"); cross.setAttribute("visibility", "hidden"); tip.hidden = true; band.setAttribute("width", 0); };
   hit.addEventListener("pointerdown", (e) => startDrag(e, "pan", PW / (t1 - t0)));
   $("#history-scrub").addEventListener("pointerdown", (e) => { const m = e.target.closest("[data-scrub]")?.dataset.scrub; if (m) startDrag(e, m, PW / Math.max(b - a, 1)); });
+  // Clicking a buy or sale opens its record; a finger gets more room.
+  hit.addEventListener("click", (e) => {
+    if (hist.dragged) return;
+    const rect = svg.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let best = null, bd = Infinity;
+    for (const d of dots) { const dist = Math.hypot(d.cx - mx, d.cyP - my) - d.r; if (dist < bd) { bd = dist; best = d; } }
+    if (best && bd < (e.pointerType === "touch" ? 16 : 6)) selectEvent(best.e.key, false);
+  });
   // Clicking the strip outside the frame jumps the window there.
   $("#history-scrub").addEventListener("click", (e) => {
-    if (hist.drag?.moved || e.target.closest("[data-scrub]")) return;
+    if (hist.dragged || e.target.closest("[data-scrub]")) return;
     const rect = svg.getBoundingClientRect(), at = a + ((e.clientX - rect.left - L) / PW) * (b - a), span = t1 - t0;
     hist.t0 = Math.min(Math.max(a, at - span / 2), b - span); hist.t1 = hist.t0 + span; hist.preset = "";
     $$("#history-range button").forEach((x) => x.classList.remove("on")); drawHistory();
@@ -1526,8 +1535,9 @@ function selectEvent(key, zoom) {
   if (!box.open) box.showModal();
   relatedKeys = d.related;
   highlight(key);
-  if (zoom) zoomToKeys(d.related, d.byKey);
+  if (zoom && onFlow()) zoomToKeys(d.related, d.byKey);
 }
+const onFlow = () => $("#graph").classList.contains("on");
 function zoomToKeys(keys, byKey) {
   const ps = [...keys].map((k) => byKey[k]).filter(Boolean).map((g) => posOf(g.t));
   let lo = Math.min(...ps), hi = Math.max(...ps);
@@ -1540,8 +1550,14 @@ function zoomToKeys(keys, byKey) {
 // highlighted until the graph is clicked or Escape pressed.
 let keepPick = false;
 function showOnGraph() {
-  const d = selected && buildDetail(selected);
+  const key = selected, d = key && buildDetail(key);
   if (!d) return;
+  if (!onFlow()) {
+    // From Overview: go to Flow, with the chain highlighted there.
+    location.hash = "graph";
+    setTimeout(() => { selected = key; relatedKeys = d.related; highlight(key); zoomToKeys(d.related, d.byKey); }, 60);
+    return;
+  }
   keepPick = true;
   $("#graph-detail").close();
   zoomToKeys(d.related, d.byKey);
@@ -1847,7 +1863,11 @@ document.addEventListener("click", (e) => {
   const show = e.target.closest("[data-flowshow]")?.dataset.flowshow;
   if (show) { e.preventDefault(); location.hash = "graph"; setTimeout(() => selectEvent(show, true), 50); return; }
   const k = e.target.closest("[data-flowpick]")?.dataset.flowpick;
-  if (k) { e.preventDefault(); location.hash = recordLink(k); }
+  if (!k) return;
+  e.preventDefault();
+  const rec = String(k).split(">")[0];
+  if ($("#overview").classList.contains("on") && (report?.graph || []).some((g) => g.key === rec)) selectEvent(rec, false);
+  else location.hash = recordLink(k);
 });
 $("#lookup").addEventListener("click", (e) => {
   const k = e.target.closest("[data-pick]")?.dataset.pick || e.target.closest("[data-flowkey]")?.dataset.flowkey;
