@@ -591,6 +591,9 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 				if len(lk.Keys) < 5 && it.r.key != "" {
 					lk.Keys = append(lk.Keys, it.r.key)
 				}
+				if len(lk.Rows) < 3 {
+					lk.Rows = append(lk.Rows, clip(it.r.line, 160))
+				}
 			}
 			return
 		}
@@ -757,6 +760,9 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 				fmt.Fprintf(&b, "%s- %s: %s\n", indent, fmtVal(m, it.v), it.r.line)
 				if len(lk.Keys) < 5 && it.r.key != "" {
 					lk.Keys = append(lk.Keys, it.r.key)
+				}
+				if len(lk.Rows) < 3 {
+					lk.Rows = append(lk.Rows, clip(it.r.line, 160))
 				}
 			}
 		}

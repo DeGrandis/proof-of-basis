@@ -210,8 +210,10 @@ type Lookup struct {
 	File    *FileRef       `json:"file,omitempty"`
 	Review  *ReviewSet     `json:"review,omitempty"`
 	// Keys are the first records a lookup listed, so a follow-up ("which
-	// account was that?") can look one up by its id.
+	// account was that?") can look one up by its id; Rows are their lines,
+	// so it has their facts even without looking.
 	Keys []string `json:"keys,omitempty"`
+	Rows []string `json:"rows,omitempty"`
 }
 
 // ReviewSet is the Review items an answer listed, for the Label control.
@@ -1574,6 +1576,8 @@ var (
 	fileClaimRe  = regexp.MustCompile(`(?i)[^.!?\n]*\b(csv|download|spreadsheet)\b[^.!?\n]*\b(below|above|attached|under (this|my|the) answer)\b[^.!?\n]*[.!]?`)
 	chartClaimRe = regexp.MustCompile(`(?i)[^.!?\n]*\b(chart|graph|plot)\b[^.!?\n]*\b(below|above|attached|under (this|my|the) answer)\b[^.!?\n]*[.!]?`)
 	blankLinesRe = regexp.MustCompile(`\n{3,}`)
+	listClaimRe  = regexp.MustCompile(`(?i)[^.!?\n]*\b((listed|shown|displayed) (above|below)|see (above|below))\b[^.!?\n]*[.!]?`)
+	listLineRe   = regexp.MustCompile(`(?m)^\s*([-*•]|\d+\.)\s`)
 )
 
 // cleanAnswer drops a copied lookups note, any sentence pointing to a
@@ -1586,6 +1590,11 @@ func cleanAnswer(text string, file, chart bool) string {
 	}
 	if !chart {
 		text = chartClaimRe.ReplaceAllString(text, "")
+	}
+	// "They are listed above" with no list: the user never sees tool
+	// results, so there is nothing above.
+	if !listLineRe.MatchString(text) {
+		text = listClaimRe.ReplaceAllString(text, "")
 	}
 	paras := strings.Split(text, "\n\n")
 	kept := paras[:0]
@@ -1631,7 +1640,9 @@ func lookupNote(data string) string {
 		}
 		b, _ := json.Marshal(lk.Args)
 		part := lk.Name + " " + clip(string(b), 300)
-		if len(lk.Keys) > 0 {
+		if len(lk.Rows) > 0 {
+			part += " -> " + strings.Join(lk.Rows, "; ")
+		} else if len(lk.Keys) > 0 {
 			part += " -> records " + strings.Join(lk.Keys, ", ")
 		}
 		parts = append(parts, part)

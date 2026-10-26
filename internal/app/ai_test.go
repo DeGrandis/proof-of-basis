@@ -516,6 +516,12 @@ func TestClaimsChange(t *testing.T) {
 	if got := cleanAnswer(tools, false, false); got != "The Hot wallet holds 0.75 BTC." {
 		t.Errorf("tool talk kept: %q", got)
 	}
+	if got := cleanAnswer("You have 61 items waiting for review. They are listed above.", false, false); got != "You have 61 items waiting for review." {
+		t.Errorf("listed above kept: %q", got)
+	}
+	if listed := "The ones listed below are newest:\n- one\n- two"; cleanAnswer(listed, false, false) != listed {
+		t.Errorf("real list's lead-in dropped")
+	}
 	plain := "Your accounts hold 1.02 BTC.\n\nAt today's price, calculate roughly $81,000."
 	if got := cleanAnswer(plain, false, false); got != plain {
 		t.Errorf("plain words dropped: %q", got)
@@ -617,7 +623,7 @@ func TestLightningAnalysis(t *testing.T) {
 		t.Fatalf("keys: %+v", lk)
 	}
 	b, _ := json.Marshal(msgData{Lookups: []Lookup{lk}})
-	if note := lookupNote(string(b)); !strings.Contains(note, "-> records "+lk.Keys[0]) {
+	if note := lookupNote(string(b)); !strings.Contains(note, "-> ["+lk.Keys[0]+"]") || !strings.Contains(note, "days") {
 		t.Errorf("note: %s", note)
 	}
 	if _, out = tb.run("get_record", map[string]any{"id": lk.Keys[0]}); strings.Contains(out, "no record with that id") {
