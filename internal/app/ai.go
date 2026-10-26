@@ -1470,6 +1470,15 @@ func (tb *toolbox) whatIf(a map[string]any) (string, string, error) {
 		ExtraTax int64    `json:"extraTax"`
 		Warnings []string `json:"warnings"`
 		Method   string   `json:"method"`
+		Lots     []struct {
+			OriginID string `json:"originId"`
+			Acquired int64  `json:"acquired"`
+			Sats     int64  `json:"sats"`
+			Basis    int64  `json:"basis"`
+			Proceeds int64  `json:"proceeds"`
+			LongTerm bool   `json:"longTerm"`
+			Missing  bool   `json:"missing"`
+		} `json:"lots"`
 	}
 	json.Unmarshal(rec.Body.Bytes(), &r)
 	var b strings.Builder
@@ -1482,6 +1491,22 @@ func (tb *toolbox) whatIf(a map[string]any) (string, string, error) {
 	}
 	for _, w := range r.Warnings {
 		b.WriteString(" " + w)
+	}
+	// The lots it would use, so "which lots?" needn't be guessed.
+	if len(r.Lots) > 0 {
+		fmt.Fprintf(&b, "\nLots it would use (%d):\n", len(r.Lots))
+	}
+	for i, l := range r.Lots {
+		if i == 10 {
+			fmt.Fprintf(&b, "(%d more)\n", len(r.Lots)-10)
+			break
+		}
+		term := "short-term"
+		if l.LongTerm {
+			term = "long-term"
+		}
+		fmt.Fprintf(&b, "- %s acquired %s, basis %s, proceeds %s, gain %s, %s, from [%s]\n", btcStr(l.Sats), dayOf(time.Unix(l.Acquired, 0)),
+			usdStr(l.Basis), usdStr(l.Proceeds), usdStr(l.Proceeds-l.Basis), term, l.OriginID)
 	}
 	return b.String(), "Estimated a sale from " + argStr(a, "account"), nil
 }

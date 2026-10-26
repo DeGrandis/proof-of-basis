@@ -635,6 +635,16 @@ func TestNoneArgs(t *testing.T) {
 	if plain != nones {
 		t.Errorf("with nones:\n%s\nwithout:\n%s", nones, plain)
 	}
+	// A sale from one account lists the lots it would use.
+	if _, out := tb.run("simulate_sale", map[string]any{"account": "Hot wallet", "btc": "0.1"}); !strings.Contains(out, "Lots it would use") {
+		t.Errorf("lots: %s", out)
+	}
+	// min = max reads as "at least".
+	_, eq := tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "min": "100", "max": "100", "stat": "count"})
+	_, atLeast := tb.run("analyze_records", map[string]any{"source": "buys", "measure": "usd", "min": "100", "stat": "count"})
+	if eq != atLeast {
+		t.Errorf("min=max: %s vs %s", eq, atLeast)
+	}
 	// No account named: each account that holds enough, side by side.
 	if !strings.Contains(nones, "needs one account") || !strings.Contains(nones, "Hot wallet: proceeds") {
 		t.Errorf("compare: %s", nones)

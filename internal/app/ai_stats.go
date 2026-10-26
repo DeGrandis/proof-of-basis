@@ -365,6 +365,11 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 	_, hasMin := a["min"]
 	_, hasMax := a["max"]
 	lo, hi := argNum(a, "min"), argNum(a, "max")
+	// min = max ("transfers over $1000" as min 1000, max 1000) would keep
+	// only that exact value: read it as "at least".
+	if hasMin && hasMax && lo == hi && lo != 0 {
+		hasMax = false
+	}
 	categorical := map[string]bool{"weekday": true, "month": true, "year": true, "account": true, "kind": true}[m]
 	if categorical && stat != "count" && stat != "mode" && stat != "summary" && stat != "histogram" && stat != "list" {
 		return "", "", fmt.Errorf("%s is a category: use stat count or mode", m)
