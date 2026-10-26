@@ -83,6 +83,9 @@ def main():
             chat = v.fresh()
             for q in conv:
                 r = v.ask(chat, q)
+                if not r["answer"] and r["errors"]:
+                    # No point going on (each question spends the demo's allowance).
+                    sys.exit(f"stopped at {q!r}: {'; '.join(map(str, r['errors']))}")
                 r["conversation"] = n
                 f.write(json.dumps(r) + "\n")
                 f.flush()
