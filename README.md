@@ -1,15 +1,43 @@
-# Proof of Basis
+<p align="center">
+  <img src="docs/images/icon.svg" width="96" height="96" alt="Proof of Basis">
+</p>
 
-**Your bitcoin's tax story, worked out on your own server.**
+<h1 align="center">Proof of Basis</h1>
 
-Proof of Basis follows your coins from the exchanges where you bought them, through
-your own wallets, to where you sold or spent them. It works out your cost
-basis, gains and income, flags anything it can't explain, and when tax
-season comes it walks you through gathering everything and hands your tax
-professional one tidy package.
+<p align="center">
+  <b>Your bitcoin's tax story, untangled on your own server.</b><br>
+  Drop in every exchange export, connect your real wallets, and it works out
+  where every coin came from and where it went. Then it hands your accountant
+  one tidy package, and answers your questions with AI that runs on your own
+  hardware.
+</p>
 
-It runs on your own machine and talks only to your own Bitcoin node. No
-account, no cloud, no tracking.
+<p align="center">
+  <a href="https://github.com/DeGrandis/proof-of-basis/actions/workflows/images.yml"><img src="https://github.com/DeGrandis/proof-of-basis/actions/workflows/images.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/DeGrandis/proof-of-basis/tags"><img src="https://img.shields.io/github/v/tag/DeGrandis/proof-of-basis?label=release&color=c6f55a" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/DeGrandis/proof-of-basis?color=c6f55a" alt="License: MIT"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/DeGrandis/proof-of-basis" alt="Go version"></a>
+  <a href="https://github.com/DeGrandis/proof-of-basis/pkgs/container/proof-of-basis"><img src="https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" alt="Docker: amd64 and arm64"></a>
+  <br>
+  <a href="https://github.com/DeGrandis/proof-of-basis-umbrel"><img src="https://img.shields.io/badge/Umbrel-community%20app%20store-5351FB" alt="Umbrel community app store"></a>
+  <a href="https://github.com/DeGrandis/proof-of-basis-startos"><img src="https://img.shields.io/badge/StartOS-0.4%20package-1d1d1d" alt="StartOS 0.4 package"></a>
+  <a href="#ask-it-anything"><img src="https://img.shields.io/badge/AI-local%20with%20Ollama-000000?logo=ollama&logoColor=white" alt="Local AI with Ollama"></a>
+  <a href="https://proofofbasis.degrand.is"><img src="https://img.shields.io/badge/demo-try%20it%20live-c6f55a" alt="Live demo"></a>
+</p>
+
+<p align="center">
+  <a href="https://proofofbasis.degrand.is"><b>Try the live demo</b></a> ·
+  <a href="#getting-started">Install</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#ask-it-anything">The assistant</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+    <img src="docs/images/overview-dark.png" alt="The Overview: portfolio value, unrealized gain, this year's realized gain and estimated tax, and the holdings chart">
+  </picture>
+</p>
 
 > **Not tax advice.** Proof of Basis is a self-help tool for organizing your
 > records. It is not a CPA, enrolled agent, law firm or tax preparer, and its
@@ -17,24 +45,118 @@ account, no cloud, no tracking.
 > check everything with a qualified tax professional before you file. See the
 > full [Disclaimer](#disclaimer).
 
-<!-- Screenshot: Overview (holdings chart and the "Now" card) — docs/images/overview.png -->
-
 ---
+
+## How it works
+
+1. **Dump in your exchange history.** Export the CSVs from Coinbase, River,
+   Strike and Fold (or a spreadsheet of your own) and drop them all in at
+   once. It recognizes each one.
+2. **Connect your real wallets.** Paste each wallet's xpub or output
+   descriptor. It reads their history from your own node's Electrum server
+   (Fulcrum or Electrs), so your addresses never touch anyone else's server.
+3. **It untangles everything.** It matches each exchange withdrawal to the
+   wallet deposit it became, follows coins from wallet to wallet, and traces
+   every sale and spend back to the purchase it came from. Anything it can't
+   explain waits in **Review** for you to label.
+4. **See where you stand.** The **Overview** shows what you hold, what it
+   cost, this year's gains and income, and an estimate of the tax.
+5. **Hand your accountant one package.** At tax season, five guided steps
+   end in a single download for your tax professional: the Form 8949 lines,
+   your 1099-DA forms checked against your records, where every coin came
+   from, income, gifts and your proof files.
+6. **Ask your own AI.** An optional assistant answers questions about your
+   records with a model on your own Ollama server, and can propose fixes for
+   you to apply. Nothing leaves your network.
 
 ## Why Proof of Basis
 
-- **Private by design.** It reads your wallets through your own Fulcrum
-  server, keeps everything in one file on your machine, and never phones
-  home. The package for your tax professional leaves out transaction IDs and
-  addresses unless you choose to include them.
+- **Private by design.** It reads your wallets through your own node, keeps
+  everything in one file on your machine, and never phones home. The package
+  for your tax professional leaves out transaction IDs and addresses unless
+  you choose to include them.
 - **It follows the coins.** Buys on an exchange, withdrawals to cold storage,
   spends from a hot wallet, sales back on an exchange: it links them up, so
   every sale knows which purchase it came from.
 - **Ready for tax season.** Five guided steps take you from "is everything
   here?" to a download for your tax professional, with your exchanges'
   1099-DA forms checked against your own records.
+- **One click on your node.** Install it from the Umbrel community app store
+  or as a StartOS package, and it finds your node's Electrum server and
+  Ollama on its own.
 - **Works on your phone.** Labeling, the charts and record pages are built
   for a phone screen too.
+
+---
+
+## Screenshots
+
+These come from the [live demo](https://proofofbasis.degrand.is), so the
+data is invented (the red bar says so).
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/flow.png" alt="Flow: each exchange and wallet as a lane over time"><br><b>Flow.</b> Every exchange and wallet as a lane over time, with each buy, transfer, sale and spend on it.</td>
+    <td width="50%"><img src="docs/images/taxes.png" alt="Taxes: the five tax season steps"><br><b>Taxes.</b> Five steps from "is everything here?" to the download for your tax pro.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/review.png" alt="Review: transactions waiting for a label"><br><b>Review.</b> What it couldn't match on its own, waiting for a label.</td>
+    <td width="50%"><img src="docs/images/overview-light.png" alt="The Overview in light mode"><br><b>Light or dark.</b> It follows your system, or pick one.</td>
+  </tr>
+</table>
+
+On a phone:
+
+<p align="center">
+  <img src="docs/images/mobile-overview.png" width="200" alt="Overview on a phone">
+  <img src="docs/images/mobile-review.png" width="200" alt="Review on a phone, one item at a time">
+  <img src="docs/images/mobile-flow.png" width="200" alt="Flow on a phone">
+  <img src="docs/images/mobile-assistant.png" width="200" alt="The assistant on a phone">
+</p>
+
+---
+
+## Ask it anything
+
+The assistant answers from your own records, using any Ollama model that
+supports tools on your own server. It doesn't guess from a summary: it looks
+things up the way you would, with tools that can
+
+- search your records, and count, total, group or chart them (with a CSV
+  download of the rows),
+- open any account, transaction or tax year,
+- trace coins back to where they came from, or forward to where they went,
+- estimate a sale before you make it, by account or by which coins you'd
+  sell,
+- find coins that turn long-term soon or sit at a loss,
+- check your data for problems (stale imports, wallets not scanned lately,
+  sales with no purchase behind them),
+- look up the BTC price on any day, and do exact math.
+
+**It can also do things, with your OK.** Ask it to label items waiting in
+Review, link the two sides of a transfer, or protect a purchase so its coins
+are sold last. Each change appears as a card you **Apply** (or dismiss).
+Every change, yours or the assistant's, is listed in **Activity** and can be
+undone, including by telling the assistant "undo that".
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/assistant-chart.png" alt="The assistant answering with a table and a bar chart"><br>"How much bitcoin did I buy each year? Show it as a chart."</td>
+    <td width="50%"><img src="docs/images/assistant-action.png" alt="The assistant proposing labels, with Apply and Dismiss buttons"><br>"Label the 3 oldest items waiting for review as spends."</td>
+  </tr>
+</table>
+
+Some things to ask:
+
+| | |
+|---|---|
+| **Where you stand** | Give me an overview of my bitcoin · How did I get my BTC? · Which exchange did I buy the most on? · What's my average cost per bitcoin? · What's my unrealized gain if BTC goes to $150k? |
+| **Digging in** | What was my biggest sale? · Which account did it come from, and how long had I held it? · Where did those coins come from originally? · When did I move my coins from the Ledger to the Trezor? · What did I pay in fees last year? |
+| **Taxes and planning** | What was my total tax in 2023? · Compare 2024 and 2025 gains · If I sell 0.1 BTC from my Coldcard today, how much tax would I owe? · How much can I sell this year and keep my tax under $2,000? · Do I have any coins that turn long-term soon? |
+| **Cleaning up** | List the items waiting for review · Label the 3 oldest ones as spends · Undo that |
+
+The demo's assistant runs on a hosted model (gpt-oss 20B) so anyone can try
+it. Your own install uses your Ollama, and nothing is sent anywhere else.
 
 ---
 
@@ -54,14 +176,10 @@ merchant or a gift. **Review** lists them. On a phone it shows one at a
 time with big buttons ("Paid for something", "Gift", "To my own wallet"…),
 and moves to the next as you go.
 
-<!-- Screenshot: Review on a phone (one item at a time) — docs/images/review-mobile.png -->
-
 ### Watch your coins move
 **Flow** draws each account as a lane over time, with every buy, transfer,
 sale and spend on it. Pinch or scroll to zoom. Tap anything to see where
 those coins came from and where they went.
-
-<!-- Screenshot: Flow with a record popup open — docs/images/flow.png -->
 
 ### Open any transaction
 Every record has its own page: what happened in plain words, the value,
@@ -86,8 +204,6 @@ row, and room to attach a receipt or letter as proof.
    8949 lines, the 1099-DA PDFs and how each was checked, where every coin
    came from, income, gifts, transfers and your proof files.
 
-<!-- Screenshot: The five tax season steps — docs/images/taxes.png -->
-
 ### Plan before you sell
 **Plan a sale** shows which coins a sale would use, the gain on each, when
 short-term coins turn long-term, and a rough tax estimate. You can record
@@ -98,6 +214,7 @@ which coins you chose before you sell, as the IRS asks.
   payments, receipts and routing income.
 - **Assistant** (optional): ask questions about your data, using an AI model
   on your own Ollama server. It only changes things when you press Apply.
+  See [Ask it anything](#ask-it-anything).
 - **Undo anything**: every change (yours or the assistant's) is listed in
   Activity and can be undone.
 - **Backups**: one encrypted file with everything, and restore.
