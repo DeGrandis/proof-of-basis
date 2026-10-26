@@ -4,8 +4,8 @@
 # and the app's image carries none of the demo's code or libraries.
 #
 # Multi-arch (amd64 and arm64, for Umbrel and StartOS boxes): Go runs on the
-# build machine's own platform and cross-compiles for the target, so an
-# arm64 image needs no emulation. The final images hold only the binary.
+# build machine's own platform and cross-compiles for the target, and the
+# final stages only copy files in, so an arm64 image needs no emulation.
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -21,10 +21,6 @@ RUN if [ "$PRICE_SOURCE" != "none" ]; then \
       || echo "warning: price fetch failed; using the committed price history"; \
     fi
 RUN mkdir -p /out/data
-# Empty mount points. Docker makes these itself, but StartOS runs the image's
-# own filesystem and mounts into them, so a scratch image must ship them.
-RUN mkdir -p /out/rootfs/proc /out/rootfs/dev /out/rootfs/sys /out/rootfs/tmp \
-    && chmod 1777 /out/rootfs/tmp
 
 FROM build AS build-app
 ARG TARGETOS TARGETARCH
@@ -47,10 +43,11 @@ ENV BTCTAX_ADDR=0.0.0.0:8080 BTCTAX_DATA=/data
 EXPOSE 8080
 ENTRYPOINT ["/btctax-demo"]
 
-# The app (the default target, so it stays last).
-FROM scratch AS app
-COPY --from=build /out/rootfs/ /
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# The app (the default target, so it stays last). On a small standard base
+# rather than scratch: StartOS runs the image's own filesystem and expects
+# what a Linux system has (/proc and /tmp to mount into, /etc/passwd to look
+# the user up in), and Alpine also brings the CA certificates.
+FROM alpine:3.24 AS app
 COPY --from=build-app /out/btctax /btctax
 COPY --from=build --chown=65532:65532 /out/data /data
 USER 65532:65532
