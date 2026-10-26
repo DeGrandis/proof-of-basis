@@ -327,8 +327,9 @@
     <form id="display-form" class="card grid">
       <label>Dollar amounts <select name="cents"><option value="yes">With cents ($1,234.56)</option><option value="no">Whole dollars ($1,234)</option></select></label>
       <label>Bitcoin amounts <select name="unit"><option value="btc">BTC (0.00123456 BTC)</option><option value="sats">Sats (123,456 sats)</option><option value="bitcoin">Bitcoin sign (₿123,456)</option></select></label>
+      <label>Colors <select name="colors"><option value="standard">Standard (green and red)</option><option value="cb">Color-blind friendly (blue and orange)</option></select></label>
       <div class="wide small muted" id="display-sample"></div>
-      <div class="wide small muted">Saved in this browser. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Whole dollars drop the cents rather than rounding. The bitcoin sign counts sats, written like dollars.</span></span></div>
+      <div class="wide small muted">Saved in this browser. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Whole dollars drop the cents rather than rounding. The bitcoin sign counts sats, written like dollars. Color-blind friendly colors show gains, losses, buys and sales in blue and orange, which people with red-green color blindness can tell apart.</span></span></div>
     </form>
     <h2>Your node</h2>
     <p class="demo-only small muted demo-note">In the demo, the node is simulated: it answers from the demo's own invented history.</p>

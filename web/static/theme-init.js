@@ -6,4 +6,6 @@
   try { t = localStorage.getItem("theme"); } catch {}
   if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   document.documentElement.dataset.theme = t;
+  // The color-blind friendly colors, if chosen in Settings → Display.
+  try { if (JSON.parse(localStorage.getItem("displayPrefs") || "{}").colors === "cb") document.documentElement.dataset.colors = "cb"; } catch {}
 })();

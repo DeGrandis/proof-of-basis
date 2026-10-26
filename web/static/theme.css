@@ -132,6 +132,26 @@
   color-scheme: dark;
 }
 
+/* Color-blind friendly (a Display setting): blue and orange from the
+   Okabe-Ito palette instead of green and red, for gains and losses, buys
+   and sales. Light first; dark, more specific, after. */
+:root[data-colors="cb"] {
+  --pos: #0072b2;
+  --pos-soft: rgba(0, 114, 178, .10);
+  --neg: #b85400;
+  --neg-soft: rgba(213, 94, 0, .10);
+  --chart-up: #0072b2;         /* buys: blue */
+  --chart-down: #d55e00;       /* sales: orange */
+}
+:root[data-theme="dark"][data-colors="cb"] {
+  --pos: #56b4e9;
+  --pos-soft: rgba(86, 180, 233, .14);
+  --neg: #f0a030;
+  --neg-soft: rgba(230, 159, 0, .14);
+  --chart-up: #56b4e9;
+  --chart-down: #e69f00;
+}
+
 /* ---------- Base ---------- */
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

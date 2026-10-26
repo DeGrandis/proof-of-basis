@@ -8,8 +8,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 // (cents are dropped, never rounded), and bitcoin as BTC, sats or the
 // bitcoin sign (sats written like dollars: ₿123,456).
 const prefs = (() => {
-  const p = { cents: true, unit: "btc" };
-  try { const s = JSON.parse(localStorage.getItem("displayPrefs") || "{}"); if (s.cents === false) p.cents = false; if (["btc", "sats", "bitcoin"].includes(s.unit)) p.unit = s.unit; } catch {}
+  const p = { cents: true, unit: "btc", colors: "standard" };
+  try { const s = JSON.parse(localStorage.getItem("displayPrefs") || "{}"); if (s.cents === false) p.cents = false; if (["btc", "sats", "bitcoin"].includes(s.unit)) p.unit = s.unit; if (s.colors === "cb") p.colors = "cb"; } catch {}
   return p;
 })();
 const UNIT_NAME = { btc: "BTC", sats: "Sats", bitcoin: "₿" };
@@ -2122,14 +2122,19 @@ checkFulcrum();
   if (!f) return;
   f.cents.value = prefs.cents ? "yes" : "no";
   f.unit.value = prefs.unit;
+  f.colors.value = prefs.colors;
   const sample = () => { $("#display-sample").textContent = `Looks like: ${usd(123456789)} · ${amt(12345678)}`; };
   sample(); setUnitLabels();
   f.addEventListener("submit", (e) => e.preventDefault());
   f.addEventListener("change", () => {
     prefs.cents = f.cents.value === "yes";
     prefs.unit = f.unit.value;
+    prefs.colors = f.colors.value;
     try { localStorage.setItem("displayPrefs", JSON.stringify(prefs)); } catch {}
     sample(); setUnitLabels();
+    // Colors come from CSS; charts drawn with them redraw as on a theme change.
+    if (prefs.colors === "cb") document.documentElement.dataset.colors = "cb"; else delete document.documentElement.dataset.colors;
+    applyTheme(document.documentElement.dataset.theme, false);
     if (report) refresh();
   });
 })();
