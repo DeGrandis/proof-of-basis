@@ -145,7 +145,7 @@ body.flow #page-head { max-width: none; }
 #flow .lg-icon { font-size: 12px; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
 #flow .lg-icon.hl { font-size: 15px; } #flow .lg-icon.sel { font-size: 17px; } #flow .lg-icon.dim { opacity: .15; }
 .lg { font-size: 12px; }
-.lg.buy, #flow .lg-icon.buy { fill: var(--text); color: var(--text); }
+.lg.buy, #flow .lg-icon.buy { fill: var(--chart-up); color: var(--chart-up); }
 .lg.income, #flow .lg-icon.income { fill: var(--series-3); color: var(--series-3); }
 .lg.in, #flow .lg-icon.in { fill: var(--series-3); color: var(--series-3); }
 .lg.out, #flow .lg-icon.out { fill: var(--series-3); color: var(--series-3); }
@@ -168,7 +168,7 @@ body.flow #page-head { max-width: none; }
 #flow .consol, #legend .consol { fill: var(--bg); stroke: var(--series-3); stroke-width: 1.5; }
 #flow .dim { opacity: .15; }
 .dot { cursor: pointer; stroke: var(--bg); stroke-width: 1.5; }
-.dot.buy { fill: var(--text); } .dot.sell, .dot.spend, .dot.sold { fill: var(--chart-down); }
+.dot.buy { fill: var(--chart-up); } .dot.sell, .dot.spend, .dot.sold { fill: var(--chart-down); }
 .dot.income, .dot.purchase, .dot.gift-in { fill: var(--series-3); }
 .dot.unmatched { fill: var(--neg); } .dot.gift, .dot.donation, .dot.lost, .dot.untracked, .dot.refund { fill: var(--series-4); }
 

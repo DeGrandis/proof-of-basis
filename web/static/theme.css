@@ -35,8 +35,8 @@
   --chart-grid: rgba(17, 17, 16, .08);
   --chart-area: rgba(17, 17, 16, .05);
   --chart-bar: rgba(17, 17, 16, .16);
-  --chart-up: #111110;         /* buys: ink ring */
-  --chart-down: #a8e63a;       /* sales: accent-filled dot */
+  --chart-up: #3f9a12;         /* buys: green */
+  --chart-down: #e0217f;       /* sales: pink */
   --chart-hot: #c6f55a;
   --series-1: #111110;
   --series-2: #4a4945;
@@ -104,8 +104,8 @@
   --chart-grid: rgba(255, 255, 255, .08);
   --chart-area: rgba(255, 255, 255, .05);
   --chart-bar: rgba(255, 255, 255, .16);
-  --chart-up: #f1f0eb;
-  --chart-down: #b9f04a;
+  --chart-up: #b9f04a;         /* buys: lime */
+  --chart-down: #ff4fa3;       /* sales: neon pink */
   --chart-hot: #b9f04a;
   --series-1: #f1f0eb;
   --series-2: #c2c1ba;
