@@ -215,7 +215,7 @@ code { font-family: var(--mono); font-size: var(--fs-xs); background: var(--pane
 :root[data-theme="dark"] #theme-toggle .sun { display: none; }
 :root[data-theme="dark"] #theme-toggle .moon { display: block; }
 /* Fulcrum status: a dot in a hairline pill */
-.fulcrum-status { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 12px; border-radius: var(--pill); border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; max-width: 220px; }
+.fulcrum-status { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--pill); border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
 .fulcrum-status:hover { border-color: var(--line-2); color: var(--text); }
 .fulcrum-status b { font-weight: 600; color: var(--text); }
 .fulcrum-status .lbl { overflow: hidden; text-overflow: ellipsis; }

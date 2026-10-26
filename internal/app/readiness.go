@@ -57,10 +57,10 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		rd.KnownBasis = int((sold - missing) * 10000 / sold)
 	}
 	if missing > 0 {
-		add("basis", "bad", fmt.Sprintf("%s BTC sold or spent has no known purchase", satsStr(missing)),
-			"Its basis counts as $0, which overstates the gain. Import the missing purchases or deposits, or label where the coins came from.", "#taxes")
+		add("basis", "bad", fmt.Sprintf("%s BTC sold with no known purchase", satsStr(missing)),
+			"Counted at $0 basis. Import or label the source.", "#taxes")
 	} else if sold > 0 {
-		add("basis", "ok", "Every coin sold or spent has a known purchase", "", "")
+		add("basis", "ok", "Every sale has a known purchase", "", "")
 	}
 
 	// Review items in the year.
@@ -71,10 +71,10 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		}
 	}
 	if review > 0 {
-		add("review", "bad", fmt.Sprintf("%d record%s from %d still need%s a label", review, plural(review), year, map[bool]string{true: "s", false: ""}[review == 1]),
-			"Until labeled they count for nothing, so balances and gains are incomplete.", "#review")
+		add("review", "bad", fmt.Sprintf("%d unlabeled record%s in %d", review, plural(review), year),
+			"Not counted until labeled.", "#review")
 	} else {
-		add("review", "ok", "Nothing from this year is waiting in Review", "", "")
+		add("review", "ok", "Nothing waiting in Review", "", "")
 	}
 
 	// Accounts that went below zero by the end of the year.
@@ -85,8 +85,8 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		}
 	}
 	if len(dips) > 0 {
-		add("dips", "bad", "Accounts go below zero: "+strings.Join(dips, ", "),
-			"They spent coins the records never show arriving. Overview explains each one.", "#overview")
+		add("dips", "bad", "Below zero: "+strings.Join(dips, ", "),
+			"Coins spent that never arrived. See Overview.", "#overview")
 	}
 
 	// Values with no price.
@@ -97,8 +97,8 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		}
 	}
 	if noPrice > 0 {
-		add("prices", "bad", fmt.Sprintf("%d record%s valued at $0 for lack of a price", noPrice, plural(noPrice)),
-			"Update prices in Settings, or enter the value on each record.", "#settings")
+		add("prices", "bad", fmt.Sprintf("%d record%s with no price", noPrice, plural(noPrice)),
+			"Update prices, or enter the value.", "#settings")
 	}
 
 	// Form 8949 against the 1099-DAs.
@@ -111,21 +111,21 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 			id := "1099da:" + c.Account
 			switch c.Status {
 			case "no form":
-				add(id, "warn", "No 1099-DA from "+c.Account+" yet",
-					"Drop the PDF the exchange sent on its card and type its total proceeds, so your records can be checked against what the IRS was told.", "#taxes")
+				add(id, "warn", "No 1099-DA from "+c.Account,
+					"Add the PDF and its total.", "#taxes")
 			case "no totals":
-				add(id, "warn", "Type the total proceeds from "+c.Account+"'s 1099-DA",
-					"With the form's total, the app checks your records against it.", "#taxes")
+				add(id, "warn", "Enter "+c.Account+"'s 1099-DA total",
+					"It's checked against your records.", "#taxes")
 			case "differs":
-				add(id, "bad", fmt.Sprintf("%s's 1099-DA shows proceeds of %s; your records show %s", c.Account, usdText(*c.FormProceeds), usdText(c.Proceeds)),
-					fmt.Sprintf("The form shows %s than your records: a missing import, a sale recorded on another date or amount, or a broker error. Your tax professional will need it explained.", moreLess(c.Diff)), "#taxes")
+				add(id, "bad", fmt.Sprintf("%s's 1099-DA: %s; your records: %s", c.Account, usdText(*c.FormProceeds), usdText(c.Proceeds)),
+					fmt.Sprintf("Form is %s than your records. Likely a missing import, a different date or amount, or a broker error.", moreLess(c.Diff)), "#taxes")
 			case "match":
-				add(id, "ok", c.Account+"'s 1099-DA total matches your records", "", "")
+				add(id, "ok", c.Account+"'s 1099-DA matches", "", "")
 			}
 		}
 		if n := f.Issues; n > 0 {
-			add("reconcile", "warn", fmt.Sprintf("%d Form 8949 line%s to look at", n, plural(n)),
-				"Differences from imported 1099-DA lines, sales missing from them, lines with no sale, or coins with no known purchase.", "#taxes")
+			add("reconcile", "warn", fmt.Sprintf("%d Form 8949 line%s to check", n, plural(n)),
+				"Mismatches with 1099-DA lines, or unknown purchases.", "#taxes")
 		}
 	}
 
@@ -133,23 +133,23 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 	if year >= 2025 && len(rep.Allocation.Rows) > 0 {
 		switch {
 		case rep.Allocation.Confirmed == "":
-			add("allocation", "warn", "The January 1, 2025 per-wallet split isn't confirmed",
-				"Check which account each pre-2025 purchase belongs to, then confirm to keep a dated record.", "#taxes")
+			add("allocation", "warn", "Jan 1, 2025 split not confirmed",
+				"Check the accounts, then confirm.", "#taxes")
 		case rep.Allocation.Changed:
-			add("allocation", "warn", "The January 1, 2025 split changed since you confirmed it", "Confirm it again.", "#taxes")
+			add("allocation", "warn", "Jan 1, 2025 split changed since confirmed", "Confirm it again.", "#taxes")
 		default:
-			add("allocation", "ok", "The January 1, 2025 split is confirmed", "", "")
+			add("allocation", "ok", "Jan 1, 2025 split confirmed", "", "")
 		}
 	}
 
 	// Coin choices.
 	for _, id := range rep.Identifications {
 		if id.Status == "late" && in(id.CreatedAt) {
-			add("ident-"+strconv.FormatInt(id.ID, 10), "warn", "A coin choice was recorded after its sale and wasn't used", id.Note, "#overview")
+			add("ident-"+strconv.FormatInt(id.ID, 10), "warn", "Coin choice recorded after its sale, not used", id.Note, "#overview")
 		}
 		if id.Status == "waiting" && time.Since(id.CreatedAt) > autoWindow && in(id.CreatedAt) {
-			add("ident-"+strconv.FormatInt(id.ID, 10), "warn", "A recorded coin choice never found its sale",
-				"Tie it to the sale it was for, or cancel it.", "#overview")
+			add("ident-"+strconv.FormatInt(id.ID, 10), "warn", "Coin choice with no sale",
+				"Tie it to its sale, or cancel it.", "#overview")
 		}
 	}
 
@@ -167,12 +167,12 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		}
 	}
 	if other > 0 {
-		add("income-type", "warn", fmt.Sprintf("%d income record%s without a type", other, plural(other)),
-			"Set what kind of income each was, so it lands on the right form.", "#taxes")
+		add("income-type", "warn", fmt.Sprintf("%d income record%s with no type", other, plural(other)),
+			"Set a type for each.", "#taxes")
 	}
 	if rewards > 0 {
 		add("rewards", "warn", fmt.Sprintf("%d reward%s to ask about", rewards, plural(rewards)),
-			"Card cashback is often a purchase rebate rather than income. Ask your tax professional which these are.", "#taxes")
+			"Cashback may be a rebate, not income. Ask your tax professional.", "#taxes")
 	}
 
 	// Gifts and donations needing details.
@@ -183,8 +183,8 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		}
 	}
 	if giftFlags > 0 {
-		add("gifts", "warn", fmt.Sprintf("%d gift%s, donation%s or loss%s with something to check", giftFlags, plural(giftFlags), plural(giftFlags), map[bool]string{true: "es", false: ""}[giftFlags != 1]),
-			"See Gifts, donations and losses on Taxes.", "#taxes")
+		add("gifts", "warn", fmt.Sprintf("%d gift%s or donation%s to check", giftFlags, plural(giftFlags), plural(giftFlags)),
+			"See Details.", "#taxes")
 	}
 
 	// Data that may not cover the whole year.
@@ -211,8 +211,8 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 			}
 		}
 		if len(stale) > 0 {
-			add("fresh", "warn", "Last imported or scanned before the year ended: "+strings.Join(stale, ", "),
-				"An export or scan from before December 31 can miss the year's last records. Import a fresh export or recheck.", "#imports")
+			add("fresh", "warn", "Data ends before Dec 31: "+strings.Join(stale, ", "),
+				"Import a fresh export or recheck.", "#imports")
 		}
 	}
 
@@ -224,8 +224,8 @@ func (s *Server) readiness(rep *Report, year int) (*Readiness, error) {
 		}
 	}
 	if len(off) > 0 {
-		add("balances", "warn", "Tracked and on-chain balances differ: "+strings.Join(off, ", "),
-			"Something is unlabeled, linked wrongly, or a scan is stale. Overview shows the numbers.", "#overview")
+		add("balances", "warn", "Don't match chain: "+strings.Join(off, ", "),
+			"Unlabeled, mislinked or stale. See Overview.", "#overview")
 	}
 
 	rd.Reviewed = s.st.Setting(fmt.Sprintf("taxReviewed:%d", year), "")

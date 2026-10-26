@@ -52,7 +52,7 @@ function recordStats(d) {
   if (known.some((l) => l.Proceeds != null)) {
     // Net of fees, as the gain is figured; the gross is in the caption.
     const proceeds = sum(fromLots, (l) => l.Proceeds || 0), gross = e.cents && e.cents !== proceeds ? `${usd(e.cents)} less fees` : "";
-    out.push(stat(e.kind === "spend" ? "Value" : "Proceeds", usd(proceeds), [gross, source || (e.kind === "sell" ? "from the exchange" : "")].filter(Boolean).join(" · ")));
+    out.push(stat(e.kind === "spend" ? "Value" : "Proceeds", usd(proceeds), [gross, source || (e.kind === "sell" ? "exchange" : "")].filter(Boolean).join(" · ")));
     out.push(stat("Basis", usd(sum(known, (l) => l.Basis)), `${known.length} lot${known.length === 1 ? "" : "s"}`
       + (known.length < fromLots.length ? ` <span class="warn">· ${amt(sum(fromLots.filter((l) => l.Missing), (l) => l.Sats))} with no purchase</span>` : "")));
     const st = sum(known.filter((l) => !l.LongTerm), (l) => l.Proceeds - l.Basis), lt = sum(known.filter((l) => l.LongTerm), (l) => l.Proceeds - l.Basis);
@@ -68,13 +68,13 @@ function recordStats(d) {
     out.push(stat(e.kind === "buy" ? "Cost" : "Value", v ? usd(v) : "—", source || (e.cents ? "" : e.value ? "that day's price" : "")));
     if (e.kind === "income") out.push(stat("Taxed as", "Income", esc(e.incomeType || "")));
     const heldSats = sum(held, (l) => l.Sats);
-    if (sold.length || gone.length || held.length) out.push(stat("Still held", amt(heldSats), heldSats === e.sats ? "all of it" : heldSats ? "" : "none left"));
+    if (sold.length || gone.length || held.length) out.push(stat("Still held", amt(heldSats), heldSats === e.sats ? "all" : heldSats ? "" : "none"));
     if (sold.length) out.push(stat("Gain so far", gainPct(sum(sold, (s) => s.Proceeds - s.Basis), sum(sold, (s) => s.Basis)), `on ${sold.length} sale${sold.length === 1 ? "" : "s"}`));
   } else {
     out.push(stat("Amount", amt(e.sats)));
     if (e.value || e.cents) out.push(stat("Value", usd(e.cents || e.value), source || "that day's price"));
-    if (["transfer", "consolidation", "self-transfer"].includes(e.kind)) out.push(stat("Taxable", "No", "your own coins moving"));
-    if (e.kind === "unmatched") out.push(stat("Taxable", "Depends", "on what it was"));
+    if (["transfer", "consolidation", "self-transfer"].includes(e.kind)) out.push(stat("Taxable", "No"));
+    if (e.kind === "unmatched") out.push(stat("Taxable", "Depends"));
   }
   if (e.feeSats || e.feeCents) out.push(stat("Fee", e.feeSats ? amt(e.feeSats) : usd(e.feeCents), e.feeSats && e.feeCents ? usd(e.feeCents) : e.feeSats ? "network" : ""));
   return `<div class="rec-stats">${out.join("")}</div>`;
@@ -114,9 +114,9 @@ function wentRows(d) {
 }
 
 function recordNote(e) {
-  if (e.kind === "transfer") return `Moved between your accounts. Not taxable; cost basis and purchase dates move with the coins${e.feeSats ? ". The network fee is added to basis or treated as a small sale, per Settings" : ""}.`;
-  if (e.kind === "consolidation") return "Coins merged inside one wallet. Not taxable; only the network fee left it, handled per Settings.";
-  if (e.kind === "unmatched") return "This left or entered a tracked account and couldn't be matched to another of your records. Say what it was under Tax treatment.";
+  if (e.kind === "transfer") return `Not taxable. ${info(`Basis and purchase dates move with the coins.${e.feeSats ? " The network fee is added to basis or treated as a small sale, per Settings." : ""}`)}`;
+  if (e.kind === "consolidation") return `Not taxable. ${info("Coins merged inside one wallet. Only the network fee left it, handled per Settings.")}`;
+  if (e.kind === "unmatched") return "Unmatched. Label it.";
   return "";
 }
 
@@ -125,7 +125,7 @@ const copyBtn = (v) => `<button class="link small copy" data-copy="${esc(v)}" ar
 
 function recordDetails(e) {
   const rows = [["When", when(e.t)], ["Account", esc(e.account) + (e.to ? ` → ${esc(e.to)}` : "")], ["Amount", amt(e.sats)]];
-  if (e.ref) rows.push(["Reference", `<span class="mono">${esc(e.ref)}</span> ${copyBtn(e.ref)}<div class="small muted">How exports name this record</div>`]);
+  if (e.ref) rows.push(["Reference", `<span class="mono" title="How exports name this record">${esc(e.ref)}</span> ${copyBtn(e.ref)}`]);
   if (e.method) rows.push(["Matched by", esc(e.method) + (e.toKey && e.method !== "manual" && e.method !== "same transaction"
     ? ` <button class="link small" data-autounlink="${esc(e.key)}" data-autounlink2="${esc(e.toKey)}">Unlink these</button>` : "")]);
   if (e.inputs) rows.push(["Shape", `${e.inputs} input${e.inputs === 1 ? "" : "s"} → ${e.outputs} output${e.outputs === 1 ? "" : "s"}`]);
@@ -145,8 +145,8 @@ function sameTxCards(d) {
 function chainSection(tx) {
   const owner = (who) => who ? `<span class="mine">${esc(who)}</span>` : `<span class="muted">outside</span>`;
   const facts = [["Block", tx.height > 0 ? tx.height.toLocaleString("en-US") : "not confirmed"], ["Confirmed", tx.t ? when(tx.t) : "unconfirmed or unknown"],
-    ["Network fee", tx.feeSats ? amt(tx.feeSats) : "unknown (some inputs aren't yours)"],
-    ["Source", tx.source === "wallets" ? "your wallets' scans" : tx.source === "fulcrum" ? "your Fulcrum server (not in your wallets)" : "your imported records only"]];
+    ["Network fee", tx.feeSats ? amt(tx.feeSats) : "unknown"],
+    ["Source", tx.source === "wallets" ? "Your wallets" : tx.source === "fulcrum" ? "Fulcrum" : "Imports"]];
   let h = `<dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>${tx.note ? `<p class="small warn">${esc(tx.note)}</p>` : ""}`;
   if (tx.inputs.length || tx.outputs.length) {
     h += `<div class="io"><div><h4>${tx.inputs.length} input${tx.inputs.length === 1 ? "" : "s"}</h4><div class="scroll"><table><tbody>${tx.inputs.map((i) => `<tr>
@@ -163,8 +163,8 @@ function chainSection(tx) {
 // An exchange record as the exchange's file had it.
 function sourceSection(src) {
   const cells = Object.entries(src.row || {}).filter(([, v]) => v !== "");
-  return `<p class="small muted">From ${esc(src.filename)}${src.line ? `, row ${src.line}` : ""}, imported ${day(src.importedAt)}.</p>
-    ${cells.length ? `<dl class="facts src-row">${cells.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : `<p class="muted small">The row's columns weren't kept for this import.</p>`}`;
+  return `<p class="small muted">${esc(src.filename)}${src.line ? `, row ${src.line}` : ""} · imported ${day(src.importedAt)}</p>
+    ${cells.length ? `<dl class="facts src-row">${cells.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : `<p class="muted small">Not kept for this import.</p>`}`;
 }
 
 const sec = (title, body, cls = "") => body ? `<section class="rec-sec ${cls}"><h3>${title}</h3>${body}</section>` : "";
@@ -173,8 +173,8 @@ const sec = (title, body, cls = "") => body ? `<section class="rec-sec ${cls}"><
 // transaction), source (the exchange's row).
 function renderRecord(d, opts = {}) {
   const { e } = d;
-  const treat = actionsFor(e) || `<p class="small muted">Nothing to set for this record.</p>`;
-  const flowTitle = d.fromLots.length || d.fromGifts.length ? "Where these coins came from" : d.sold.length || d.gone.length || d.held.length ? "Where they went" : "How the coins moved";
+  const treat = actionsFor(e) || `<p class="small muted">Nothing to set.</p>`;
+  const flowTitle = d.fromLots.length || d.fromGifts.length ? "Came from" : d.sold.length || d.gone.length || d.held.length ? "Went to" : "Movement";
   const head = (actions) => `<header class="rec-head"><div class="rec-title"><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span>
       <h2>${recordHeadline(e)} <span class="muted">· ${longDay(e.t)}</span></h2></div>${actions}</header>`;
   if (opts.compact) {
@@ -183,9 +183,9 @@ function renderRecord(d, opts = {}) {
       ${head(`<button class="link" id="detail-close" aria-label="Close">✕</button>`)}
       ${recordStats(d)}
       <div class="rec-treat">${treat}</div>
-      ${lots ? `<h3 class="rec-sub">Came from</h3>${lots}` : went ? `<h3 class="rec-sub">Where they went</h3>${went}` : note ? `<p class="small muted">${note}</p>` : ""}
-      <footer class="rec-foot"><a class="button" href="${pageLink(e)}">Open full page</a><button class="link" data-rec-act="graph">Show related on the graph</button>
-        <span class="small muted hint">← → step through ${esc(e.account)}</span></footer></article>`;
+      ${lots ? `<h3 class="rec-sub">Came from</h3>${lots}` : went ? `<h3 class="rec-sub">Went to</h3>${went}` : note ? `<p class="small muted">${note}</p>` : ""}
+      <footer class="rec-foot"><a class="button" href="${pageLink(e)}">Open full page</a><button class="link" data-rec-act="graph">Show on graph</button>
+        <span class="small muted hint" title="Step through ${esc(e.account)}">← →</span></footer></article>`;
   }
   const canLabel = /class="lb-cat"/.test(treat);
   const actions = `<div class="rec-actions">${canLabel ? `<button data-rec-act="label">${e.label ? "Change label" : "Label it"}</button>` : ""}
@@ -195,14 +195,14 @@ function renderRecord(d, opts = {}) {
     + (d.fromLots.length || d.fromGifts.length ? lotRows(d) : wentRows(d)) + (note ? `<p class="small muted">${note}</p>` : "");
   const both = (d.fromLots.length || d.fromGifts.length) && wentRows(d);
   let bottom = "";
-  if (opts.tx) bottom += sec("On-chain transaction", chainSection(opts.tx), "rec-chain");
-  if (opts.source) bottom += sec("The exchange's record", sourceSection(opts.source), "rec-source");
-  if (d.sameTx.length) bottom += sec("Other records in this transaction", sameTxCards(d), "rec-others");
+  if (opts.tx) bottom += sec("On chain", chainSection(opts.tx), "rec-chain");
+  if (opts.source) bottom += sec("Exchange row", sourceSection(opts.source), "rec-source");
+  if (d.sameTx.length) bottom += sec("Same transaction", sameTxCards(d), "rec-others");
   return `<article class="rec-view page" data-key="${esc(e.key)}">
     ${head(actions)}
     ${recordStats(d)}
     <div class="rec-body">
-      <div class="rec-main">${sec(flowTitle, flow, "rec-flow")}${both ? sec("Where they went", both, "rec-went") : ""}</div>
+      <div class="rec-main">${sec(flowTitle, flow, "rec-flow")}${both ? sec("Went to", both, "rec-went") : ""}</div>
       <aside class="rec-side">${sec("Tax treatment", treat, "rec-tax")}${sec("Proof", attachBox(e.key), "rec-proof")}${sec("Details", recordDetails(e), "rec-details")}</aside>
     </div>
     ${bottom}</article>`;

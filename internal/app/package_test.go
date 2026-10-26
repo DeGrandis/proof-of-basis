@@ -81,7 +81,7 @@ func TestAccountantPackage(t *testing.T) {
 		t.Errorf("income:\n%s", i)
 	}
 	readme := files["README.txt"]
-	for _, want := range []string{"tax year 2025", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River yet", "lots-sold-2025.csv"} {
+	for _, want := range []string{"tax year 2025", "Short-term", "FORM 1040 DIGITAL ASSET QUESTION\n  Yes", "per wallet and account", "OPEN ITEMS", "No 1099-DA from River", "lots-sold-2025.csv"} {
 		if !strings.Contains(readme, want) {
 			t.Errorf("README lacks %q:\n%s", want, readme)
 		}
@@ -232,7 +232,7 @@ func TestTaxFormPDF(t *testing.T) {
 		t.Errorf("before any form: %q", c)
 	}
 	upload("$1,000.00")
-	if r, c := check(); !strings.HasPrefix(c, "bad River's 1099-DA shows proceeds of $1,000.00; your records show $728.00") || r.Ready {
+	if r, c := check(); !strings.HasPrefix(c, "bad River's 1099-DA: $1,000.00; your records: $728.00") || r.Ready {
 		t.Errorf("wrong total: %q (ready %v)", c, r.Ready)
 	}
 	var forms []store.TaxForm
@@ -241,7 +241,7 @@ func TestTaxFormPDF(t *testing.T) {
 		t.Fatalf("forms %+v", forms)
 	}
 	call(h, "POST", "/api/taxforms/"+strconv.FormatInt(forms[0].ID, 10), `{"Proceeds":"728.00"}`)
-	if _, c := check(); !strings.HasPrefix(c, "ok River's 1099-DA total matches") {
+	if _, c := check(); !strings.HasPrefix(c, "ok River's 1099-DA matches") {
 		t.Errorf("right total: %q", c)
 	}
 	w := call(h, "GET", "/api/package/2025.zip", "")

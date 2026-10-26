@@ -82,7 +82,7 @@ async function renderActivity() {
   try { list = await api("/api/actions" + (activityActor ? `?actor=${activityActor}` : "")); }
   catch (e) { box.innerHTML = `<p class="warn">${esc(e.message)}</p>`; return; }
   if (!list.length) {
-    box.innerHTML = `<p class="muted act-empty">${activityActor === "assistant" ? "The assistant hasn't changed anything yet." : "Nothing yet. Labels, protected purchases, settings, wallets and imports you change will show up here, and you can undo them."}</p>`;
+    box.innerHTML = `<p class="muted act-empty">${activityActor === "assistant" ? "The assistant hasn't changed anything yet." : "No changes yet."}</p>`;
     return;
   }
   let html = "", lastDay = "";

@@ -135,7 +135,7 @@ async function addTaxForm(account, file) {
   fd.append("file", file);
   try {
     const t = await api("/api/taxforms", { method: "POST", body: fd });
-    toast(`Added ${t.filename}. Now type its total proceeds.`);
+    toast(`Added ${t.filename}. Enter its total.`);
     tfFocus = t.id;
     seasonOpen[formsYear] = { ...(seasonOpen[formsYear] || {}), forms: true };
     renderSeason();
@@ -213,7 +213,7 @@ function renderSeasonSummary(r, year) {
   $("#season-reviewed").classList.toggle("primary", !r.reviewed);
   $("#season-reviewed").dataset.on = r.reviewed ? "" : "1";
   $("#season-reviewed").title = r.reviewed ? "Click to clear the mark" : "";
-  $("#season-reviewed-note").textContent = r.reviewed ? `You marked these reviewed on ${day(r.reviewed)}. Changed something since? Clear the mark and look again.` : "Look through the lines; open any record to fix it.";
+  $("#season-reviewed-note").textContent = r.reviewed ? `Reviewed ${day(r.reviewed)}. Changed something? Clear and recheck.` : "Open any line to fix it.";
 }
 $("#season-reviewed").addEventListener("click", async (e) => {
   try { await post(`/api/season/${formsYear}/reviewed`, { Reviewed: e.target.dataset.on === "1" }); renderSeason(); } catch (err) { toast(err.message); }

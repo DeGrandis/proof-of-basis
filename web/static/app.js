@@ -84,6 +84,15 @@ function pinchZoom(el, onStart, onMove) {
   el.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 }
 
+// ⓘ: a short note's longer explanation, on hover, or on tap (stays open
+// until a tap elsewhere, so its text can be selected).
+const info = (html) => `<span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">${html}</span></span>`;
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".info-btn"), mine = e.target.closest(".info");
+  $$(".info.open").forEach((x) => { if (x !== mine) x.classList.remove("open"); });
+  if (btn) { e.preventDefault(); btn.parentElement.classList.toggle("open"); }
+});
+
 function toast(msg) {
   const t = $("#toast");
   t.textContent = msg;
@@ -131,7 +140,7 @@ $("#search").addEventListener("submit", (e) => {
   if (byRef) location.hash = pageLink(byRef);
   else if (/^[0-9a-fA-F]{64}$/.test(q)) location.hash = "tx/" + q.toLowerCase();
   else if (/^(bc1|tb1|bcrt1|[13mn2])[0-9A-Za-z]{20,90}$/.test(q)) location.hash = "addr/" + encodeURIComponent(q);
-  else toast("Enter a 64-character transaction id, a bitcoin address, or a reference like R-1A2B3C4D5E.");
+  else toast("Enter a txid, an address or an R- reference.");
 });
 
 // Theme: light or dark, remembered; without a choice it follows the OS.
@@ -163,10 +172,10 @@ async function checkFulcrum(fresh) {
   $("#fulcrum-dot").classList.toggle("up", !!st.ok);
   $("#fulcrum-dot").classList.toggle("down", !st.ok && !notSet);
   const line = st.ok ? `Connected, block ${st.height.toLocaleString("en-US")}` : notSet ? "Not set up yet" : `Not reachable: ${st.error}`;
-  $("#fulcrum-line").textContent = line;
   $("#fulcrum-status").title = "Fulcrum: " + line + ". Click to check again.";
+  $("#fulcrum-status").setAttribute("aria-label", "Fulcrum: " + line);
 }
-$("#fulcrum-status").addEventListener("click", () => { $("#fulcrum-line").textContent = "checking…"; checkFulcrum(true); });
+$("#fulcrum-status").addEventListener("click", () => { $("#fulcrum-status").title = "Fulcrum: checking…"; checkFulcrum(true); });
 setInterval(() => { if (!document.hidden) checkFulcrum(); }, 60000);
 window.addEventListener("hashchange", () => show(location.hash.slice(1) || "overview"));
 window.addEventListener("load", () => scrollTo(0, 0)); // the browser's own anchor scroll lands after the page is shown
@@ -213,7 +222,7 @@ function renderOverview() {
     ? (heroBTC ? big(amt(r.holdingsSats), "Bitcoin held") + `<div class="held">${usd(worth)} · ${priceLine}</div>`
                : big(usd(worth), "Portfolio value") + `<div class="held">${amt(r.holdingsSats)} · ${priceLine}</div>`)
       + `<div class="gain ${r.unrealized < 0 ? "neg" : "pos"}">${r.unrealized >= 0 ? "+" : "-"}${usd(Math.abs(r.unrealized))} unrealized</div>`
-    : big(amt(r.holdingsSats), "Bitcoin held") + `<div class="held">No price yet: press Update prices in Settings</div>`;
+    : big(amt(r.holdingsSats), "Bitcoin held") + `<div class="held">No price · <a href="#settings">Update</a></div>`;
   $("#hero-swap")?.addEventListener("click", () => {
     heroBTC = !heroBTC;
     try { localStorage.setItem("heroFirst", heroBTC ? "btc" : "usd"); } catch {}
@@ -230,11 +239,11 @@ function renderOverview() {
   // Unlabeled items haven't moved coins yet, so an exchange's traced balance
   // can sit above what the exchange shows by exactly the unlabeled sends.
   const pend = (a) => (a.pendingOut || a.pendingIn)
-    ? `<span class="warn" title="Items in Review for this account haven't been counted yet. Once labeled, the balance here becomes ${amt(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}">${a.pendingOut ? `−${btc(a.pendingOut)}` : ""}${a.pendingOut && a.pendingIn ? " " : ""}${a.pendingIn ? `+${btc(a.pendingIn)}` : ""}</span><div class="small muted">→ ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}</div>`
+    ? `<span class="warn" title="${amt(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))} once Review is done">${a.pendingOut ? `−${btc(a.pendingOut)}` : ""}${a.pendingOut && a.pendingIn ? " " : ""}${a.pendingIn ? `+${btc(a.pendingIn)}` : ""}</span><div class="small muted">→ ${btc(a.sats - (a.pendingOut || 0) + (a.pendingIn || 0))}</div>`
     : `<span class="muted">–</span>`;
   $("#accounts-table tbody").innerHTML = (r.accounts || []).map((a) => `<tr>
     <td>${esc(a.name)}</td><td>${esc(a.kind)}</td><td class="num">${btc(a.sats)}</td>
-    <td class="num">${a.chainSats == null ? "" : btc(a.chainSats)}${a.chainSats != null && a.chainSats !== a.sats ? ' <span class="warn" title="Traced and on-chain balances differ: something is unlabeled or a scan is stale">!</span>' : ""}</td>
+    <td class="num">${a.chainSats == null ? "" : btc(a.chainSats)}${a.chainSats != null && a.chainSats !== a.sats ? ' <span class="warn" title="Doesn&#39;t match chain">!</span>' : ""}</td>
     <td class="num">${usd(a.basis)}</td><td class="num">${pend(a)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No accounts yet.</td></tr>`;
   const nLabel = r.unmatched?.length || 0;
   // Where each account first went below zero: what it spent before then
@@ -252,10 +261,11 @@ function renderOverview() {
     if (d.uncounted.length) why += ` ${d.uncounted.length} incoming record${d.uncounted.length === 1 ? "" : "s"} for it up to then (${amt(d.uncountedSats)}) ${d.uncounted.length === 1 ? "is" : "are"} still in Review and count${d.uncounted.length === 1 ? "s" : ""} for nothing until labeled: <a href="#review">label ${d.uncounted.length === 1 ? "it" : "them"}</a>.`;
     else if (d.chainSats != null && d.chainSats > d.beforeSats) why += ` None are waiting in Review, so check how its earlier incoming records are labeled or linked on Flow.`;
     else if (d.chainSats == null) why += ` Look for a purchase, deposit or conversion into it that is missing or misread just before.`;
-    return `<div class="warn"><b>${esc(d.account)} first goes below zero on ${day(d.t)}</b>, at ${esc(what)} (balance then ${amt(d.balanceSats)}). ${why} <a href="${recordLink(d.key)}" data-flowpick="${esc(d.key)}">Open it</a></div>`;
+    const unl = d.uncounted.length ? ` · <a href="#review">${d.uncounted.length} unlabeled incoming</a>` : "";
+    return `<div class="warn"><b>${esc(d.account)} below zero on ${day(d.t)}</b>${unl} · <a href="${recordLink(d.key)}" data-flowpick="${esc(d.key)}">Open it</a> ${info(`At ${esc(what)}, balance ${amt(d.balanceSats)}. ${why}`)}</div>`;
   }).join("");
   $("#warnings").innerHTML = (r.warnings || []).length || nLabel || dips
-    ? `<h2>Warnings</h2><div class="card small">${dips}${nLabel ? `<div class="warn"><b>${nLabel} item${nLabel === 1 ? "" : "s"} need${nLabel === 1 ? "s" : ""} a label.</b> <a href="#review">Review them</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
+    ? `<h2>Warnings</h2><div class="card small">${dips}${nLabel ? `<div class="warn"><b>${nLabel} unlabeled</b> · <a href="#review">Review</a></div>` : ""}${(r.warnings || []).map((w) => `<div class="warn">${esc(w)}</div>`).join("")}</div>` : "";
   const n = r.unmatched?.length || 0;
   $("#review-count").hidden = !n;
   $("#review-count").textContent = n;
@@ -291,12 +301,12 @@ $("#whatif-form").addEventListener("submit", async (e) => {
       <div class="scroll"><table class="small"><thead><tr><th>Bought</th><th class="num"><span class="unit-name">BTC</span></th><th class="num">Basis</th><th class="num">Gain</th><th>Held</th></tr></thead><tbody>
       ${(r.lots || []).map((l) => `<tr><td>${l.missing ? '<span class="warn">unknown</span>' : day(l.acquired)}</td><td class="num">${btc(l.sats)}</td><td class="num">${usd(l.basis)}</td><td class="num">${signed(l.proceeds - l.basis)}</td>
         <td>${l.longTerm ? "long" : `short${l.longTermIn ? ` (long in ${l.longTermIn} d)` : ""}`}</td></tr>`).join("")}</tbody></table></div></details>
-    <p class="small muted">Coins picked by ${r.strategy ? esc(r.strategy.replaceAll("_", " ")) : esc(r.method.toUpperCase())}, skipping protected purchases unless nothing else is left. Price from ${esc(r.priceDay)}. An estimate for planning; your tax professional prepares the return.</p>`
-      + (r.missingSats ? `<p class="warn small">${amt(r.missingSats)} of this has no known purchase; its basis is counted as zero.</p>` : "")
+    <p class="small muted">${r.strategy ? esc(r.strategy.replaceAll("_", " ")) : esc(r.method.toUpperCase())} · price ${esc(r.priceDay)} · estimate ${info("Protected purchases are skipped unless nothing else is left. For planning only; your tax professional prepares the return.")}</p>`
+      + (r.missingSats ? `<p class="warn small">${amt(r.missingSats)} has no known purchase ($0 basis).</p>` : "")
       + (r.warnings || []).map((w) => `<p class="warn small">${esc(w)}</p>`).join("")
       + ((r.lots || []).some((l) => !l.missing) ? `<div class="row"><input id="ident-note" placeholder="Note (optional): what this is for" size="28">
         <button type="button" id="ident-record" class="primary">Record this choice</button></div>
-        <p class="small muted">Recording keeps a dated note of exactly which coins this sale or spend uses, made before it happens, as the IRS asks (FAQ 82). When the sale shows up, these are the coins counted.</p>` : "");
+        <p class="small muted">Dated record of these coins (IRS FAQ 82). ${info("Made before the sale, as the IRS asks. When the sale shows up, these are the coins counted.")}</p>` : "");
   } catch (err) { out.innerHTML = `<p class="warn">${esc(err.message)}</p>`; }
 });
 $("#whatif-out").addEventListener("click", async (e) => {
@@ -649,7 +659,7 @@ function drawHistory() {
     cp.setAttribute("cx", xx); cp.setAttribute("cy", p.price ? y2(p.price) : -20);
     const change = p.price && firstPriced ? pct(firstPriced.price, p.price) : pct(first.sats, p.sats);
     tip.innerHTML = `<div class="tip-row"><b>${amt(p.sats)}</b>${pctPill(change)}</div>
-      <div class="tip-line">${p.price ? `${usd(p.price)} per BTC · worth ${usd(Math.round(p.sats * p.price / 1e8))}` : "No price for this day"}</div>
+      <div class="tip-line">${p.price ? `${usd(p.price)} per BTC · worth ${usd(Math.round(p.sats * p.price / 1e8))}` : "No price"}</div>
       <div class="tip-cap">${day(p.t)} · ${p.price && firstPriced ? "price" : "holdings"} since ${day((p.price && firstPriced ? firstPriced : first).t)}</div>`;
     placeTip(xx, y1(p.sats));
   });
@@ -791,9 +801,9 @@ async function renderFreshness() {
   const stale = rows.filter((r) => r.days > 30);
   const age = (d) => (d === 0 ? "today" : d === 1 ? "yesterday" : `${d} days ago`);
   $("#freshness").innerHTML = !rows.length ? "" : stale.length
-    ? `<div class="card fresh stale"><b>Time for fresh exports?</b>${stale.map((r) => `<div>${esc(r.account)}: newest row is from ${esc(r.last)}, ${age(r.days)}.</div>`).join("")}
-       <div class="small muted">If you've used them since, download a new CSV from each and drop it below. Rows you already have are skipped.</div></div>`
-    : `<p class="small muted">Imports look current: ${rows.map((r) => `${esc(r.account)} (newest row ${age(r.days)})`).join(", ")}.</p>`;
+    ? `<div class="card fresh stale"><b>Fresh exports?</b>${stale.map((r) => `<div>${esc(r.account)}: newest row is from ${esc(r.last)}, ${age(r.days)}.</div>`).join("")}
+       <div class="small muted">Drop new CSVs below. Duplicates skipped.</div></div>`
+    : `<p class="small muted">Up to date: ${rows.map((r) => `${esc(r.account)} (${age(r.days)})`).join(", ")}</p>`;
 }
 
 async function renderImports() {
@@ -964,7 +974,7 @@ $("#review-table").addEventListener("change", (e) => {
     const opp = (report.unmatched || []).filter((i) => i.Dir !== tr.dataset.dir);
     extra.innerHTML = `<select class="cp">${opp.map((i) => `<option value="${esc(i.Key)}">${day(i.Time)} ${esc(i.Account)} ${amt(i.Sats)}</option>`).join("")}</select>`;
   } else if (cat === "self-transfer") {
-    extra.innerHTML = `<span class="small muted">${tr.dataset.dir === "out" ? "Keeps its basis and purchase dates while it's away." : "Brings back coins you sent out as a self transfer, with their original basis and dates."}</span>`;
+    extra.innerHTML = `<span class="small muted">${tr.dataset.dir === "out" ? "Keeps its basis and dates." : "Returns with its original basis and dates."}</span>`;
   } else if (MARKET_VALUE[cat]) {
     // Sales, payments and income are valued at that day's market price
     // unless the user knows the actual amount.
@@ -1111,7 +1121,7 @@ function renderTaxes() {
     <td class="num">${y.carryOutShort || y.carryOutLong ? `<span title="${usd(y.carryOutShort)} short-term, ${usd(y.carryOutLong)} long-term">${usd(y.carryOutShort + y.carryOutLong)}</span>` : '<span class="muted">–</span>'}</td>
     <td class="num">${y.estimatedTax < 0 ? `<span class="pos" title="Losses lower this year's tax">saves ${usd(-y.estimatedTax)}</span>` : usd(y.estimatedTax)}${y.missingBasisSats ? ` <span class="warn" title="${amt(y.missingBasisSats)} sold with no known basis">!</span>` : ""}</td>    <td title="${esc([...(y.digitalAsset?.reasons || []), ...(y.digitalAsset?.ask || [])].join("; ") || "No sales, spends, income or fees paid in BTC")}">${esc(y.digitalAsset?.answer || "No")}${y.digitalAsset?.ask?.length ? ' <span class="warn">?</span>' : ""}</td>
 
-    <td>${sales[y.year] ? `<a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a> <span class="small muted">${sales[y.year]} sales</span>` : `<span class="small muted" title="Form 8949 lists sales and spends. This year only has income, which is reported elsewhere.">No sales to report</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
+    <td>${sales[y.year] ? `<a href="/api/export/8949.csv?year=${y.year}">Form 8949 CSV</a> <span class="small muted">${sales[y.year]} sales</span>` : `<span class="small muted" title="Income is reported elsewhere.">No sales to report</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No disposals yet.</td></tr>`;
   $("#disposals-table tbody").innerHTML = (report.disposals || []).map((d) => `<tr>
     <td>${day(d.Disposed)}</td><td>${d.Missing ? '<span class="warn">unknown</span>' : day(d.Acquired)}</td><td>${esc(d.Account)}</td>
     <td class="num">${btc(d.Sats)}</td><td class="num">${usd(d.Proceeds)}</td><td class="num">${usd(d.Basis)}</td>
