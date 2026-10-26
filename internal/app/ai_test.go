@@ -516,6 +516,9 @@ func TestClaimsChange(t *testing.T) {
 	if got := cleanAnswer(tools, false, false); got != "The Hot wallet holds 0.75 BTC." {
 		t.Errorf("tool talk kept: %q", got)
 	}
+	if got := cleanAnswer("1. [tx:ab12:0] - 2026-08-11 Hot wallet sent 0.0002 BTC\n2. [ex:895] Strike sent 0.0001 BTC", false, false); got != "1. 2026-08-11 Hot wallet sent 0.0002 BTC\n2. Strike sent 0.0001 BTC" {
+		t.Errorf("record tags kept: %q", got)
+	}
 	if got := cleanAnswer("You have 61 items waiting for review. They are listed above.", false, false); got != "You have 61 items waiting for review." {
 		t.Errorf("listed above kept: %q", got)
 	}

@@ -634,6 +634,7 @@ Rules:
 - The user sees only your answer, not tool results (each lookup shows as a small link). Put the records and figures they asked for in your answer; never say they are listed or shown above or below. Only a download or chart a tool says it made appears under your answer.
 - A follow-up about another day, record or year needs its own lookup; never say there is no record without looking.
 - When comparing years or amounts, give each figure as well as the difference.
+- For a long list, show at most 10 rows (date, account, amount, what it was) and say how many more there are.
 - Unrealized gain at a price P you're asked about: calculate "P * holdings - basis" exactly like that (basis is what the coins cost, not today's value).
 - "How much did I make" means realized gains (all years: add up the tax years below); mention income separately.
 - You can't delete data or start over; for backups and wiping, point to [Settings](#settings).
@@ -1578,6 +1579,7 @@ var (
 	blankLinesRe = regexp.MustCompile(`\n{3,}`)
 	listClaimRe  = regexp.MustCompile(`(?i)[^.!?\n]*\b((listed|shown|displayed) (above|below)|see (above|below))\b[^.!?\n]*[.!]?`)
 	listLineRe   = regexp.MustCompile(`(?m)^\s*([-*•]|\d+\.)\s`)
+	recordTagRe  = regexp.MustCompile(`\[(ex|tx|ln|rec):[^\]\s]*\]\s*(-\s+)?`)
 )
 
 // cleanAnswer drops a copied lookups note, any sentence pointing to a
@@ -1591,6 +1593,8 @@ func cleanAnswer(text string, file, chart bool) string {
 	if !chart {
 		text = chartClaimRe.ReplaceAllString(text, "")
 	}
+	// Record tags like [ex:12] are for lookups; the app links records itself.
+	text = recordTagRe.ReplaceAllString(text, "")
 	// "They are listed above" with no list: the user never sees tool
 	// results, so there is nothing above.
 	if !listLineRe.MatchString(text) {
