@@ -598,4 +598,21 @@ func TestLightningAnalysis(t *testing.T) {
 	if _, out = tb.run("calculate", map[string]any{"expression": "150000 * 1.02295887 - 44110.78"}); !strings.Contains(out, "(rounded: 109,333.05)") {
 		t.Errorf("calculate: %s", out)
 	}
+	// Today's figures by name, so the model needn't copy them.
+	_, byName := tb.run("calculate", map[string]any{"expression": "150000 * holdings - basis"})
+	if strings.Contains(byName, "Error") || !strings.Contains(byName, "rounded:") {
+		t.Errorf("calculate by name: %s", byName)
+	}
+	// A listing remembers the records it showed, for follow-ups.
+	lk, _ := tb.run("analyze_records", map[string]any{"source": "sales", "stat": "top", "top_n": float64(1)})
+	if len(lk.Keys) != 1 {
+		t.Fatalf("keys: %+v", lk)
+	}
+	b, _ := json.Marshal(msgData{Lookups: []Lookup{lk}})
+	if note := lookupNote(string(b)); !strings.Contains(note, "-> records "+lk.Keys[0]) {
+		t.Errorf("note: %s", note)
+	}
+	if _, out = tb.run("get_record", map[string]any{"id": lk.Keys[0]}); strings.Contains(out, "no record with that id") {
+		t.Errorf("sale key not found: %s", out)
+	}
 }

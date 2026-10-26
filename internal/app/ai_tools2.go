@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http/httptest"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,8 +31,8 @@ func moreToolSpecs() []ollama.Tool {
 	}
 	return []ollama.Tool{
 		analyzeToolSpec(),
-		t("calculate", "Exact arithmetic. Use it for any sum, difference, percentage or comparison of numbers instead of doing math yourself. Supports + - * / and parentheses.", obj(map[string]any{
-			"expression": str("for example (8672.03 - 1090.09) or -81.11 - (-76.10)"),
+		t("calculate", "Exact arithmetic. Use it for any sum, difference, percentage or comparison of numbers instead of doing math yourself. Supports + - * / and parentheses, and these names for today's figures, so you don't have to copy them: holdings (BTC held), basis (their total cost basis in USD), price (BTC price in USD).", obj(map[string]any{
+			"expression": str("for example (8672.03 - 1090.09), -81.11 - (-76.10), or 150000 * holdings - basis"),
 		}, "expression")),
 		t("holdings_on", "BTC held on a date: total and per account, its value at that day's price, and its cost basis.", obj(map[string]any{
 			"date": str("YYYY-MM-DD"),
@@ -85,7 +86,7 @@ func (tb *toolbox) runMore(name string, args map[string]any, lk *Lookup) (out st
 	case "calculate":
 		var v float64
 		expr := argStr(args, "expression")
-		v, err = calc(expr)
+		v, err = calc(tb.calcNames(expr))
 		if err == nil {
 			// Give it rounded with commas too: models garble big numbers
 			// when they format them themselves.
@@ -131,6 +132,23 @@ func round6(v float64) float64 { return math.Round(v*1e6) / 1e6 }
 
 // calc evaluates + - * / and parentheses over decimal numbers. Commas and
 // dollar signs are ignored so model-written figures like "$1,234.56" work.
+var calcNameRe = regexp.MustCompile(`(?i)\b(holdings|basis|price)\b`)
+
+// calcNames puts today's figures in for their names in an expression:
+// models mistype long numbers they copy.
+func (tb *toolbox) calcNames(expr string) string {
+	var basis int64
+	for _, a := range tb.rep.Accounts {
+		basis += a.Basis
+	}
+	vals := map[string]string{
+		"holdings": strconv.FormatFloat(float64(tb.rep.Holdings)/1e8, 'f', 8, 64),
+		"basis":    strconv.FormatFloat(float64(basis)/100, 'f', 2, 64),
+		"price":    strconv.FormatFloat(float64(tb.rep.Price)/100, 'f', 2, 64),
+	}
+	return calcNameRe.ReplaceAllStringFunc(expr, func(n string) string { return "(" + vals[strings.ToLower(n)] + ")" })
+}
+
 func calc(expr string) (float64, error) {
 	s := strings.NewReplacer(",", "", "$", "", " ", "", "−", "-", "×", "*", "÷", "/").Replace(expr)
 	if s == "" || len(s) > 500 {

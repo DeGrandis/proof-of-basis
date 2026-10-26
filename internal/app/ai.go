@@ -209,6 +209,9 @@ type Lookup struct {
 	Chart   *Chart         `json:"chart,omitempty"`
 	File    *FileRef       `json:"file,omitempty"`
 	Review  *ReviewSet     `json:"review,omitempty"`
+	// Keys are the first records a lookup listed, so a follow-up ("which
+	// account was that?") can look one up by its id.
+	Keys []string `json:"keys,omitempty"`
 }
 
 // ReviewSet is the Review items an answer listed, for the Label control.
@@ -686,6 +689,13 @@ Rules:
 	}
 	if len(rep.Years) == 0 {
 		b.WriteString("No sales or income yet.\n")
+	} else {
+		var gain, income int64
+		for _, y := range rep.Years {
+			gain += y.ShortProceeds - y.ShortBasis + y.LongProceeds - y.LongBasis
+			income += y.Income
+		}
+		fmt.Fprintf(&b, "- All years: realized gain %s, income %s\n", usdStr(gain), usdStr(income))
 	}
 	fmt.Fprintf(&b, "\n%d items are waiting in Review for a label.", len(rep.Unmatched))
 	if len(rep.Warnings) > 0 {
@@ -909,7 +919,7 @@ func eventDetail(rep *Report, key string) string {
 		}
 	}
 	if !found {
-		b.WriteString("- (no record with that id or txid)\n")
+		b.WriteString("- (no record with that id or txid. Ids look like ex:123 or tx:<txid>:<n>: use one noted on an earlier answer, or find it with analyze_records, stat list)\n")
 	}
 	return b.String()
 }
@@ -1519,7 +1529,11 @@ func lookupNote(data string) string {
 			continue
 		}
 		b, _ := json.Marshal(lk.Args)
-		parts = append(parts, lk.Name+" "+clip(string(b), 300))
+		part := lk.Name + " " + clip(string(b), 300)
+		if len(lk.Keys) > 0 {
+			part += " -> records " + strings.Join(lk.Keys, ", ")
+		}
+		parts = append(parts, part)
 	}
 	if len(parts) == 0 {
 		return ""
