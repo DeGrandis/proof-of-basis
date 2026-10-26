@@ -190,6 +190,21 @@ func (w *world) event(ex string, e importers.Event) {
 	e.UID = fmt.Sprintf("demo:%d", w.n)
 	e.Ref = e.UID
 	e.Row = w.n
+	// The row as an exchange's CSV would have it, shown on the record's page.
+	e.Raw = map[string]string{"ID": e.UID, "Timestamp": e.Time.UTC().Format(time.RFC3339), "Type": string(e.Kind),
+		"Quantity BTC": fmt.Sprintf("%.8f", float64(e.Sats)/1e8)}
+	if e.FiatCents != 0 {
+		e.Raw["Total USD"] = fmt.Sprintf("%.2f", float64(e.FiatCents)/100)
+	}
+	if e.FeeCents != 0 {
+		e.Raw["Fee USD"] = fmt.Sprintf("%.2f", float64(e.FeeCents)/100)
+	}
+	if e.FeeSats != 0 {
+		e.Raw["Network fee BTC"] = fmt.Sprintf("%.8f", float64(e.FeeSats)/1e8)
+	}
+	if e.Txid != "" {
+		e.Raw["Transaction hash"] = e.Txid
+	}
 	switch e.Kind {
 	case importers.Buy, importers.Income, importers.Deposit:
 		w.bal[ex] += e.Sats

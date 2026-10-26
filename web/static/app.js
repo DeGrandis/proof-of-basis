@@ -82,7 +82,7 @@ function show(route) {
 function showLookup(kind, arg) {
   $$(".tab").forEach((s) => s.classList.toggle("on", s.id === "lookup"));
   $$("#tabs button").forEach((b) => b.classList.remove("on"));
-  $("#tab-title").textContent = kind === "tx" ? "Transaction" : "Address";
+  $("#tab-title").textContent = kind === "tx" ? "Record" : "Address";
   document.body.dataset.tab = "lookup";
   document.body.classList.remove("flow");
   lookupRoute = [kind, arg];
@@ -1442,9 +1442,9 @@ function buildDetail(key) {
   if (e.kind === "unmatched") trace += `<b>Not traced yet</b><div>This left or entered a tracked account and couldn't be matched. Label it below or in <a href="#review">Review</a>.</div>`;
   if (!trace) trace = `<span class="muted">Nothing further to trace.</span>`;
   const sides = txSides(e, { fromLots, fromGifts, sold, gone, held, byKey });
-  return { e, rows, trace, related, sides, byKey };
+  return { e, rows, trace, related, sides, byKey, fromLots, fromGifts, sold, gone, held, sameTx };
 }
-const pageLink = (e) => e.txid ? `#tx/${esc(e.txid)}` : `#tx/rec:${encodeURIComponent(e.key)}`;
+const pageLink = (e) => `#tx/rec:${encodeURIComponent(e.key)}`;
 
 function selectEvent(key, zoom) {
   const box = $("#graph-detail");
@@ -1457,27 +1457,41 @@ function selectEvent(key, zoom) {
     highlight(null);
     return;
   }
-  const { e, rows, trace, related, sides, byKey } = d;
   selected = key;
-  box.innerHTML = `<div class="detail-inner"><h3><span class="kind ${esc(e.kind)}">${esc(KIND_NAMES[e.kind] || e.kind)}</span> ${amt(e.sats)} <a class="small" href="${pageLink(e)}">Open its page</a> <button class="link small" id="detail-close" aria-label="Close">✕</button></h3>
-    <div class="detail-cols"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${trace}</div></div>
-    <div id="txflow-wrap"><svg id="txflow" class="txf" role="img" aria-label="Where this transaction's coins came from and went"></svg></div>
-    ${actionsFor(e)}${attachBox(e.key)}</div>`;
-  fillAttachments(box);
+  box.innerHTML = `<div class="detail-inner">${renderRecord(d, { compact: true })}</div>`;
   if (!box.open) box.showModal();
-  lastFlow = sides;
-  requestAnimationFrame(() => drawTxFlow(e, lastFlow));
-  relatedKeys = related;
+  relatedKeys = d.related;
   highlight(key);
-  if (zoom) {
-    const ps = [...related].map((k) => byKey[k]).filter(Boolean).map((g) => posOf(g.t));
-    let lo = Math.min(...ps), hi = Math.max(...ps);
-    const minSpan = Math.max(8, view.full * 0.01);
-    if (hi - lo < minSpan) { const m = (lo + hi) / 2; lo = m - minSpan / 2; hi = m + minSpan / 2; }
-    const pad = (hi - lo) * 0.12;
-    animateTo(lo - pad, hi + pad);
-  }
+  if (zoom) zoomToKeys(d.related, d.byKey);
 }
+function zoomToKeys(keys, byKey) {
+  const ps = [...keys].map((k) => byKey[k]).filter(Boolean).map((g) => posOf(g.t));
+  let lo = Math.min(...ps), hi = Math.max(...ps);
+  const minSpan = Math.max(8, view.full * 0.01);
+  if (hi - lo < minSpan) { const m = (lo + hi) / 2; lo = m - minSpan / 2; hi = m + minSpan / 2; }
+  const pad = (hi - lo) * 0.12;
+  animateTo(lo - pad, hi + pad);
+}
+// "Show related on the graph": the popup steps aside and the chain stays
+// highlighted until the graph is clicked or Escape pressed.
+let keepPick = false;
+function showOnGraph() {
+  const d = selected && buildDetail(selected);
+  if (!d) return;
+  keepPick = true;
+  $("#graph-detail").close();
+  zoomToKeys(d.related, d.byKey);
+}
+// ← and → in the popup step to the previous or next record in its lane.
+document.addEventListener("keydown", (ev) => {
+  if (!["ArrowLeft", "ArrowRight"].includes(ev.key) || !$("#graph-detail").open || ev.target.closest?.("input, select, textarea") || !selected) return;
+  const cur = (report.graph || []).find((g) => g.key === selected);
+  if (!cur) return;
+  const lane = (report.graph || []).filter((g) => g.account === cur.account).sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
+  const next = lane[lane.indexOf(cur) + (ev.key === "ArrowRight" ? 1 : -1)];
+  ev.preventDefault();
+  if (next) selectEvent(next.key, false);
+});
 // The transaction diagram under the details, in the spirit of mempool.space:
 // where the coins came from on the left, where they went on the right, band
 // widths by amount. Only records related to the selected one appear.
@@ -1534,7 +1548,7 @@ function txSides(e, c) {
 
 function drawTxFlow(e, { L, R }, svg = $("#txflow")) {
   if (!svg) return;
-  const W = Math.max(360, svg.parentElement.clientWidth), labelW = Math.min(190, W * 0.28);
+  const W = Math.max(300, svg.parentElement.clientWidth), labelW = Math.min(200, W * 0.34), narrow = W < 480;
   const n = Math.max(L.length, R.length, 1), gap = 6;
   const H = Math.max(140, n * 34 + 40), avail = H - 40 - gap * (n - 1);
   const tl = L.reduce((s, x) => s + x.sats, 0), tr = R.reduce((s, x) => s + x.sats, 0), total = Math.max(tl, tr, 1);
@@ -1558,8 +1572,8 @@ function drawTxFlow(e, { L, R }, svg = $("#txflow")) {
   }
   const node = (x, nx, anchor, tx) => `<g class="node${x.key ? " link-node" : ""}"${x.key ? ` data-flowkey="${esc(x.key)}"` : ""}><title>${esc(x.label)} ${amt(x.sats)}${x.sub ? ", " + esc(x.sub) : ""}</title>
     <rect class="f-${esc(x.kind)}" x="${nx}" y="${x.y}" width="${nodeW}" height="${x.h}" rx="2"/>
-    <text x="${tx}" y="${x.y + x.h / 2 - 1}" text-anchor="${anchor}">${esc(x.label)} · ${amt(x.sats)}</text>
-    <text class="sub" x="${tx}" y="${x.y + x.h / 2 + 12}" text-anchor="${anchor}">${esc(x.sub || "")}</text></g>`;
+    <text x="${tx}" y="${x.y + x.h / 2 - 1}" text-anchor="${anchor}">${esc(x.label)}</text>
+    <text class="sub" x="${tx}" y="${x.y + x.h / 2 + 12}" text-anchor="${anchor}">${amt(x.sats)}${x.sub && !narrow ? " · " + esc(x.sub) : ""}</text></g>`;
   g += lp.map((x) => node(x, xL, "end", xL - 6)).join("") + rp.map((x) => node(x, xR, "start", xR + nodeW + 6)).join("");
   g += `<rect class="center" x="${cx}" y="${cy0}" width="14" height="${cH}" rx="3"><title>${esc(KIND_NAMES[e.kind] || e.kind)} ${amt(e.sats)}</title></rect>
     <text x="${cx + 7}" y="${cy0 + cH + 16}" text-anchor="middle" class="sub">${esc(KIND_NAMES[e.kind] || e.kind)} · ${day(e.t)}</text>`;
@@ -1570,7 +1584,7 @@ $("#graph-detail").addEventListener("click", (e) => {
   const k = e.target.closest("[data-flowkey]")?.dataset.flowkey;
   if (k && (report.graph || []).some((g) => g.key === k)) selectEvent(k, true);
 });
-window.addEventListener("resize", () => { if (selected && lastFlow) { const e = (report.graph || []).find((g) => g.key === selected); if (e) drawTxFlow(e, lastFlow); } });
+window.addEventListener("resize", () => { if ($("#lookup").classList.contains("on")) drawLookupFlows(); });
 
 // What can be done to the selected record from here: label it (or change
 // or clear its label), and protect a purchase so it is sold last.
@@ -1670,20 +1684,35 @@ async function fillAttachments(root) {
   for (const box of $$(".attach-box", root)) {
     let list = [];
     try { list = await api(`/api/attachments?key=${encodeURIComponent(box.dataset.key)}`); } catch { continue; }
-    box.innerHTML = `<b>Proof:</b> ${list.map((a) => `<a href="/api/attachments/${a.id}">${esc(a.filename)}</a>${a.note ? ` <span class="muted">(${esc(a.note)})</span>` : ""}
-      <button class="link small att-del" data-id="${a.id}" aria-label="Remove ${esc(a.filename)}">✕</button>`).join(" · ") || '<span class="muted">none attached</span>'}
-      <label class="link small att-add">Attach a file<input type="file" hidden></label>
-      <input class="att-note" size="16" placeholder="Note (optional)">`;
+    box.innerHTML = `<ul class="att-list">${list.map((a) => `<li><a href="/api/attachments/${a.id}">${esc(a.filename)}</a>${a.note ? ` <span class="muted">(${esc(a.note)})</span>` : ""}
+      <button class="link small att-del" data-id="${a.id}" aria-label="Remove ${esc(a.filename)}">✕</button></li>`).join("") || '<li class="muted">None attached yet.</li>'}</ul>
+      <label class="dropzone inline att-add">Drop a receipt or letter here, or <span class="link">choose a file</span><input type="file" hidden></label>
+      <input class="att-note" placeholder="Note for the next file (optional)">`;
   }
 }
-document.addEventListener("change", async (e) => {
-  if (!e.target.closest(".att-add") || !e.target.files?.length) return;
-  const box = e.target.closest(".attach-box");
+async function attachFile(box, file) {
   const fd = new FormData();
   fd.append("key", box.dataset.key);
   fd.append("note", $(".att-note", box)?.value || "");
-  fd.append("file", e.target.files[0]);
+  fd.append("file", file);
   try { await api("/api/attachments", { method: "POST", body: fd }); toast("File attached"); fillAttachments(box.parentElement); } catch (err) { toast(err.message); }
+}
+document.addEventListener("change", (e) => {
+  if (e.target.closest(".att-add") && e.target.files?.length) attachFile(e.target.closest(".attach-box"), e.target.files[0]);
+});
+document.addEventListener("dragover", (e) => {
+  const z = e.target.closest(".attach-box .dropzone");
+  if (!z) return;
+  e.preventDefault();
+  z.classList.add("over");
+});
+document.addEventListener("dragleave", (e) => e.target.closest?.(".attach-box .dropzone")?.classList.remove("over"));
+document.addEventListener("drop", (e) => {
+  const z = e.target.closest(".attach-box .dropzone");
+  if (!z) return;
+  e.preventDefault();
+  z.classList.remove("over");
+  if (e.dataTransfer.files.length) attachFile(z.closest(".attach-box"), e.dataTransfer.files[0]);
 });
 document.addEventListener("click", async (e) => {
   const id = e.target.closest(".att-del")?.dataset.id;
@@ -1699,48 +1728,35 @@ async function renderLookup() {
   try {
     if (kind === "addr") { page.innerHTML = await addressPage(arg); return; }
     page.innerHTML = await txPage(arg);
-    $$("#lookup svg.txflow").forEach((svg) => { const d = buildDetail(svg.dataset.key); if (d) drawTxFlow(d.e, d.sides, svg); });
+    drawLookupFlows();
     fillAttachments(page);
   } catch (err) { page.innerHTML = `<h2>Not found</h2><p class="warn">${esc(err.message)}</p>`; }
 }
 const shortTx = (t) => `${t.slice(0, 10)}…${t.slice(-6)}`;
+const drawLookupFlows = () => $$("#lookup svg.txflow").forEach((svg) => { const d = buildDetail(svg.dataset.key); if (d) drawTxFlow(d.e, d.sides, svg); });
+// A record's page, reached by its key or by a txid (which shows the
+// transaction's main record, with its other records linked below it).
 async function txPage(arg) {
-  let recs, tx = null, txid = "";
+  const graph = report.graph || [];
+  let rec, txid = "";
   if (arg.startsWith("rec:")) {
-    recs = (report.graph || []).filter((g) => g.key === arg.slice(4));
-    if (!recs.length) throw new Error("That record isn't in your data any more.");
+    rec = graph.find((g) => g.key === arg.slice(4));
+    if (!rec) throw new Error("That record isn't in your data any more.");
+    txid = rec.txid || "";
   } else {
     txid = arg;
-    recs = (report.graph || []).filter((g) => g.txid === txid);
-    tx = await api(`/api/tx/${txid}`);
+    const legs = graph.filter((g) => g.txid === txid);
+    const main = legs.filter((g) => !/:fee$|:from:/.test(g.key));
+    rec = (main.length ? main : legs).sort((x, y) => y.sats - x.sats)[0];
   }
-  const owner = (who) => who ? `<span class="mine">${esc(who)}</span>` : `<span class="muted">outside</span>`;
-  let h = `<h2>${txid ? `Transaction <span class="mono">${esc(txid)}</span>` : "Record"}</h2>`;
-  if (tx) {
-    const facts = [["When", tx.t ? when(tx.t) : "unconfirmed or unknown"], ["Block", tx.height > 0 ? tx.height.toLocaleString("en-US") : "not confirmed"],
-      ["Network fee", tx.feeSats ? `${amt(tx.feeSats)}` : "unknown (some inputs aren't yours)"],
-      ["Shape", `${tx.inputs.length} input${tx.inputs.length === 1 ? "" : "s"} → ${tx.outputs.length} output${tx.outputs.length === 1 ? "" : "s"}`],
-      ["Source", tx.source === "wallets" ? "your wallets' scans" : tx.source === "fulcrum" ? "your Fulcrum server (not in your wallets)" : "your imported records only"]];
-    h += `<div class="card"><dl class="facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>${tx.note ? `<p class="small warn">${esc(tx.note)}</p>` : ""}
-      ${recs.length ? `<a href="#graph" data-flowshow="${esc(recs[0].key)}">Show in Flow</a>` : ""}</div>`;
-    if (tx.inputs.length || tx.outputs.length) {
-      h += `<div class="io"><div><h3>Inputs</h3><div class="scroll"><table><thead><tr><th>From</th><th>Address</th><th class="num">${UNIT_NAME[prefs.unit]}</th></tr></thead><tbody>${tx.inputs.map((i) => `<tr>
-          <td><a class="mono small" href="#tx/${esc(i.prevTxid)}">${esc(shortTx(i.prevTxid))}:${i.prevVout}</a></td><td class="addr">${i.address ? `<a href="#addr/${encodeURIComponent(i.address)}">${esc(i.address)}</a>` : ""}</td>
-          <td class="num">${i.sats ? btc(i.sats) : "?"}<div class="small">${owner(i.wallet)}</div></td></tr>`).join("")}</tbody></table></div></div>
-        <div><h3>Outputs</h3><div class="scroll"><table><thead><tr><th>#</th><th>Address</th><th class="num">${UNIT_NAME[prefs.unit]}</th></tr></thead><tbody>${tx.outputs.map((o) => `<tr>
-          <td>${o.vout}</td><td class="addr">${o.address ? `<a href="#addr/${encodeURIComponent(o.address)}">${esc(o.address)}</a>` : "(non-standard)"}</td>
-          <td class="num">${btc(o.sats)}<div class="small">${owner(o.wallet)}</div></td></tr>`).join("")}</tbody></table></div></div></div>`;
-    }
-    if (tx.exchange.length) h += `<p class="small muted">Exchange records with this txid: ${tx.exchange.map((x) => `${esc(x.account)} ${esc(x.kind)} ${amt(x.sats)} on ${day(x.t)}`).join("; ")}.</p>`;
-  }
-  h += `<h2>Your records${txid ? " for it" : ""}</h2>`;
-  h += recs.length ? recs.map((r) => {
-    const d = buildDetail(r.key);
-    return `<div class="card rec"><h3><span class="kind ${esc(r.kind)}">${esc(KIND_NAMES[r.kind] || r.kind)}</span> ${amt(r.sats)} · ${esc(r.account)}${r.to ? ` → ${esc(r.to)}` : ""}</h3>
-      <div class="detail-cols"><dl>${d.rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl><div class="trace">${d.trace}</div></div>
-      <svg class="txflow txf" data-key="${esc(r.key)}" role="img" aria-label="Where these coins came from and went"></svg>${actionsFor(r)}${attachBox(r.key)}</div>`;
-  }).join("") : `<p class="muted">None of your records refer to this transaction.</p>`;
-  return h;
+  const [tx, source] = await Promise.all([
+    txid ? api(`/api/tx/${txid}`) : null,
+    rec?.key.startsWith("ex:") ? api(`/api/records/${encodeURIComponent(rec.key)}/source`).catch(() => null) : null,
+  ]);
+  if (rec) return renderRecord(buildDetail(rec.key), { tx, source });
+  return `<article class="rec-view page"><header class="rec-head"><div class="rec-title"><span class="kind">Transaction</span>
+      <h2 class="mono">${esc(shortId(txid))}</h2></div></header>
+    <p class="muted">None of your records refer to this transaction.</p>${sec("On-chain transaction", chainSection(tx), "rec-chain")}</article>`;
 }
 async function addressPage(addr) {
   const a = await api(`/api/address/${encodeURIComponent(addr)}`);
@@ -1971,5 +1987,5 @@ $("#logout-all-btn").addEventListener("click", async () => {
 
 // The details dialog closes with Escape (the browser's own), its ✕, or a
 // click outside it; the graph's highlight goes with it.
-$("#graph-detail").addEventListener("close", () => { if (selected) selectEvent(null); });
+$("#graph-detail").addEventListener("close", () => { if (selected && !keepPick) selectEvent(null); keepPick = false; });
 $("#graph-detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) selectEvent(null); });

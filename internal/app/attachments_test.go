@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
+
+	"btctax/internal/importers"
 
 	"btctax/internal/store"
 )
@@ -62,5 +65,22 @@ func TestAttachments(t *testing.T) {
 	json.Unmarshal(call(h, "GET", "/api/attachments?key=ex:7", "").Body.Bytes(), &list)
 	if len(list) != 1 {
 		t.Errorf("after delete %+v", list)
+	}
+}
+
+// An imported record's original row, as the exchange's file had it.
+func TestRecordSource(t *testing.T) {
+	st, h := newTest(t)
+	cb, _ := st.ExchangeAccount("Coinbase", "coinbase")
+	st.AddImport(cb, "coinbase", "coinbase-2025.csv", "x", []importers.Event{{Kind: importers.Buy, Time: time.Unix(1_700_000_000, 0), Sats: 1000, FiatCents: 100,
+		UID: "c1", Row: 5, Raw: map[string]string{"ID": "c1", "Transaction Type": "Buy", "Quantity Transacted": "0.00001"}}}, nil)
+	var src store.EventSource
+	w := call(h, "GET", "/api/records/ex:1/source", "")
+	json.Unmarshal(w.Body.Bytes(), &src)
+	if w.Code != 200 || src.Filename != "coinbase-2025.csv" || src.Line != 5 || src.Row["Transaction Type"] != "Buy" || src.Account != "Coinbase" {
+		t.Errorf("%d %+v", w.Code, src)
+	}
+	if w := call(h, "GET", "/api/records/tx:abc:0/source", ""); w.Code != 400 {
+		t.Errorf("chain record: %d", w.Code)
 	}
 }

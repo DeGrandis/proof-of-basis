@@ -324,3 +324,29 @@ func (s *Store) DeleteTaxForm(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM tax_forms WHERE id=?`, id)
 	return err
 }
+
+// EventSource is an imported row as it was in the file, and which file.
+type EventSource struct {
+	Account    string            `json:"account"`
+	Platform   string            `json:"platform"`
+	Filename   string            `json:"filename"`
+	ImportedAt string            `json:"importedAt"`
+	Line       int               `json:"line"`
+	Row        map[string]string `json:"row"`
+}
+
+// EventSourceRow returns the original CSV row behind an imported record.
+func (s *Store) EventSourceRow(id int64) (EventSource, error) {
+	var src EventSource
+	var data string
+	err := s.db.QueryRow(`SELECT a.name, i.handler, i.filename, i.imported_at, e.data FROM events e
+		JOIN imports i ON i.id = e.import_id JOIN accounts a ON a.id = e.account_id WHERE e.id = ?`, id).
+		Scan(&src.Account, &src.Platform, &src.Filename, &src.ImportedAt, &data)
+	if err != nil {
+		return src, err
+	}
+	var e importers.Event
+	json.Unmarshal([]byte(data), &e)
+	src.Row, src.Line = e.Raw, e.Row
+	return src, nil
+}

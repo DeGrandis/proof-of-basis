@@ -96,3 +96,20 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 	s.note("attach", "Removed an attached file")
 	writeJSON(w, map[string]bool{"ok": true})
 }
+
+// getRecordSource shows an exchange record as the exchange's file had it:
+// the proof behind it.
+func (s *Server) getRecordSource(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
+	id, err := strconv.ParseInt(strings.TrimPrefix(key, "ex:"), 10, 64)
+	if !strings.HasPrefix(key, "ex:") || err != nil {
+		fail(w, 400, errors.New("only imported records have a source row"))
+		return
+	}
+	src, err := s.st.EventSourceRow(id)
+	if err != nil {
+		fail(w, 404, errors.New("no such record"))
+		return
+	}
+	writeJSON(w, src)
+}
