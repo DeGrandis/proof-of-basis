@@ -1128,12 +1128,17 @@ func (tb *toolbox) run(name string, args map[string]any) (Lookup, string) {
 		args[k] = unwrapArg(v)
 	}
 	// Some models fill every optional argument with "none" or "null";
-	// those mean the argument wasn't given, not a value.
+	// those mean the argument wasn't given, not a value. And "true" or
+	// "false" as text is a yes/no flag.
 	for k, v := range args {
 		if s, ok := v.(string); ok {
 			switch strings.ToLower(strings.TrimSpace(s)) {
 			case "", "none", "null", "nil", "n/a", "undefined":
 				delete(args, k)
+			case "true":
+				args[k] = true
+			case "false":
+				args[k] = false
 			}
 		}
 	}

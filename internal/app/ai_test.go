@@ -702,7 +702,7 @@ func TestSourcesOverall(t *testing.T) {
 		t.Fatal(err)
 	}
 	tb := &toolbox{s: srv, rep: rep}
-	_, out := tb.run("accounts", map[string]any{"sources": true})
+	_, out := tb.run("accounts", map[string]any{"sources": "true"}) // as text, as Llama sends it
 	if !strings.Contains(out, "Where the "+btcStr(rep.Holdings)+" held now came from") || !strings.Contains(out, "bought in") {
 		t.Errorf("sources: %s", out)
 	}
