@@ -27,6 +27,9 @@ import (
 	"github.com/DeGrandis/proof-of-basis/web"
 )
 
+// version is the app version, set at build time (-ldflags -X main.version=…).
+var version = "dev"
+
 func env(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
@@ -46,6 +49,7 @@ func main() {
 	data := flag.String("data", env("BTCTAX_DATA", "./data"), "working directory for visitors' copies")
 	flag.Parse()
 
+	app.Version = version
 	ctx := context.Background()
 	var ai app.ChatModel
 	region := env("BTCTAX_BEDROCK_REGION", env("AWS_REGION", "us-east-1"))

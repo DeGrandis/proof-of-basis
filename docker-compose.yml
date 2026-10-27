@@ -4,7 +4,12 @@
 services:
   btctax:
     image: btctax:latest
-    build: .
+    build:
+      context: .
+      args:
+        # The version shown in the footer, for example:
+        # VERSION=$(git describe --tags) docker compose up -d --build
+        VERSION: ${VERSION:-dev}
     restart: unless-stopped
     ports:
       - "8080:8080"             # reachable from your LAN; the app asks for a password

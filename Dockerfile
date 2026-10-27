@@ -25,13 +25,15 @@ RUN mkdir -p /out/data
 
 FROM build AS build-app
 ARG TARGETOS TARGETARCH
-# The release tag (v1.2.3) the app reports, or "dev".
+# The version the app reports: the release tag (v1.2.3), or for other
+# builds git describe (v1.2.3-4-gabc1234), or "dev".
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o /out/btctax ./cmd/btctax
 
 FROM build AS build-demo
 ARG TARGETOS TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/btctax-demo ./cmd/btctax-demo
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o /out/btctax-demo ./cmd/btctax-demo
 
 # The public demo: invented data, a private copy per visitor, the assistant
 # on Claude in Amazon Bedrock. Nothing is kept between restarts.

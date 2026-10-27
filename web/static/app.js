@@ -2125,6 +2125,8 @@ show(location.hash.slice(1) || "overview");
 loadSettings();
 refresh();
 checkFulcrum();
+// The version in the footer: a release (v1.2.3) or the build since one.
+api("/api/health").then((h) => { if (h.version) $("#app-version").textContent = ` · ${h.version}`; }).catch(() => {});
 
 // Display settings apply at once and stay in this browser.
 (() => {

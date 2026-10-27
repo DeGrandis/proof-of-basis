@@ -75,6 +75,8 @@ jobs:
             platforms: linux/amd64
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags, for git describe
 
       - name: Image name (from the repository; registry names must be lowercase)
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}${{ matrix.suffix }}" >> "$GITHUB_ENV"
@@ -88,7 +90,7 @@ jobs:
             if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "$IMAGE:${GITHUB_REF_NAME#v}"; fi
             echo EOF
           } >> "$GITHUB_ENV"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"; else echo "VERSION=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"; else echo "VERSION=$(git describe --tags --always)" >> "$GITHUB_ENV"; fi
 
       - uses: docker/setup-buildx-action@v3
 
