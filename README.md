@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/icon.svg" width="96" height="96" alt="Proof of Basis">
+  <a href="https://proofofbasis.degrand.is"><img src="site/img/share.jpg" alt="Proof of Basis: your bitcoin story, untangled on your own node. A phone showing the app's Overview."></a>
 </p>
 
 <h1 align="center">Proof of Basis</h1>
@@ -34,7 +34,10 @@
 </p>
 
 <p align="center">
-  <a href="https://proofofbasis.degrand.is"><img src="site/img/share.jpg" alt="Proof of Basis: your bitcoin story, untangled on your own node. A phone showing the app's Overview."></a>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/overview-light.png">
+    <img src="docs/images/overview-dark.png" alt="The Overview: portfolio value, unrealized gain, this year's realized gain and estimated tax, and the holdings chart">
+  </picture>
 </p>
 
 > **Not tax advice.** Proof of Basis is a self-help tool for organizing your
