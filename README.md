@@ -51,8 +51,8 @@
 ## How it works
 
 1. **Dump in your exchange history.** Export the CSVs from Coinbase, River,
-   Strike and Fold (or a spreadsheet of your own) and drop them all in at
-   once. It recognizes each one.
+   Strike, Fold and Cash App (or a spreadsheet of your own) and drop them all
+   in at once. It recognizes each one.
 2. **Connect your real wallets.** Paste each wallet's xpub or output
    descriptor. It reads their history from your own node's Electrum server
    (Fulcrum or Electrs), so your addresses never touch anyone else's server.
@@ -257,7 +257,8 @@ node packages (Umbrel, Start9, RaspiBlitz, myNode) offer one.
 
 | | |
 |---|---|
-| **Exchanges** | Coinbase, River, Strike, Fold (CSV exports, detected automatically) |
+| **Exchanges** | Coinbase, River, Strike, Fold, Cash App (CSV exports, detected automatically) |
+| **Not yet** | Kraken, Gemini, Binance.US, Swan, Robinhood, PayPal, Venmo. Until then, lay their history out with River's columns (Date, Sent Amount, Sent Currency, Received Amount, Received Currency, Fee Amount, Fee Currency, Tag) and import it under its own account name. The same works for a spreadsheet of your own. |
 | **Wallets** | Single-key (xpub, ypub, zpub, taproot) and multisig, by public key or output descriptor (Sparrow, Specter, Nunchuk, Bitcoin Core, Electrum, Caravan) |
 | **Lightning** | Core Lightning, through CLNRest |
 | **Tax rules** | United States only, in US dollars: FIFO, LIFO or specific lot; per-wallet basis from 2025; Form 8949 boxes including the new digital asset boxes; capital loss limit and carryover. Untangling and tracing work for anyone. |

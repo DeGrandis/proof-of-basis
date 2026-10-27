@@ -143,6 +143,73 @@ func TestFold(t *testing.T) {
 	}
 }
 
+// Cash App: only the bitcoin rows count; card spending and payments are
+// skipped, and so are failed rows. Dates carry US zone abbreviations.
+func TestCashApp(t *testing.T) {
+	ev := load(t, "cashapp.csv", "cashapp")
+	want := []struct {
+		k          Kind
+		sats, fiat int64
+	}{{Buy, 227_272, 100_00}, {Reward, 1_190, 50}, {Withdrawal, 100_000, 0}, {Sell, 100_000, 65_00}, {Deposit, 100_000, 60_00}}
+	if len(ev) != len(want) {
+		t.Fatalf("got %d events: %+v", len(ev), ev)
+	}
+	for i, w := range want {
+		if ev[i].Kind != w.k || ev[i].Sats != w.sats || ev[i].FiatCents != w.fiat {
+			t.Errorf("row %d: %+v", i, ev[i])
+		}
+	}
+	if ev[0].FeeCents != 1_50 || ev[0].UID != "cashapp:syn-ca-1" || ev[0].Time.Format(time.RFC3339) != "2024-01-05T14:00:00Z" {
+		t.Errorf("buy %+v", ev[0])
+	}
+	if ev[2].FeeSats != 1_000 || !ev[2].FeeApprox || ev[2].Address != "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" {
+		t.Errorf("withdrawal %+v", ev[2])
+	}
+	if ev[3].FeeCents != 1_15 || ev[3].Time.Format(time.RFC3339) != "2024-04-15T18:00:00Z" {
+		t.Errorf("sale %+v", ev[3])
+	}
+}
+
+// Some Cash App exports stop at Asset Amount. Synthetic rows.
+func TestCashAppShortHeader(t *testing.T) {
+	csv := `Transaction ID,Date,Transaction Type,Currency,Amount,Fee,Net Amount,Asset Type,Asset Price,Asset Amount
+syn1,2023-06-01 20:00:00 PDT,Bitcoin Buy,USD,-$24.40,-$0.60,-$25.00,BTC,"$27,000.00",0.00090370 BTC
+syn2,2023-06-02 20:00:00 PDT,Bitcoin Sale,USD,$24.30,-$0.60,$23.70,BTC,"$26,900.00",0.00090370 BTC`
+	h, ev, _, err := Import(strings.NewReader(csv), "")
+	if err != nil || h.ID() != "cashapp" || len(ev) != 2 {
+		t.Fatalf("%v %v %+v", h, err, ev)
+	}
+	if ev[0].Kind != Buy || ev[0].FiatCents != 25_00 || ev[0].FeeCents != 60 || ev[0].Sats != 90_370 {
+		t.Errorf("buy %+v", ev[0])
+	}
+	if ev[1].Kind != Sell || ev[1].FiatCents != 24_30 || ev[1].FeeCents != 60 {
+		t.Errorf("sale %+v", ev[1])
+	}
+}
+
+// A spreadsheet of your own, laid out with River's columns, imports as
+// River; the Imports page suggests this for exchanges with no importer.
+func TestOwnSpreadsheetAsRiver(t *testing.T) {
+	csv := `Date,Sent Amount,Sent Currency,Received Amount,Received Currency,Fee Amount,Fee Currency,Tag
+2022-03-01,250.00,USD,0.00600000,BTC,2.50,USD,Buy
+2022-04-01,0.00500000,BTC,,,0.00001000,BTC,Send
+2022-05-01,,,0.00000800,BTC,,,Interest
+2022-06-01,0.00100000,BTC,30.00,USD,0.30,USD,Sell`
+	h, ev, _, err := Import(strings.NewReader(csv), "")
+	if err != nil || h.ID() != "river" {
+		t.Fatalf("%v %v", h, err)
+	}
+	kinds := []Kind{Buy, Withdrawal, Income, Sell}
+	if len(ev) != len(kinds) {
+		t.Fatalf("got %d events: %+v", len(ev), ev)
+	}
+	for i, k := range kinds {
+		if ev[i].Kind != k {
+			t.Errorf("row %d: kind %s want %s", i, ev[i].Kind, k)
+		}
+	}
+}
+
 func TestStableUIDs(t *testing.T) {
 	// River has no ids: the same row in a longer export gets the same UID.
 	short := "Date,Sent Amount,Sent Currency,Received Amount,Received Currency,Fee Amount,Fee Currency,Tag\n" +
@@ -234,7 +301,7 @@ cv4,2023-04-01 10:00:00 UTC,Convert,ETH,-0.50000000,USD,$1600.00,$800.00,$812.00
 // Re-reading saved rows of a correctly parsed file changes nothing.
 func TestReparseIsStable(t *testing.T) {
 	for _, f := range []string{"testdata/coinbase.csv", "testdata/fold.csv", "testdata/river.csv", "testdata/strike.csv",
-		"testdata/strike-report.csv", "../trace/testdata/fees/coinbase.csv", "../trace/testdata/fees/fold.csv",
+		"testdata/strike-report.csv", "testdata/cashapp.csv", "../trace/testdata/fees/coinbase.csv", "../trace/testdata/fees/fold.csv",
 		"../trace/testdata/fees/river.csv", "../trace/testdata/fees/strike.csv"} {
 		b, err := os.ReadFile(f)
 		if err != nil {

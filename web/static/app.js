@@ -2012,6 +2012,7 @@ async function loadSettings() {
   }
   const hs = handlers = await api("/api/handlers");
   $("#handler-select").innerHTML = `<option value="">Detect automatically</option>` + hs.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("");
+  $("#platforms-ok").textContent = hs.map((h) => h.name).join(", ");
 }
 $("#settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();

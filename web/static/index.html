@@ -151,6 +151,7 @@
       <b>Drop CSV exports here</b> <span class="muted">or click · platforms are detected</span>
       <input id="drop-input" type="file" accept=".csv,text/csv" multiple hidden>
     </div>
+    <p class="small muted">Supported: <span id="platforms-ok" data-no-i18n>Cash App, Coinbase, Fold, River, Strike</span><br>Not yet: <span data-no-i18n>Kraken, Gemini, Binance.US, Swan, Robinhood, PayPal, Venmo</span> <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">For these, or a spreadsheet of your own: lay the file out with River's columns (Date, Sent Amount, Sent Currency, Received Amount, Received Currency, Fee Amount, Fee Currency, Tag), one row per buy, sale, send or receive. Then use Import with options and give it its own account name, such as Kraken.</span></span></p>
     <div id="drop-queue" class="scroll" hidden><table><thead><tr><th>File</th><th>Result</th></tr></thead><tbody></tbody></table></div>
     <details class="small no-demo"><summary>Import with options</summary>
     <form id="import-form" class="card grid">

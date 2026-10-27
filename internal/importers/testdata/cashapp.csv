@@ -1,0 +1,9 @@
+Transaction ID,Date,Transaction Type,Currency,Amount,Fee,Net Amount,Asset Type,Asset Price,Asset Amount,Status,Notes,Name of sender/receiver,Account
+syn-ca-1,2024-01-05 09:00:00 EST,Bitcoin Buy,USD,-$98.50,-$1.50,-$100.00,BTC,"$44,000.00",0.00227272 BTC,COMPLETE,,,Your Cash
+syn-ca-2,2024-01-06 12:00:00 EST,Cash Card Debit,USD,-$5.25,$0,-$5.25,,,,COMPLETE,Coffee,,Visa Debit 0000
+syn-ca-3,2024-01-07 15:30:00 EST,Received P2P,USD,$20.00,$0,$20.00,,,,COMPLETE,Lunch,Synthetic Friend,Your Cash
+syn-ca-4,2024-02-01 10:00:00 EST,Bitcoin Boost,USD,$0.50,$0,$0.50,BTC,"$42,000.00",0.00001190 BTC,COMPLETE,,,Your Cash
+syn-ca-5,2024-03-01 10:00:00 EST,Bitcoin Withdrawal,USD,-$62.00,-$0.62,-$62.62,BTC,"$62,000.00",0.00100000 BTC,COMPLETE,Sent to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq,,Your Cash
+syn-ca-6,2024-04-15 14:00:00 EDT,Bitcoin Sale,USD,$65.00,-$1.15,$63.85,BTC,"$65,000.00",0.00100000 BTC,COMPLETE,,,Your Cash
+syn-ca-7,2024-04-20 14:00:00 EDT,Bitcoin Buy,USD,-$50.00,-$0.88,-$50.88,BTC,"$64,000.00",0.00078125 BTC,FAILED,,,Your Cash
+syn-ca-8,2024-05-01 08:00:00 EDT,Bitcoin Deposit,USD,$60.00,$0,$60.00,BTC,"$60,000.00",0.00100000 BTC,COMPLETE,,,Your Cash
