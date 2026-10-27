@@ -369,14 +369,9 @@ section h2 { font-size: clamp(30px, 3.6vw, 46px); font-weight: 800; margin-botto
 .grid article:hover { transform: translateY(-3px); border-color: rgba(185, 240, 74, .35); }
 .grid h3 { font-size: 21px; margin-bottom: 10px; }
 .grid p { color: #bdbbb1; margin: 0; font-size: 16px; }
-.note {
-  margin: 26px 0 0;
-  padding: 16px 20px;
-  border-left: 3px solid var(--accent);
-  background: var(--accent-soft);
-  border-radius: 0 12px 12px 0;
-  color: #dcdad0;
-}
+.note { margin: 22px 0 0; color: var(--muted); font-size: 14px; }
+.mark { color: inherit; margin-left: 2px; }
+.mark:hover { text-decoration: none; color: var(--accent); }
 
 .tabs { display: inline-flex; gap: 6px; padding: 5px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-2); margin-bottom: 22px; }
 .tabs button {
