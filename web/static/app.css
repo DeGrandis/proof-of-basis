@@ -306,6 +306,15 @@ a.button.primary { background: var(--ink); color: var(--on-ink); border-color: v
 .lot .num { text-align: right; font-variant-numeric: tabular-nums; }
 .route { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: var(--pill); border: 1px solid var(--line-2); font-size: var(--fs-xs); white-space: nowrap; }
+/* Imports: which exchanges have an importer (green) and which don't yet (amber). */
+.platforms { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); margin: var(--s-3) 0; }
+.platforms > div { border: 1px solid var(--line); border-top: 3px solid var(--pos); border-radius: var(--r-sm); padding: var(--s-3); }
+.platforms > .soon { border-top-color: var(--ln); }
+.platforms h3 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); font-weight: 600; color: var(--pos); }
+.platforms .soon h3 { color: var(--ln); }
+.platforms .chip { margin: 0 4px 4px 0; font-size: var(--fs-sm); border-color: transparent; background: var(--pos-soft); }
+.platforms .soon .chip { background: var(--ln-soft); }
+@media (max-width: 640px) { .platforms { grid-template-columns: 1fr; } }
 .rec-side .label-box { margin: 0; padding: 0; border: 0; }
 .rec-side .label-box .spacer { flex-basis: 100%; height: 0; border-top: 1px solid var(--line); margin: 6px 0; }
 .rec-side dl, .rec-sec dl.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: var(--fs-sm); align-items: baseline; }
