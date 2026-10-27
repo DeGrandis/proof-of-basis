@@ -2,10 +2,7 @@
   <a href="https://proofofbasis.degrand.is"><img src="site/img/share.jpg" alt="Proof of Basis: your bitcoin story, untangled on your own node. A phone showing the app's Overview."></a>
 </p>
 
-<h1 align="center">Proof of Basis</h1>
-
 <p align="center">
-  <b>Your bitcoin's tax story, untangled on your own server.</b><br>
   Drop in every exchange export, connect your real wallets, and it works out
   where every coin came from and where it went. Then it hands your accountant
   one tidy package, and answers your questions with AI that runs on your own
