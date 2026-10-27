@@ -151,10 +151,10 @@
       <b>Drop CSV exports here</b> <span class="muted">or click · platforms are detected</span>
       <input id="drop-input" type="file" accept=".csv,text/csv" multiple hidden>
     </div>
-    <div class="platforms">
-      <div><h3>Supported</h3><div id="platforms-ok" data-no-i18n><span class="chip">Cash App</span><span class="chip">Coinbase</span><span class="chip">Fold</span><span class="chip">River</span><span class="chip">Strike</span></div></div>
-      <div class="soon"><h3>Not yet, but coming <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">For these, or a spreadsheet of your own: lay the file out with River's columns (Date, Sent Amount, Sent Currency, Received Amount, Received Currency, Fee Amount, Fee Currency, Tag), one row per buy, sale, send or receive. Then use Import with options and give it its own account name, such as Kraken.</span></span></h3><div data-no-i18n><span class="chip">Kraken</span><span class="chip">Gemini</span><span class="chip">Binance.US</span><span class="chip">Swan</span><span class="chip">Robinhood</span><span class="chip">PayPal</span><span class="chip">Venmo</span></div></div>
-    </div>
+    <dl class="platforms">
+      <dt>Supported</dt><dd id="platforms-ok" data-no-i18n><span class="p">Cash App</span><span class="p">Coinbase</span><span class="p">Fold</span><span class="p">River</span><span class="p">Strike</span></dd>
+      <dt>Not yet, but coming</dt><dd class="soon"><span class="p" data-no-i18n>Kraken</span><span class="p" data-no-i18n>Gemini</span><span class="p" data-no-i18n>Binance.US</span><span class="p" data-no-i18n>Swan</span><span class="p" data-no-i18n>Robinhood</span><span class="p" data-no-i18n>PayPal</span><span class="p" data-no-i18n>Venmo</span><span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">For these, or a spreadsheet of your own: lay the file out with River's columns (Date, Sent Amount, Sent Currency, Received Amount, Received Currency, Fee Amount, Fee Currency, Tag), one row per buy, sale, send or receive. Then use Import with options and give it its own account name, such as Kraken.</span></span></dd>
+    </dl>
     <div id="drop-queue" class="scroll" hidden><table><thead><tr><th>File</th><th>Result</th></tr></thead><tbody></tbody></table></div>
     <details class="small no-demo"><summary>Import with options</summary>
     <form id="import-form" class="card grid">
