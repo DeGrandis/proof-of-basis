@@ -44,6 +44,7 @@
   </a>
   <nav class="bar-links">
     <a href="#features">Features</a>
+    <a href="#models">Models</a>
     <a href="#install">Install</a>
     <a href="https://github.com/DeGrandis/proof-of-basis">GitHub</a>
   </nav>
@@ -152,6 +153,52 @@
       </article>
     </div>
     <p class="note" id="us-only">* Untangling and tracing work wherever you live. The tax side (Form 8949, 1099-DA checks, the accountant package) follows United States rules, in US dollars.</p>
+  </section>
+
+  <section id="models" class="models reveal">
+    <h2>The right model for your hardware.</h2>
+    <p class="sub">We made our own benchmark to test these models locally on common hardware.</p>
+    <div class="picks">
+        <article class="pick best">
+          <p class="role">Best overall</p>
+          <h3>qwen3.5:4b</h3>
+          <p class="why">The most correct answers of any model we tried, in 4.5 GB of video memory. About 6 seconds an answer.</p>
+          <dl><div><dt>Score</dt><dd>95.5%</dd></div><div><dt>Typical answer</dt><dd>6.4 s</dd></div><div><dt>Video memory</dt><dd>4.5 GB</dd></div></dl>
+          <div class="code"><code>ollama pull qwen3.5:4b</code><button class="copy" type="button">Copy</button></div>
+        </article>
+        <article class="pick">
+          <p class="role">Fastest</p>
+          <h3>bonsai-2:9b</h3>
+          <p class="why">The quickest of the models that score over 92%: a typical answer in 5.4 seconds and a 94.1% score, in 4.3 GB.</p>
+          <dl><div><dt>Score</dt><dd>94.1%</dd></div><div><dt>Typical answer</dt><dd>5.4 s</dd></div><div><dt>Video memory</dt><dd>4.3 GB</dd></div></dl>
+          <div class="code"><code>ollama pull bonsai-2:9b</code><button class="copy" type="button">Copy</button></div>
+        </article>
+        <article class="pick">
+          <p class="role">Smallest</p>
+          <h3>bonsai-2:4b</h3>
+          <p class="why">Runs in 2.8 GB of video memory, the least of any model here, and still scores 90.1%, in about 3 seconds.</p>
+          <dl><div><dt>Score</dt><dd>90.1%</dd></div><div><dt>Typical answer</dt><dd>3.2 s</dd></div><div><dt>Video memory</dt><dd>2.8 GB</dd></div></dl>
+          <div class="code"><code>ollama pull bonsai-2:4b</code><button class="copy" type="button">Copy</button></div>
+        </article>
+    </div>
+    <div class="chart">
+      <h3>Score</h3>
+      <p class="legend"><span><i class="rec"></i>Recommended</span></p>
+      <div class="chart-head" aria-hidden="true"><span>Model</span><span>Axis from <span class="ax-wide">40%</span><span class="ax-narrow">70%</span></span><span>Score</span><span>Typical</span></div>
+      <ul class="bars">
+        <li class="rec"><span class="name">qwen3.5:4b <span class="tag">Best overall</span></span><span class="track"><span class="fill" style="--p:95.5"></span></span><span class="val">95.5%</span><span class="secs">6.4 s</span></li>
+        <li class="rec"><span class="name">bonsai-2:9b <span class="tag">Fastest</span></span><span class="track"><span class="fill" style="--p:94.1"></span></span><span class="val">94.1%</span><span class="secs">5.4 s</span></li>
+        <li><span class="name">qwen3.5:9b</span><span class="track"><span class="fill" style="--p:93.8"></span></span><span class="val">93.8%</span><span class="secs">9.2 s</span></li>
+        <li><span class="name">gemma4:12b</span><span class="track"><span class="fill" style="--p:92.9"></span></span><span class="val">92.9%</span><span class="secs">5.8 s</span></li>
+        <li><span class="name">ornith:9b</span><span class="track"><span class="fill" style="--p:91.8"></span></span><span class="val">91.8%</span><span class="secs">5.4 s</span></li>
+        <li><span class="name">ornith-1.5:9b</span><span class="track"><span class="fill" style="--p:91.2"></span></span><span class="val">91.2%</span><span class="secs">9.1 s</span></li>
+        <li class="rec"><span class="name">bonsai-2:4b <span class="tag">Smallest</span></span><span class="track"><span class="fill" style="--p:90.1"></span></span><span class="val">90.1%</span><span class="secs">3.2 s</span></li>
+        <li><span class="name">gemma4:e4b</span><span class="track"><span class="fill" style="--p:88.1"></span></span><span class="val">88.1%</span><span class="secs">3.9 s</span></li>
+        <li><span class="name">nemotron-3.5-bolt:e4b</span><span class="track"><span class="fill" style="--p:86.2"></span></span><span class="val">86.2%</span><span class="secs">2.4 s</span></li>
+        <li><span class="name">qwen3.5:2b</span><span class="track"><span class="fill" style="--p:78.0"></span></span><span class="val">78.0%</span><span class="secs">10.7 s</span></li>
+      </ul>
+    </div>
+    <p class="small">Run on an RTX 4070 (12 GB) with Ollama. <a href="https://github.com/DeGrandis/proof-of-basis/blob/master/docs/assistant-benchmark.md">Methodology and full results <span aria-hidden="true">→</span></a></p>
   </section>
 
   <section id="install" class="install reveal">
