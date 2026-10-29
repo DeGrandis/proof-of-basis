@@ -117,6 +117,7 @@ type Model struct {
 	Tools    bool   `json:"tools"`
 	Thinking bool   `json:"thinking"`
 	Context  int    `json:"context"` // the model's maximum context, in tokens
+	Sampling bool   `json:"-"`       // the model sets its own temperature (its maker's recommended settings)
 }
 
 // Show reads one model's capabilities.
@@ -124,6 +125,7 @@ func (c *Client) Show(ctx context.Context, name string) (Model, error) {
 	var d struct {
 		Capabilities []string       `json:"capabilities"`
 		ModelInfo    map[string]any `json:"model_info"`
+		Parameters   string         `json:"parameters"` // the Modelfile's, one "name value" per line
 	}
 	if err := c.do(ctx, "POST", "/api/show", map[string]string{"model": name}, &d); err != nil {
 		return Model{}, err
@@ -142,6 +144,11 @@ func (c *Client) Show(ctx context.Context, name string) (Model, error) {
 			if f, ok := v.(float64); ok {
 				m.Context = int(f)
 			}
+		}
+	}
+	for _, line := range strings.Split(d.Parameters, "\n") {
+		if f := strings.Fields(line); len(f) > 0 && f[0] == "temperature" {
+			m.Sampling = true
 		}
 	}
 	return m, nil
@@ -187,6 +194,8 @@ type Message struct {
 	// Raw is another model provider's own form of this message, kept so a
 	// reply can be sent back exactly as it came (never sent to Ollama).
 	Raw any `json:"-"`
+	// PromptTokens is how long the prompt behind a reply was, when known.
+	PromptTokens int `json:"-"`
 }
 
 type ToolCall struct {
@@ -250,9 +259,10 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta, onThink fun
 			continue
 		}
 		var chunk struct {
-			Message Message `json:"message"`
-			Done    bool    `json:"done"`
-			Error   string  `json:"error"`
+			Message      Message `json:"message"`
+			Done         bool    `json:"done"`
+			Error        string  `json:"error"`
+			PromptTokens int     `json:"prompt_eval_count"`
 		}
 		if err := json.Unmarshal(line, &chunk); err != nil {
 			return out, fmt.Errorf("Ollama sent something unexpected: %v", err)
@@ -274,6 +284,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onDelta, onThink fun
 		}
 		out.ToolCalls = append(out.ToolCalls, chunk.Message.ToolCalls...)
 		if chunk.Done {
+			out.PromptTokens = chunk.PromptTokens
 			break
 		}
 	}

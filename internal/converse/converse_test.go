@@ -135,12 +135,15 @@ func TestToolName(t *testing.T) {
 	}
 }
 
-// The app's note of an earlier answer's lookups goes as a note after it,
-// not as part of the answer the model would copy.
+// The app's note of an earlier answer's lookups (a system message after it)
+// goes as a note from the app, not as part of the answer the model would
+// copy.
 func TestLookupsNoteApart(t *testing.T) {
 	_, out := toMessages([]ollama.Message{
+		{Role: "system", Content: "You are the assistant."},
 		{Role: "user", Content: "biggest sale?"},
-		{Role: "assistant", Content: "It was on 2025-10-04." + lookupsNote + `analyze_records {"source":"sales"} -> [ex:431]]`},
+		{Role: "assistant", Content: "It was on 2025-10-04."},
+		{Role: "system", Content: `Lookups behind that answer: analyze_records {"source":"sales"} -> [ex:431]`},
 		{Role: "user", Content: "which account?"},
 	}, false)
 	if len(out) != 3 {

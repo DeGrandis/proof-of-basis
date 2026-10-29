@@ -309,6 +309,79 @@ func normalizeAnalyzeArgs(a map[string]any) {
 	if n := argStr(a, "network"); n != "" && argStr(a, "text") == "" {
 		a["text"] = n
 	}
+	// The names models reach for: a kind given as the source, a stat or a
+	// unit given as the measure, a date as something to take the min of.
+	set := func(k, v string) {
+		if argStr(a, k) == "" {
+			a[k] = v
+		}
+	}
+	src, kind := strings.ToLower(argStr(a, "source")), strings.ToLower(argStr(a, "kind"))
+	switch src {
+	case "transfers", "transfer", "moves":
+		a["source"] = "records"
+		set("kind", "transfer")
+	case "spends", "spend", "spending", "payments", "payment":
+		a["source"] = "records"
+		set("kind", "spend")
+	case "sells", "sell", "sale", "sold", "disposals":
+		a["source"] = "sales"
+	case "buy", "purchases", "purchase", "bought":
+		a["source"] = "buys"
+	case "all", "transactions", "everything", "history":
+		a["source"] = "records"
+	case "lot", "holdings", "coins":
+		a["source"] = "lots"
+	case "":
+		// Buys are the default, but "spends" or "fees" mean every record.
+		m := strings.ToLower(argStr(a, "measure"))
+		if kind != "" && !kindMatches(kind, "buy") && kind != "in" && kind != "out" || m == "fee" || m == "fee_btc" || m == "fees" {
+			a["source"] = "records"
+		}
+	}
+	switch m := strings.ToLower(argStr(a, "measure")); m {
+	case "amount", "value", "dollars", "cost", "total":
+		a["measure"] = "usd"
+	case "sats", "bitcoin", "quantity", "size":
+		a["measure"] = "btc"
+	case "fees":
+		a["measure"] = "fee"
+	case "income":
+		delete(a, "measure")
+		set("source", "income")
+	case "date", "time", "day", "when":
+		// The earliest or latest record: the oldest or newest in a list.
+		delete(a, "measure")
+		switch strings.ToLower(argStr(a, "stat")) {
+		case "min", "first", "earliest", "bottom":
+			a["stat"], a["sort"] = "list", "oldest"
+			if _, ok := a["top_n"]; !ok {
+				a["top_n"] = 1.0
+			}
+		case "max", "last", "latest", "top":
+			a["stat"], a["sort"] = "list", "newest"
+			if _, ok := a["top_n"]; !ok {
+				a["top_n"] = 1.0
+			}
+		}
+	default:
+		if validStats[m] { // the statistic, given as the measure
+			delete(a, "measure")
+			if s := strings.ToLower(argStr(a, "stat")); s == "" || s == "summary" {
+				a["stat"] = m
+			}
+		}
+	}
+}
+
+// hasWords reports whether text holds every one of the words.
+func hasWords(text string, words []string) bool {
+	for _, w := range words {
+		if !strings.Contains(text, w) {
+			return false
+		}
+	}
+	return true
 }
 
 func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error) {
@@ -359,7 +432,14 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		}
 	}
 	kind := argStr(a, "kind")
-	text := strings.ToLower(argStr(a, "text"))
+	// Every word of the text, in any order: "Ledger Trezor" finds the
+	// transfer between them.
+	var words []string
+	for _, w := range strings.Fields(strings.ToLower(argStr(a, "text"))) {
+		if w != "and" && w != "or" && w != "&" && w != "+" {
+			words = append(words, w)
+		}
+	}
 	_, hasMin := a["min"]
 	_, hasMax := a["max"]
 	lo, hi := argNum(a, "min"), argNum(a, "max")
@@ -387,7 +467,7 @@ func (tb *toolbox) analyze(a map[string]any, lk *Lookup) (string, string, error)
 		if kind != "" && !kindMatches(kind, r.kind) && !strings.EqualFold(kind, r.kind) && !(src == "review" && reviewDir(kind) == r.kind) && !lnDir {
 			continue
 		}
-		if text != "" && !strings.Contains(r.text, text) {
+		if !hasWords(r.text+" "+strings.ToLower(r.acct), words) {
 			continue
 		}
 		v, cat, ok := statValue(r, m)
