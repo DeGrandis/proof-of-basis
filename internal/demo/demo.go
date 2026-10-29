@@ -94,17 +94,30 @@ type world struct {
 	labels []trace.Label
 	n      int
 	height int64
+	div    int64 // every amount is divided by this (1: the full-size history)
 }
 
+// s scales an amount (sats) to the history's size. Network fees stay as
+// they are: they don't depend on how much someone holds.
+func (w *world) s(n int64) int64 { return n / w.div }
+
 // Seed writes the demo history into st, which must be empty.
-func Seed(st *store.Store, seed int64) error {
+func Seed(st *store.Store, seed int64) error { return SeedScaled(st, seed, 1) }
+
+// SeedScaled writes the same history with every buy, sale and payment
+// divided by div: 10 leaves about a tenth of a bitcoin, from the same
+// hundreds of small buys.
+func SeedScaled(st *store.Store, seed, div int64) error {
+	if div < 1 {
+		return errors.New("the scale must be 1 or more")
+	}
 	if accts, err := st.Accounts(); err != nil {
 		return err
 	} else if len(accts) > 0 {
 		return errors.New("the database already has accounts; demo data only goes into an empty one")
 	}
 	w := &world{rnd: newRand(seed), price: prices.Bundled(), utxos: map[string][]utxo{},
-		views: map[string][]scan.Tx{}, events: map[string][]importers.Event{}, bal: map[string]int64{}, height: 560_000}
+		views: map[string][]scan.Tx{}, events: map[string][]importers.Event{}, bal: map[string]int64{}, height: 560_000, div: div}
 	w.play()
 
 	for _, name := range wallets {
@@ -162,10 +175,10 @@ func (w *world) play() {
 			if t.Before(p.from) || !t.Before(p.to) {
 				// Leaving an exchange: take everything off, now and then
 				// leaving a little dust behind.
-				if !t.Before(p.to) && t.Before(p.to.AddDate(0, 0, 7)) && w.bal[p.ex] > 20_000 {
+				if !t.Before(p.to) && t.Before(p.to.AddDate(0, 0, 7)) && w.bal[p.ex] > w.s(20_000) {
 					dust := int64(0)
 					if w.rnd.Intn(2) == 0 {
-						dust = 5_000 + w.rnd.Int63n(30_000)
+						dust = w.s(5_000 + w.rnd.Int63n(30_000))
 					}
 					w.withdraw(p.ex, savings, w.bal[p.ex]-dust, t.Add(30*time.Hour))
 				}
@@ -180,20 +193,20 @@ func (w *world) play() {
 				w.buy(p.ex, t.Add(8*time.Hour), 200+w.rnd.Int63n(1300))
 			}
 			// Once in a while, sell some of what's on the exchange.
-			if w.rnd.Intn(30) == 0 && w.bal[p.ex] > 500_000 {
+			if w.rnd.Intn(30) == 0 && w.bal[p.ex] > w.s(500_000) {
 				w.sell(p.ex, w.bal[p.ex]*int64(10+w.rnd.Intn(30))/100, t.Add(4*24*time.Hour))
 			}
 			// Rewards: Coinbase's Earn while on Coinbase, a referral bonus
 			// at River.
 			if p.ex == coinbase && week%13 == 5 {
-				w.event(coinbase, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: 2_000 + w.rnd.Int63n(8_000), Note: "Earn reward"})
+				w.event(coinbase, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: w.s(2_000 + w.rnd.Int63n(8_000)), Note: "Earn reward"})
 			}
 			if p.ex == river && week%40 == 11 {
-				w.event(river, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: 10_000 + w.rnd.Int63n(15_000), Note: "Referral bonus"})
+				w.event(river, importers.Event{Kind: importers.Income, Time: t.Add(time.Hour), Sats: w.s(10_000 + w.rnd.Int63n(15_000)), Note: "Referral bonus"})
 			}
 			// Lightning payments straight from Strike, left for the Review queue.
-			if p.ex == strike && week%9 == 4 && w.bal[strike] > 60_000 {
-				sats := 5_000 + w.rnd.Int63n(45_000)
+			if p.ex == strike && week%9 == 4 && w.bal[strike] > w.s(60_000) {
+				sats := w.s(5_000 + w.rnd.Int63n(45_000))
 				w.event(strike, importers.Event{Kind: importers.Withdrawal, Time: t.Add(20 * time.Hour), Sats: sats, FeeSats: 1 + w.rnd.Int63n(20),
 					Address: fmt.Sprintf("lnbc%dn1demo%06d", sats/100, w.n), Note: "Lightning payment"})
 			}
@@ -202,27 +215,27 @@ func (w *world) play() {
 		// phone wallet instead.
 		if week%4 == 0 {
 			for _, ex := range active {
-				if w.bal[ex] > 300_000 {
+				if w.bal[ex] > w.s(300_000) {
 					to := savings
-					if w.rnd.Intn(5) == 0 && w.total(phone) < 1_000_000 {
+					if w.rnd.Intn(5) == 0 && w.total(phone) < w.s(1_000_000) {
 						to = phone
 					}
-					w.withdraw(ex, to, w.bal[ex]-10_000-w.rnd.Int63n(50_000), t.Add(26*time.Hour))
+					w.withdraw(ex, to, w.bal[ex]-w.s(10_000+w.rnd.Int63n(50_000)), t.Add(26*time.Hour))
 				}
 			}
 		}
 		// Everyday spending from the phone, topped up from savings twice a
 		// year.
 		if week%3 == 1 {
-			w.pay(t.Add(30*time.Hour), []string{phone}, 10_000+w.rnd.Int63n(60_000))
+			w.pay(t.Add(30*time.Hour), []string{phone}, w.s(10_000+w.rnd.Int63n(60_000)))
 		}
-		if week%26 == 3 && w.total(savings) > 3_000_000 {
-			w.send(savings, phone, 1_000_000+w.rnd.Int63n(2_000_000), t.Add(40*time.Hour))
+		if week%26 == 3 && w.total(savings) > w.s(3_000_000) {
+			w.send(savings, phone, w.s(1_000_000+w.rnd.Int63n(2_000_000)), t.Add(40*time.Hour))
 		}
 		// A big purchase once a year, paid from the phone and savings together.
 		// It costs more than the phone holds, so savings chips in.
-		if week%52 == 30 && w.total(phone) > 0 && w.total(savings) > 5_000_000 {
-			w.pay(t.Add(70*time.Hour), []string{phone, savings}, w.total(phone)+1_000_000+w.rnd.Int63n(2_000_000))
+		if week%52 == 30 && w.total(phone) > 0 && w.total(savings) > w.s(5_000_000) {
+			w.pay(t.Add(70*time.Hour), []string{phone, savings}, w.total(phone)+w.s(1_000_000+w.rnd.Int63n(2_000_000)))
 		}
 		// Once a year the savings wallet consolidates its many small coins
 		// from monthly withdrawals into one.
@@ -288,7 +301,7 @@ func (w *world) event(ex string, e importers.Event) {
 }
 
 func (w *world) buy(ex string, t time.Time, usd int64) {
-	cents := usd * 100
+	cents := usd * 100 / w.div
 	fee := cents / 100
 	sats := (cents - fee) * 100_000_000 / w.priceOn(t)
 	w.event(ex, importers.Event{Kind: importers.Buy, Time: t, Sats: sats, FiatCents: cents, FeeCents: fee, Currency: "USD"})
@@ -485,7 +498,7 @@ func (w *world) sell(ex string, sats int64, t time.Time) {
 
 func (w *world) depositAndSell(from, ex string, t time.Time) {
 	have := w.total(from)
-	if have < 2_000_000 {
+	if have < w.s(2_000_000) {
 		return
 	}
 	amount := have / 6

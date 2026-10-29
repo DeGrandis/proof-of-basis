@@ -144,6 +144,7 @@ func seedDemo(args []string) {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	data := fs.String("data", env("BTCTAX_DATA", "./data"), "data directory (must be empty of accounts)")
 	seed := fs.Int64("seed", 1, "random seed")
+	scale := fs.Int64("scale", 1, "divide every amount by this (10: about 0.12 BTC from the same small buys)")
 	fs.Parse(args)
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		log.Fatal(err)
@@ -153,7 +154,7 @@ func seedDemo(args []string) {
 		log.Fatal(err)
 	}
 	defer st.Close()
-	if err := demo.Seed(st, *seed); err != nil {
+	if err := demo.SeedScaled(st, *seed, *scale); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("demo data written to", *data)
