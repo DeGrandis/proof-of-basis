@@ -7,6 +7,7 @@ package offsite
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -21,9 +22,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 )
 
 // A Target holds files by name, in one flat folder.
@@ -112,7 +110,7 @@ func (f Folder) Delete(ctx context.Context, name string) error {
 }
 
 // S3 talks to an S3-compatible bucket with plain HTTP requests signed with
-// AWS Signature Version 4. Only the basic object calls are used, so it
+// AWS Signature Version 4 (sign, below; the app links no AWS code). Only the basic object calls are used, so it
 // works with self-hosted stores that implement a subset of the API.
 type S3 struct {
 	Endpoint  string // for example http://minio:9000; empty means AWS itself
@@ -196,11 +194,7 @@ func (c *S3) do(ctx context.Context, method string, u *url.URL, body []byte) (*h
 		req.ContentLength = int64(len(body))
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
-	signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
-	creds := aws.Credentials{AccessKeyID: c.AccessKey, SecretAccessKey: c.SecretKey}
-	if err := signer.SignHTTP(ctx, creds, req, hash, "s3", c.region(), time.Now()); err != nil {
-		return nil, err
-	}
+	sign(req, hash, c.AccessKey, c.SecretKey, c.region(), time.Now())
 	hc := c.Client
 	if hc == nil {
 		hc = &http.Client{Timeout: 5 * time.Minute}
@@ -313,4 +307,63 @@ func (c *S3) Delete(ctx context.Context, name string) error {
 	}
 	resp.Body.Close()
 	return nil
+}
+
+// sign adds AWS Signature Version 4 headers for S3, signing the host, the
+// payload hash and the date. The path is used as it is (S3 doesn't escape it
+// twice); the query is put in canonical form first.
+func sign(req *http.Request, payloadHash, accessKey, secretKey, region string, now time.Time) {
+	now = now.UTC()
+	amzDate, day := now.Format("20060102T150405Z"), now.Format("20060102")
+	req.Header.Set("X-Amz-Date", amzDate)
+	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+
+	q := req.URL.Query()
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, k := range keys {
+		vs := append([]string(nil), q[k]...)
+		sort.Strings(vs)
+		for _, v := range vs {
+			parts = append(parts, awsEscape(k)+"="+awsEscape(v))
+		}
+	}
+	query := strings.Join(parts, "&")
+	req.URL.RawQuery = query
+
+	path := req.URL.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	host := req.URL.Host
+	req.Host = host
+	const signed = "host;x-amz-content-sha256;x-amz-date"
+	canonical := strings.Join([]string{req.Method, path, query,
+		"host:" + host + "\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n",
+		signed, payloadHash}, "\n")
+	scope := day + "/" + region + "/s3/aws4_request"
+	sum := sha256.Sum256([]byte(canonical))
+	toSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(sum[:])
+
+	key := []byte("AWS4" + secretKey)
+	for _, part := range []string{day, region, "s3", "aws4_request"} {
+		key = hmacSHA256(key, part)
+	}
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+accessKey+"/"+scope+
+		", SignedHeaders="+signed+", Signature="+hex.EncodeToString(hmacSHA256(key, toSign)))
+}
+
+func hmacSHA256(key []byte, data string) []byte {
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(data))
+	return m.Sum(nil)
+}
+
+// awsEscape escapes everything but letters, digits and - _ . ~, as SigV4 asks.
+func awsEscape(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }

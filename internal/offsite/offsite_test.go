@@ -11,6 +11,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 )
 
 // fakeS3 is a bucket in memory that checks each request is signed.
@@ -149,5 +153,29 @@ func TestFolder(t *testing.T) {
 	}
 	if err := f.Delete(ctx, "a.json"); err != nil {
 		t.Errorf("deleting twice: %v", err)
+	}
+}
+
+// The signature must match the AWS SDK's own signer (used only here, in a
+// test, so the app itself links no AWS code).
+func TestSignMatchesAWS(t *testing.T) {
+	when := time.Date(2026, 10, 29, 13, 5, 9, 0, time.UTC)
+	for _, raw := range []string{
+		"http://garage:3900/pob-backups/?list-type=2&prefix=proof-of-basis%2F",
+		"https://bkt.s3.eu-west-1.amazonaws.com/?list-type=2&prefix=a%2Fb&continuation-token=1%2BxY%2Fz%3D%3D",
+		"http://127.0.0.1:9100/pob-backups/proof-of-basis/proof-of-basis-20261029-130509Z-0123456789abcdef.json",
+	} {
+		const hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		mine, _ := http.NewRequest("GET", raw, nil)
+		sign(mine, hash, "AKTEST", "secret", "eu-west-1", when)
+		theirs, _ := http.NewRequest("GET", raw, nil)
+		theirs.Header.Set("X-Amz-Content-Sha256", hash)
+		s := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+		if err := s.SignHTTP(context.Background(), aws.Credentials{AccessKeyID: "AKTEST", SecretAccessKey: "secret"}, theirs, hash, "s3", "eu-west-1", when); err != nil {
+			t.Fatal(err)
+		}
+		if a, b := mine.Header.Get("Authorization"), theirs.Header.Get("Authorization"); a != b {
+			t.Errorf("%s\n mine:   %s\n theirs: %s", raw, a, b)
+		}
 	}
 }
