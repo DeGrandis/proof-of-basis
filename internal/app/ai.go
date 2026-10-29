@@ -443,15 +443,17 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		// A prompt longer than the context loses its oldest messages, the
 		// question among them. When big lookups get it near the limit, cut
 		// the earlier results down (then the latest too), and say the
-		// question again as a system message, which is never cut.
+		// question again as a system message, which is never cut. Only on
+		// Ollama: the context setting is its, and the demo's and hosted
+		// models have far more room.
 		tokens := func() int { return int(float64(promptChars(msgs)+toolChars) * tokPerChar) }
-		if tokens() > numCtx*7/10 {
+		if c != nil && tokens() > numCtx*7/10 {
 			shortenToolResults(msgs, false)
 			if tokens() > numCtx*8/10 {
 				shortenToolResults(msgs, true)
 			}
 		}
-		if !reminded && tokens() > numCtx*6/10 {
+		if c != nil && !reminded && tokens() > numCtx*6/10 {
 			reminded = true
 			msgs = append(msgs, ollama.Message{Role: "system", Content: "Earlier messages may be cut to fit your memory. The user's question, to answer now: " + in.Content})
 		}
