@@ -452,6 +452,8 @@ main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type {
 #ai-remote-pop .ai-remote-phrase { margin: 0 0 var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line-2); border-radius: var(--r-sm); font-weight: 600; user-select: none; }
 #ai-remote-pop #ai-remote-typed { width: 100%; }
 #foot { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 1px solid var(--line); text-align: center; }
+#app-version { display: block; margin-top: var(--s-1); }
+#app-version:empty { display: none; }
 body.flow #foot { display: none; }
 
 /* Demo mode: a red banner under the nav (above it on a phone), and the
