@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/DeGrandis/proof-of-basis/internal/demo"
+	"github.com/DeGrandis/proof-of-basis/internal/ollama"
 )
 
 // fakeOllama answers like Ollama: it asks for one tool, then answers
@@ -184,8 +185,11 @@ func TestAssistantChatWithTools(t *testing.T) {
 	fo.mu.Lock()
 	third := fo.reqs[len(fo.reqs)-1]
 	fo.mu.Unlock()
-	if n := len(third["messages"].([]any)); n != 4 { // system, user, assistant, user
-		t.Errorf("follow-up sent %d messages", n)
+	// system, user, assistant, the note of its lookups (apart from the
+	// answer, so models don't copy it), user
+	if ms := third["messages"].([]any); len(ms) != 5 || ms[3].(map[string]any)["role"] != "system" ||
+		!strings.Contains(ms[3].(map[string]any)["content"].(string), "get_tax_year") || strings.Contains(ms[2].(map[string]any)["content"].(string), "Lookups") {
+		t.Errorf("follow-up sent %v", ms)
 	}
 	// Thinking can be turned off.
 	call(h, "POST", "/api/settings", `{"aiThink":"false"}`)
@@ -574,6 +578,59 @@ func TestLightningAnalysis(t *testing.T) {
 	}
 	if _, out = tb.run("get_record", map[string]any{"id": lk.Keys[0]}); strings.Contains(out, "no record with that id") {
 		t.Errorf("sale key not found: %s", out)
+	}
+}
+
+// The names models reach for work: a kind with no source searches every
+// record (not just buys), a kind as the source, a date's min, the text's
+// words in any order; and a future tax year isn't read as "no tax".
+func TestAnalyzeNames(t *testing.T) {
+	st, _ := newTest(t)
+	if err := demo.Seed(st, 1); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(st, nil)
+	rep, err := srv.buildReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := &toolbox{s: srv, rep: rep}
+	for _, args := range []map[string]any{
+		{"kind": "spend", "stat": "count"},
+		{"source": "transfers", "stat": "count"},
+		{"measure": "fee", "stat": "sum"},
+		{"source": "records", "kind": "transfer", "text": "Ledger Trezor", "stat": "count"},
+		{"source": "buys", "measure": "date", "stat": "min"},
+		{"source": "buys", "measure": "sum"},
+	} {
+		lk, out := tb.run("analyze_records", args)
+		if lk.Error != "" || strings.Contains(out, "No rows match") || strings.Contains(lk.Summary, "buys") && args["source"] != "buys" {
+			t.Errorf("%v: %s / %s", args, lk.Summary, out)
+		}
+	}
+	a := map[string]any{"measure": "date", "stat": "min"}
+	normalizeAnalyzeArgs(a)
+	if a["stat"] != "list" || a["sort"] != "oldest" || a["top_n"] != 1.0 {
+		t.Errorf("date min: %v", a)
+	}
+	if _, out := tb.run("get_tax_year", map[string]any{"year": float64(2099)}); !strings.Contains(out, "hasn't happened yet") {
+		t.Errorf("future year: %s", out)
+	}
+}
+
+// Making room: earlier rounds' long results are cut to their first lines,
+// the latest round's only when asked.
+func TestShortenToolResults(t *testing.T) {
+	long := strings.Repeat("- lot ex:1/2 in Coldcard: 0.001 BTC acquired 2020-08-10\n", 100)
+	msgs := []ollama.Message{{Role: "system"}, {Role: "user"}, {Role: "assistant"}, {Role: "tool", Content: long},
+		{Role: "assistant"}, {Role: "tool", Content: long}}
+	shortenToolResults(msgs, false)
+	if len(msgs[3].Content) > 1400 || !strings.Contains(msgs[3].Content, "cut to make room") || msgs[5].Content != long {
+		t.Errorf("earlier round: %d chars, latest %d", len(msgs[3].Content), len(msgs[5].Content))
+	}
+	shortenToolResults(msgs, true)
+	if len(msgs[5].Content) > 1400 {
+		t.Errorf("latest round: %d chars", len(msgs[5].Content))
 	}
 }
 

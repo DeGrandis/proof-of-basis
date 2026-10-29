@@ -138,10 +138,6 @@ func (c *Client) Chat(ctx context.Context, req ollama.ChatRequest, onDelta, onTh
 	return reply, nil
 }
 
-// lookupsNote starts the note the app adds to earlier answers (see
-// lookupNote in internal/app).
-const lookupsNote = "\n\n[Lookups behind this answer: "
-
 var toolNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]+`)
 
 // toolName is a tool's name without a "functions." prefix or anything
@@ -155,71 +151,13 @@ func toolName(s string) string {
 }
 
 // textToolCalls reads a reply that is nothing but tool calls written as
-// JSON, in the forms Llama uses: {"type":"function","name":...,"parameters":
-// {...}}, {"name":...,"arguments":{...}}, a list of them, or several in a
-// row (separated by ";" or new lines), maybe after <|python_tag|> or in a
-// ```json fence. Every call must name an offered tool; anything else (prose,
-// or JSON that isn't a call) returns nil and stays an answer.
+// text (see ollama.TextToolCalls); a reply with prose around them stays an
+// answer.
 func textToolCalls(text string, offered []ollama.Tool) []ollama.ToolCall {
-	known := map[string]bool{}
-	for _, t := range offered {
-		known[t.Function.Name] = true
+	if calls, rest := ollama.TextToolCalls(text, offered); rest == "" {
+		return calls
 	}
-	s := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "<|python_tag|>"))
-	if strings.HasPrefix(s, "```") {
-		s = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(s, "```json"), "```"), "```")
-	}
-	s = strings.TrimSpace(s)
-	if s == "" || (s[0] != '{' && s[0] != '[') {
-		return nil
-	}
-	var objs []map[string]any
-	if s[0] == '[' {
-		if json.Unmarshal([]byte(s), &objs) != nil {
-			return nil
-		}
-	} else {
-		for rest := s; ; {
-			rest = strings.TrimLeft(rest, " \t\r\n;,")
-			if rest == "" {
-				break
-			}
-			dec := json.NewDecoder(strings.NewReader(rest))
-			var o map[string]any
-			if dec.Decode(&o) != nil {
-				return nil
-			}
-			objs = append(objs, o)
-			rest = rest[dec.InputOffset():]
-		}
-	}
-	var calls []ollama.ToolCall
-	for _, o := range objs {
-		name, _ := o["name"].(string)
-		if !known[name] {
-			return nil
-		}
-		args := o["parameters"]
-		if args == nil {
-			args = o["arguments"]
-		}
-		var tc ollama.ToolCall
-		tc.Function.Name = name
-		switch a := args.(type) {
-		case map[string]any:
-			tc.Function.Arguments = a
-		case string: // arguments given as a JSON string
-			if json.Unmarshal([]byte(a), &tc.Function.Arguments) != nil {
-				return nil
-			}
-		case nil:
-			tc.Function.Arguments = map[string]any{}
-		default:
-			return nil
-		}
-		calls = append(calls, tc)
-	}
-	return calls
+	return nil
 }
 
 // toMessages turns the assistant's messages into Converse's: leading system
@@ -261,14 +199,6 @@ func toMessages(in []ollama.Message, plain bool) ([]types.SystemContentBlock, []
 			add(types.ConversationRoleUser, text(m.Content)...)
 		case "assistant":
 			pending = pending[:0]
-			// An earlier answer ends with the app's note of the lookups
-			// behind it. Left in the answer, models copy it into their own,
-			// so it goes after it as a note from the app.
-			if body, note, ok := strings.Cut(m.Content, lookupsNote); ok && m.Raw == nil && len(m.ToolCalls) == 0 {
-				add(types.ConversationRoleAssistant, text(strings.TrimSpace(body))...)
-				add(types.ConversationRoleUser, text("[Note from the app] Lookups behind that answer: "+strings.TrimSuffix(note, "]"))...)
-				continue
-			}
 			if plain {
 				var b strings.Builder
 				if raw, ok := m.Raw.(types.Message); ok {

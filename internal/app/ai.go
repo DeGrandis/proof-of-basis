@@ -390,17 +390,30 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, m := range history {
 		if m.Role == "user" || m.Role == "assistant" {
-			content := clip(m.Content, historyChars)
-			if m.Role == "assistant" {
-				content += lookupNote(m.Data)
+			msgs = append(msgs, ollama.Message{Role: m.Role, Content: clip(m.Content, historyChars)})
+			// The lookups behind an earlier answer go after it as a note from
+			// the app: written into the answer, models copy it into their own.
+			if note := lookupNote(m.Data); m.Role == "assistant" && note != "" {
+				msgs = append(msgs, ollama.Message{Role: "system", Content: note})
 			}
-			msgs = append(msgs, ollama.Message{Role: m.Role, Content: content})
 		}
 	}
 	msgs = append(msgs, ollama.Message{Role: "user", Content: in.Content})
-	req := ollama.ChatRequest{Model: model, Options: map[string]any{"num_ctx": numCtx, "temperature": 0.2}, KeepAlive: "15m"}
+	opts := map[string]any{"num_ctx": numCtx}
+	// Most models come with their makers' recommended sampling settings
+	// (too low a temperature sends thinking models into loops), so those
+	// are left alone. One without gets settings that suit current
+	// tool-calling models.
+	if !caps.Sampling {
+		opts["temperature"], opts["top_p"], opts["top_k"] = 0.6, 0.95, 20
+	}
+	req := ollama.ChatRequest{Model: model, Options: opts, KeepAlive: "15m"}
 	if caps.Tools {
 		req.Tools = toolSpecs()
+	}
+	toolChars := 0
+	if b, err := json.Marshal(req.Tools); err == nil {
+		toolChars = len(b)
 	}
 	// Thinking models reason before answering when the setting is on
 	// (the default); the reasoning streams to a collapsible section.
@@ -416,6 +429,9 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	var thinkTime time.Duration
 	var thinkStart time.Time
 	corrections := 0
+	retried, reminded := false, false
+	promptTokens := 0         // the longest prompt this turn, as the model counted it
+	tokPerChar := 1.0 / 3     // until the model reports how long a prompt was
 	seen := map[string]bool{} // lookups made this turn, by name and arguments
 	for round := 0; ; round++ {
 		// Out of lookups: one last turn without tools so there is always
@@ -424,6 +440,22 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 			req.Tools = nil
 			msgs = append(msgs, ollama.Message{Role: "system", Content: "You have used all your lookups for this question. Answer the user now from the results above. If something is still missing, say what and suggest a narrower question."})
 		}
+		// A prompt longer than the context loses its oldest messages, the
+		// question among them. When big lookups get it near the limit, cut
+		// the earlier results down (then the latest too), and say the
+		// question again as a system message, which is never cut.
+		tokens := func() int { return int(float64(promptChars(msgs)+toolChars) * tokPerChar) }
+		if tokens() > numCtx*7/10 {
+			shortenToolResults(msgs, false)
+			if tokens() > numCtx*8/10 {
+				shortenToolResults(msgs, true)
+			}
+		}
+		if !reminded && tokens() > numCtx*6/10 {
+			reminded = true
+			msgs = append(msgs, ollama.Message{Role: "system", Content: "Earlier messages may be cut to fit your memory. The user's question, to answer now: " + in.Content})
+		}
+		sentChars := promptChars(msgs) + toolChars
 		req.Messages = msgs
 		var text strings.Builder
 		reply, err := llm.Chat(r.Context(), req, func(d string) {
@@ -448,15 +480,45 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 			thinkTime += time.Since(thinkStart)
 			thinkStart = time.Time{}
 		}
+		promptTokens = max(promptTokens, reply.PromptTokens)
+		if reply.PromptTokens > 0 && reply.PromptTokens < numCtx*9/10 && sentChars > 0 { // a whole prompt, not one cut to fit
+			tokPerChar = float64(reply.PromptTokens) / float64(sentChars)
+		}
 		if err != nil {
 			if errors.Is(r.Context().Err(), context.Canceled) {
 				failMsg = "stopped"
+			} else if !retried && retryable(err) {
+				// Ollama couldn't read the tool call the model wrote, or cut
+				// off a model repeating itself: give that reply one more try.
+				retried = true
+				if text.Len() > 0 {
+					out.send(map[string]any{"type": "reset"})
+					if answer.Len() > 0 {
+						out.send(map[string]any{"type": "delta", "text": answer.String()})
+					}
+				}
+				out.send(map[string]any{"type": "repair", "kind": "retry", "error": err.Error()})
+				msgs = append(msgs, ollama.Message{Role: "system", Content: "Your last reply couldn't be used (" + err.Error() + "). Make the tool call again with valid arguments, or answer in plain words."})
+				continue
 			} else {
 				failMsg = err.Error()
 				out.send(map[string]any{"type": "error", "error": failMsg})
 			}
 			answer.WriteString(text.String())
 			break
+		}
+		if len(reply.ToolCalls) == 0 && req.Tools != nil {
+			// A tool call the model wrote out as text instead of making it
+			// (a format Ollama didn't recognize): make it, and take the
+			// markup out of the answer the user sees.
+			if calls, rest := ollama.TextToolCalls(reply.Content, req.Tools); len(calls) > 0 {
+				reply.ToolCalls, reply.Content = calls, rest
+				out.send(map[string]any{"type": "reset"})
+				if s := answer.String() + rest; s != "" {
+					out.send(map[string]any{"type": "delta", "text": s})
+				}
+				out.send(map[string]any{"type": "repair", "kind": "tool call in text", "tool": calls[0].Function.Name})
+			}
 		}
 		answer.WriteString(reply.Content)
 		if len(reply.ToolCalls) == 0 && req.Tools != nil && len(tools.actions) == 0 && claimsChange(answer.String()) {
@@ -585,7 +647,49 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 	ad, _ := json.Marshal(md)
 	// Save even if the browser went away mid-answer.
 	mid, _ := s.st.AddChatMessage(id, store.ChatMessage{Role: "assistant", Content: text, Data: string(ad)}, model, time.Now())
-	out.send(map[string]any{"type": "done", "id": mid})
+	out.send(map[string]any{"type": "done", "id": mid, "promptTokens": promptTokens, "numCtx": numCtx})
+}
+
+// retryable reports whether a failed reply is worth one more try: Ollama
+// couldn't parse the tool call the model wrote, or stopped it repeating
+// itself.
+func retryable(err error) bool {
+	e := err.Error()
+	return strings.Contains(e, "XML syntax error") || strings.Contains(e, "token repeat limit") || strings.Contains(e, "error parsing tool call")
+}
+
+// shortenToolResults cuts long lookup results down to their first lines,
+// to make room: the earlier rounds' only, or (all) the latest round's too.
+func shortenToolResults(msgs []ollama.Message, all bool) {
+	last := 0 // the latest results follow the last reply that asked for them
+	for i, m := range msgs {
+		if m.Role == "assistant" {
+			last = i
+		}
+	}
+	const keep = 1200
+	for i := range msgs {
+		if m := &msgs[i]; m.Role == "tool" && (all || i < last) && len(m.Content) > keep+200 {
+			cut := strings.LastIndexByte(m.Content[:keep], '\n')
+			if cut < keep/2 {
+				cut = keep
+			}
+			m.Content = m.Content[:cut] + "\n(The rest was cut to make room. Look it up again with narrower filters if you need it.)"
+		}
+	}
+}
+
+// promptChars is about how long the messages are, in characters.
+func promptChars(msgs []ollama.Message) int {
+	n := 0
+	for _, m := range msgs {
+		n += len(m.Content) + len(m.Thinking) + 16
+		for _, tc := range m.ToolCalls {
+			b, _ := json.Marshal(tc.Function.Arguments)
+			n += len(tc.Function.Name) + len(b)
+		}
+	}
+	return n
 }
 
 func titleFrom(q string) string {
@@ -1278,6 +1382,10 @@ func (tb *toolbox) taxYear(y int) (string, string, error) {
 		}
 	}
 	sum := fmt.Sprintf("Looked up tax year %d", y)
+	if ys == nil && y > time.Now().Year() {
+		// "No sales" would read as "no tax".
+		return fmt.Sprintf("%d hasn't happened yet, so there's nothing to report for it: its tax will depend on what's sold, and at what price, during %d. This year's numbers are under %d.", y, y, time.Now().Year()), sum, nil
+	}
 	if ys == nil {
 		return fmt.Sprintf("No sales or income in %d.", y), sum, nil
 	}
@@ -1371,7 +1479,9 @@ func (tb *toolbox) account(name string) (string, string, error) {
 	fmt.Fprintf(&b, "%s (%s): %s, cost basis %s.\n", a.Name, a.Kind, btcStr(a.Sats), usdStr(a.Basis))
 	b.WriteString("Purchase lots it still holds, oldest first:\n")
 	n := 0
-	for _, l := range tb.rep.OpenLots {
+	held := append([]lots.Lot(nil), tb.rep.OpenLots...)
+	sort.SliceStable(held, func(i, j int) bool { return held[i].Acquired.Before(held[j].Acquired) })
+	for _, l := range held {
 		if l.Account != a.Name || l.Sats <= 0 {
 			continue
 		}
@@ -1607,7 +1717,7 @@ func lookupNote(data string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "\n\n[Lookups behind this answer: " + strings.Join(parts, "; ") + "]"
+	return "Lookups behind your previous answer (the user doesn't see this note; never write it in an answer): " + strings.Join(parts, "; ")
 }
 
 // matchFromHistory turns the Review search behind the latest answer into
