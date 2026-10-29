@@ -875,7 +875,8 @@ async function renderImports() {
   $("#imports-table tbody").innerHTML = (list || []).map((i) => `<tr>
     <td>${esc(i.filename)}</td><td>${esc(i.account)}</td><td>${esc(i.handler)}</td><td class="num">${i.rows}</td>
     <td class="small">${(i.warnings || []).length ? `<details><summary class="warn">${i.warnings.length}</summary>${i.warnings.map((w) => `line ${w.Row}: ${esc(w.Message)}`).join("<br>")}</details>` : ""}</td>
-    <td><button class="link" data-del-import="${i.id}">Remove</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Nothing imported yet.</td></tr>`;
+    <td class="import-acts">${i.hasFile ? `<a class="link" href="/api/imports/${i.id}/file" download>Download original</a>` : `<span class="small muted" title="${esc(t("Imported before this version kept the files you drop"))}">Original not kept</span>`}
+      <button class="link" data-del-import="${i.id}">Remove</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Nothing imported yet.</td></tr>`;
 }
 $("#imports-table").addEventListener("click", async (e) => {
   const id = e.target.dataset.delImport;
@@ -2182,6 +2183,38 @@ $("#logout-all-btn").addEventListener("click", async () => {
   try { await post("/api/auth/logout-all", {}); } catch {}
   location.href = "/login";
 });
+
+// Settings: a button for each section, to jump to it; the one in view is marked.
+(() => {
+  const page = $("#settings"), heads = [...page.querySelectorAll(":scope > h2")];
+  const bar = document.createElement("nav");
+  bar.id = "settings-jump"; bar.className = "seg"; bar.setAttribute("aria-label", t("Settings sections"));
+  const buttons = heads.map((h) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = h.className; // no-demo sections have no button in the demo
+    b.textContent = h.textContent.replace(/\s*\(optional\)$/, "");
+    b.addEventListener("click", () => h.scrollIntoView({ behavior: "smooth", block: "start" }));
+    bar.append(b);
+    return b;
+  });
+  page.prepend(bar);
+  let current = -1;
+  const mark = () => {
+    if (!page.offsetParent) return;
+    const line = bar.getBoundingClientRect().bottom + 80;
+    let on = 0;
+    heads.forEach((h, i) => { if (h.offsetParent && h.getBoundingClientRect().top <= line) on = i; });
+    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) on = heads.findLastIndex((h) => h.offsetParent);
+    if (on === current) return;
+    current = on;
+    buttons.forEach((b, i) => b.classList.toggle("on", i === on));
+    const b = buttons[on]; // on phones the bar scrolls sideways: keep the marked one in it
+    if (bar.scrollWidth > bar.clientWidth) bar.scrollLeft = b.offsetLeft - (bar.clientWidth - b.offsetWidth) / 2;
+  };
+  addEventListener("scroll", mark, { passive: true });
+  addEventListener("hashchange", () => setTimeout(mark));
+  setTimeout(mark);
+})();
 
 
 

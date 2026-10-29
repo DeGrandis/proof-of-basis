@@ -179,7 +179,10 @@ func (s *Server) record(actor, kind, summary string, chatID int64, cs []change, 
 }
 
 // Setting keys never logged (secrets) or not worth logging (caches).
-var unloggedSettings = map[string]bool{"clnRune": true, "clnChannels": true, "clnSynced": true, "clnAlias": true}
+// aiMode is left out so Undo can't switch the assistant to a hosted provider
+// without the confirmation sentence.
+var unloggedSettings = map[string]bool{"clnRune": true, "clnChannels": true, "clnSynced": true, "clnAlias": true,
+	"aiMode": true, "aiRemoteKey": true, "aiRemoteAccept": true, "aiRemoteForget": true}
 
 func settingChanges(keys []string) []change {
 	var cs []change
@@ -784,6 +787,7 @@ var settingNames = map[string]string{
 	"rateShort": "Short-term rate %", "rateLong": "Long-term rate %", "priceSource": "Price source", "clnUrl": "Lightning node address",
 	"clnCert": "Lightning certificate", "clnName": "Lightning node name", "aiUrl": "Assistant Ollama address", "aiModel": "Assistant model",
 	"aiCtx": "Assistant memory", "aiThink": "Assistant thinks first", "aiAutoApply": "Apply assistant changes without asking",
+	"aiRemoteUrl": "Assistant provider address", "aiRemoteModel": "Assistant provider model",
 }
 
 // logAdded records rows that were just created (a wallet, an import), so

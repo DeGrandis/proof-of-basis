@@ -393,22 +393,60 @@ async function aiSend() {
 async function aiStatus() {
   let st = { enabled: false };
   try { st = await api("/api/ai/status"); } catch {}
-  Object.assign(ai, { enabled: !!st.enabled, ok: !!st.ok, model: st.model || "", host: st.host || "" });
+  Object.assign(ai, { enabled: !!st.enabled, ok: !!st.ok, model: st.model || "", host: st.host || "", remote: !!st.remote });
   document.body.classList.toggle("ai-ready", ai.enabled);
   $("#ai-fab").hidden = !ai.enabled || aiOpen;
-  $("#ai-foot").textContent = ai.enabled ? `Answers come from ${ai.model} on ${ai.host}, using your data. Check figures before you file.` : "";
+  $("#ai-foot").textContent = !ai.enabled ? "" : ai.remote
+    ? `Answers come from ${ai.model} on ${ai.host}, a hosted provider that can read this chat and the data sent with it. Check figures before you file.`
+    : `Answers come from ${ai.model} on ${ai.host}, using your data. Check figures before you file.`;
   $("#ai-warn").hidden = !ai.enabled || ai.ok;
   $("#ai-warn").textContent = st.error ? `Can't reach Ollama right now: ${st.error}` : "";
   if (!ai.enabled && aiOpen) aiSetOpen(false);
   else if (ai.enabled && aiOpen) aiSetOpen(true);
 }
 
-// Settings: address, models, context size.
+// Settings: where the assistant runs (Ollama on the user's network, the
+// default, or a hosted provider), address, models, context size.
 (() => {
   const f = $("#ai-settings");
   if (!f) return;
   const line = $("#ai-settings-line");
+  const pop = $("#ai-remote-pop");
   let known = []; // models from the last test, with what they can do
+  let saved = {}; // the settings as saved, to tell what a switch changes
+  let accepted = false; // typed the sentence since the last save
+  const mode = () => f.querySelector("input[name=aiMode]:checked").value;
+  const show = () => {
+    const remote = mode() === "remote";
+    for (const el of f.querySelectorAll(".ai-local")) el.hidden = remote;
+    for (const el of f.querySelectorAll(".ai-remote")) el.hidden = !remote;
+    line.textContent = ""; line.classList.remove("warn");
+  };
+  const setMode = (m) => { f.querySelector(`input[name=aiMode][value=${m}]`).checked = true; show(); };
+  // Switching to a hosted provider asks first, every time, unless it's
+  // already the saved choice.
+  for (const r of f.querySelectorAll("input[name=aiMode]")) r.addEventListener("change", () => {
+    if (mode() === "remote" && saved.aiMode !== "remote" && !accepted) {
+      $("#ai-remote-typed").value = ""; $("#ai-remote-ok").disabled = true;
+      pop.showModal(); pop.scrollTop = 0;
+      return;
+    }
+    show();
+  });
+  const typedOK = () => $("#ai-remote-typed").value.trim().replace(/\s+/g, " ").toLowerCase() === (saved.aiRemotePhrase || "").toLowerCase();
+  $("#ai-remote-typed").addEventListener("input", () => { $("#ai-remote-ok").disabled = !typedOK(); });
+  for (const ev of ["paste", "drop"]) $("#ai-remote-typed").addEventListener(ev, (e) => e.preventDefault()); // typed, not pasted
+  $("#ai-remote-typed").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); if (typedOK()) $("#ai-remote-ok").click(); } });
+  $("#ai-remote-ok").addEventListener("click", () => {
+    if (!typedOK()) return;
+    accepted = true; pop.close(); setMode("remote");
+    line.textContent = "Add the provider's address, key and model, then Save. Nothing is sent until you do."; line.classList.add("warn");
+    f.aiRemoteUrl.focus();
+  });
+  const keepLocal = () => { pop.close(); setMode("local"); };
+  $("#ai-remote-cancel").addEventListener("click", keepLocal);
+  pop.addEventListener("cancel", (e) => { e.preventDefault(); keepLocal(); });
+
   // The thinking switch only matters for models that can reason first.
   const syncThink = () => {
     const m = known.find((x) => x.name === f.aiModel.value);
@@ -425,7 +463,7 @@ async function aiStatus() {
     if (current && !models.some((m) => m.name === current)) sel.insertAdjacentHTML("beforeend", `<option value="${esc(current)}" selected>${esc(current)} (not found)</option>`);
     syncThink();
   };
-  const test = async () => {
+  const testLocal = async () => {
     const url = f.aiUrl.value.trim();
     if (!url) { line.textContent = "Enter your Ollama server's address first."; return false; }
     line.textContent = "Checking…";
@@ -438,26 +476,72 @@ async function aiStatus() {
       return true;
     } catch (e) { line.textContent = e.message; line.classList.add("warn"); return false; }
   };
-  api("/api/settings").then((s) => {
+  // Listing a provider's models sends only the key, none of your data; a
+  // provider without a list gets "Reply with OK." for the typed model instead.
+  const testRemote = async () => {
+    const url = f.aiRemoteUrl.value.trim();
+    if (!url) { line.textContent = "Enter the provider's address first."; line.classList.add("warn"); return false; }
+    line.textContent = "Checking…"; line.classList.remove("warn");
+    try {
+      const model = f.aiRemoteModel.value.trim();
+      const d = await post("/api/ai/models", { url, key: f.aiRemoteKey.value.trim(), model, remote: true });
+      if (d.answered) {
+        $("#ai-remote-models").innerHTML = "";
+        line.textContent = `Connected to ${d.host}, and ${d.answered} answered. This provider doesn't list its models, so check that this one can call tools.`;
+        return true;
+      }
+      // Where the provider says which models can call tools, only those are offered.
+      const usable = d.models.filter((m) => m.tools);
+      $("#ai-remote-models").innerHTML = usable.map((m) => `<option value="${esc(m.name)}"></option>`).join("");
+      const picked = d.models.find((m) => m.name === model);
+      if (d.toolsKnown && picked && !picked.tools) {
+        line.textContent = `Connected to ${d.host}, but ${model} can't call tools, which the assistant needs. Pick another: ${usable.length} of ${d.models.length} models can.`;
+        line.classList.add("warn");
+        return false;
+      }
+      line.textContent = d.toolsKnown
+        ? `Connected to ${d.host}. ${usable.length} of ${d.models.length} models can call tools; type to search them.`
+        : `Connected to ${d.host}. ${d.models.length} models; type to search, and pick one that can call tools.`;
+      return true;
+    } catch (e) { line.textContent = e.message; line.classList.add("warn"); return false; }
+  };
+  const keyHint = () => { f.aiRemoteKey.value = ""; f.aiRemoteKey.placeholder = saved.aiRemoteKeySet === "true" ? "Saved (hidden). Paste a new one to replace it" : "Paste the provider's key"; };
+  const load = (s) => {
+    saved = s; accepted = false;
     f.aiUrl.value = s.aiUrl || ""; f.dataset.model = s.aiModel || ""; f.aiCtx.value = s.aiCtx || "16384"; f.aiThink.value = s.aiThink || "true"; f.aiAutoApply.checked = s.aiAutoApply === "true";
+    f.aiRemoteUrl.value = s.aiRemoteUrl || ""; f.aiRemoteModel.value = s.aiRemoteModel || ""; keyHint();
+    setMode(s.aiMode === "remote" ? "remote" : "local");
     if (s.aiModel) fillModels([], s.aiModel);
-    if (s.aiUrl) test();
-  }).catch(() => {});
-  $("#ai-test").addEventListener("click", test);
+  };
+  api("/api/settings").then((s) => { load(s); if (s.aiMode !== "remote" && s.aiUrl) testLocal(); }).catch(() => {});
+  $("#ai-test").addEventListener("click", () => mode() === "remote" ? testRemote() : testLocal());
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!f.aiModel.value) { line.textContent = "Test the connection, then pick a model."; line.classList.add("warn"); return; }
+    const auto = f.aiAutoApply.checked ? "true" : "false";
+    let body;
+    if (mode() === "remote") {
+      if (!f.aiRemoteUrl.value.trim() || !f.aiRemoteModel.value.trim()) { line.textContent = "Add the provider's address and a model."; line.classList.add("warn"); return; }
+      body = { aiMode: "remote", aiRemoteUrl: f.aiRemoteUrl.value.trim(), aiRemoteModel: f.aiRemoteModel.value.trim(), aiAutoApply: auto };
+      if (f.aiRemoteKey.value.trim()) body.aiRemoteKey = f.aiRemoteKey.value.trim();
+      if (saved.aiMode !== "remote") body.aiRemoteAccept = $("#ai-remote-typed").value;
+    } else {
+      if (!f.aiModel.value) { line.textContent = "Test the connection, then pick a model."; line.classList.add("warn"); return; }
+      body = { aiMode: "local", aiUrl: f.aiUrl.value.trim(), aiModel: f.aiModel.value, aiCtx: f.aiCtx.value, aiThink: f.aiThink.value, aiAutoApply: auto };
+    }
     try {
-      await post("/api/settings", { aiUrl: f.aiUrl.value.trim(), aiModel: f.aiModel.value, aiCtx: f.aiCtx.value, aiThink: f.aiThink.value, aiAutoApply: f.aiAutoApply.checked ? "true" : "false" });
+      await post("/api/settings", body);
+      load(await api("/api/settings"));
       f.dataset.model = f.aiModel.value;
-      toast("Assistant saved. Look for the button in the corner.");
+      toast(mode() === "remote" ? "Assistant saved. It now sends your questions to the provider." : "Assistant saved. Look for the button in the corner.");
       aiStatus();
     } catch (err) { toast(err.message); }
   });
   $("#ai-off").addEventListener("click", async () => {
-    try { await post("/api/settings", { aiUrl: "", aiModel: "" }); } catch (err) { toast(err.message); return; }
-    f.aiUrl.value = ""; f.aiModel.innerHTML = `<option value="">Test the connection first</option>`; f.dataset.model = ""; known = []; syncThink();
-    line.textContent = "The assistant is off. Saved chats are kept."; line.classList.remove("warn");
+    try { await post("/api/settings", { aiMode: "local", aiUrl: "", aiModel: "", aiRemoteForget: "1" }); } catch (err) { toast(err.message); return; }
+    try { load(await api("/api/settings")); } catch {}
+    f.aiModel.innerHTML = `<option value="">Test the connection first</option>`; f.dataset.model = ""; known = []; syncThink();
+    $("#ai-remote-models").innerHTML = "";
+    line.textContent = "The assistant is off, and the provider's key is forgotten. Saved chats are kept."; line.classList.remove("warn");
     aiStatus();
   });
 })();

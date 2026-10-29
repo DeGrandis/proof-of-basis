@@ -198,6 +198,20 @@ dl.facts dd { margin: 0; }
 #settings .card b.wide { font-family: var(--font-display); font-weight: 400; font-size: var(--fs-md); }
 #settings #restore-form { padding-top: var(--s-5); margin-top: var(--s-3); }
 #settings #backup-form { padding-bottom: var(--s-3); }
+/* Settings sections: headings a size up from the small capitals inside them
+   (Tax, Prices), and a bar of buttons to jump between them that stays under
+   the header, marking the section in view. */
+#settings > h2 { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 400; letter-spacing: -.01em; text-transform: none; color: var(--text);
+  margin-top: var(--s-7); padding-top: var(--s-6); scroll-margin-top: calc(var(--nav-h) + 64px); }
+#settings-jump { position: sticky; top: calc(var(--nav-h) + var(--s-2)); z-index: 5; margin: 0 0 var(--s-2); box-shadow: 0 0 0 var(--s-2) var(--bg); }
+#settings-jump + h2 { border-top: 0; margin-top: var(--s-5); padding-top: 0; }
+body.demo #settings-jump { position: static; } /* the demo's banner holds that spot */
+@media (max-width: 760px) {
+  body.demo #settings-jump { position: sticky; } /* the banner moves to the bottom */
+  #settings-jump { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  #settings-jump::-webkit-scrollbar { display: none; }
+  #settings-jump button { flex: none; }
+}
 
 /* ---------- Phone ---------- */
 @media (max-width: 760px) {
@@ -425,11 +439,18 @@ main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type {
 .disclaimer-text { max-width: 70ch; font-size: var(--fs); line-height: 1.55; }
 .disclaimer-text ul { padding-left: 1.2em; margin: var(--s-3) 0 0; }
 .disclaimer-text li { margin: 0 0 var(--s-2); }
-#disclaimer-pop { width: min(640px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0; margin: auto; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto; }
-#disclaimer-pop::backdrop { background: rgba(0, 0, 0, .55); }
-#disclaimer-pop .detail-inner { padding: var(--s-5); }
-#disclaimer-pop h2 { margin: 0 0 var(--s-3); outline: none; } /* focused on open, to start at the top */
-#disclaimer-pop .row { justify-content: flex-end; margin-top: var(--s-3); }
+#disclaimer-pop, #ai-remote-pop { width: min(640px, calc(100vw - 32px)); max-height: min(86vh, 900px); padding: 0; margin: auto; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto; }
+#disclaimer-pop::backdrop, #ai-remote-pop::backdrop { background: rgba(0, 0, 0, .55); }
+#disclaimer-pop .detail-inner, #ai-remote-pop .detail-inner { padding: var(--s-5); }
+#disclaimer-pop h2, #ai-remote-pop h2 { margin: 0 0 var(--s-3); outline: none; } /* focused on open, to start at the top */
+#disclaimer-pop .row, #ai-remote-pop .row { justify-content: flex-end; margin-top: var(--s-3); }
+/* Assistant settings: the local and hosted fields sit in the form's own grid. */
+#ai-settings .ai-local:not([hidden]), #ai-settings .ai-remote:not([hidden]) { display: contents; }
+#ai-remote-pop ul { padding-left: 1.2em; margin: 0 0 var(--s-3); }
+#ai-remote-pop li { margin: 0 0 var(--s-1); }
+#ai-remote-pop .ai-remote-type { margin: var(--s-4) 0 var(--s-2); }
+#ai-remote-pop .ai-remote-phrase { margin: 0 0 var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line-2); border-radius: var(--r-sm); font-weight: 600; user-select: none; }
+#ai-remote-pop #ai-remote-typed { width: 100%; }
 #foot { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 1px solid var(--line); text-align: center; }
 body.flow #foot { display: none; }
 
@@ -449,3 +470,7 @@ body.demo .no-demo { display: none !important; }
   body.demo .rec-view.page .rec-actions { bottom: calc(var(--tabbar-h) + 64px); }
   body.demo .info-tip { bottom: calc(var(--tabbar-h) + 64px); }
 }
+/* Imports: download the original file, or remove the import */
+#imports-table .import-acts { white-space: nowrap; }
+#imports-table .import-acts > * + * { margin-left: var(--s-3); }
+body.demo #imports-table .import-acts .muted { display: none; } /* the demo's history was never a file */

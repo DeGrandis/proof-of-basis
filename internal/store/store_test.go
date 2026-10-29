@@ -1,12 +1,45 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/DeGrandis/proof-of-basis/internal/importers"
 )
+
+// The kept file comes back exactly, even when it isn't UTF-8, and a
+// changed copy is refused rather than handed back.
+func TestImportFileRoundTrip(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	acct, _ := st.ExchangeAccount("Kraken", "river")
+	body := []byte("Date,Note\r\n2024-01-01,caf\xe9 \xff\x00\r\n") // Windows-1252, a stray byte, a NUL
+	sum := sha256.Sum256(body)
+	id, _, err := st.AddImport(acct, "river", "k.csv", hex.EncodeToString(sum[:]), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.ImportFile(id); err != ErrNoImportFile {
+		t.Errorf("before saving: %v", err)
+	}
+	if err := st.SaveImportFile(id, body); err != nil {
+		t.Fatal(err)
+	}
+	name, got, err := st.ImportFile(id)
+	if err != nil || name != "k.csv" || string(got) != string(body) {
+		t.Fatalf("%q %q %v", name, got, err)
+	}
+	st.SaveImportFile(id, append(body, 'x'))
+	if _, _, err := st.ImportFile(id); err == nil {
+		t.Error("a file that doesn't match its hash was returned")
+	}
+}
 
 func TestOverlappingImportsDoNotDuplicate(t *testing.T) {
 	st, err := Open(filepath.Join(t.TempDir(), "t.db"))

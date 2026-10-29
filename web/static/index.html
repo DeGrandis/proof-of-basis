@@ -379,14 +379,31 @@
     <h2>Assistant (optional)</h2>
     <p class="demo-only small muted demo-note" id="demo-ai-note">In the demo, the assistant runs on a hosted model. Your own copy uses a model on your own Ollama server.</p>
     <form id="ai-settings" class="card grid no-demo">
-      <label class="wide">Ollama server address <input name="aiUrl" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false"></label>
-      <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
-      <label>Think before answering <select name="aiThink"><option value="true">On: more careful, a little slower</option><option value="false">Off: answers start sooner</option></select><span id="ai-think-note" class="small muted" hidden>This model doesn't reason first, so this has no effect.</span></label>
-      <label>Memory for each question <select name="aiCtx"><option value="8192">Small (8k tokens)</option><option value="16384">Medium (16k tokens)</option><option value="32768">Large (32k tokens)</option><option value="65536">Very large (64k tokens)</option></select></label>
+      <div class="wide seg" id="ai-where" role="radiogroup" aria-label="Where the assistant runs">
+        <label><input type="radio" name="aiMode" value="local" checked> On my network (Ollama)</label>
+        <label><input type="radio" name="aiMode" value="remote"> A hosted provider</label>
+      </div>
+      <div class="ai-local">
+        <label class="wide">Ollama server address <input name="aiUrl" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false"></label>
+        <label>Model <select name="aiModel"><option value="">Test the connection first</option></select></label>
+        <label>Think before answering <select name="aiThink"><option value="true">On: more careful, a little slower</option><option value="false">Off: answers start sooner</option></select><span id="ai-think-note" class="small muted" hidden>This model doesn't reason first, so this has no effect.</span></label>
+        <label>Memory for each question <select name="aiCtx"><option value="8192">Small (8k tokens)</option><option value="16384">Medium (16k tokens)</option><option value="32768">Large (32k tokens)</option><option value="65536">Very large (64k tokens)</option></select></label>
+      </div>
+      <div class="ai-remote" hidden>
+        <p class="wide small warn ai-remote-warn">Everything you ask, and everything the assistant looks up to answer you, goes to this provider.</p>
+        <label class="wide">Provider address <input name="aiRemoteUrl" placeholder="https://openrouter.ai/api/v1" autocomplete="off" spellcheck="false"></label>
+        <label>API key <input name="aiRemoteKey" type="password" placeholder="Paste the provider's key" autocomplete="off" spellcheck="false"></label>
+        <label>Model <input name="aiRemoteModel" list="ai-remote-models" placeholder="Test the connection, then pick one" autocomplete="off" spellcheck="false"><datalist id="ai-remote-models"></datalist></label>
+      </div>
       <label class="check inline wide"><input type="checkbox" name="aiAutoApply"> Apply assistant changes without asking <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">You can still undo them in Activity.</span></span></label>
       <div class="wide small muted" id="ai-settings-line"></div>
       <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="ai-test">Test connection</button><button type="button" id="ai-off" class="link">Turn off</button></div>
-      <div class="wide small muted">Chat using your own <a href="https://ollama.com" rel="noreferrer noopener" target="_blank">Ollama</a>. Pick a tool-capable model. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Adds a chat button to every page. Your data goes only to that address, never anywhere else. Models that use tools (for example qwen3:8b or llama3.1:8b) can look things up. If Ollama runs on this same computer, use http://host.docker.internal:11434, since inside Docker "localhost" is the app itself. More memory lets it consider more at once but needs more RAM on the Ollama machine. Chats are saved here, included in backups and removed by Wipe.</span></span></div>
+      <div class="ai-local">
+        <div class="wide small muted">Chat using your own <a href="https://ollama.com" rel="noreferrer noopener" target="_blank">Ollama</a>. Pick a tool-capable model. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Adds a chat button to every page. Your data goes only to that address, never anywhere else. Models that use tools (for example qwen3:8b or llama3.1:8b) can look things up. If Ollama runs on this same computer, use http://host.docker.internal:11434, since inside Docker "localhost" is the app itself. More memory lets it consider more at once but needs more RAM on the Ollama machine. Chats are saved here, included in backups and removed by Wipe.</span></span></div>
+      </div>
+      <div class="ai-remote" hidden>
+        <div class="wide small muted">Works with any provider that speaks the OpenAI chat format (for example OpenRouter, Mistral or Groq), or with LM Studio or llama.cpp on your own network. Pick a model that can call tools. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">The key is saved on this server and never shown again. Each question sends the provider a summary of your holdings and the records the assistant looks up. The provider's own terms decide what it keeps. Chats are still saved here, included in backups and removed by Wipe.</span></span></div>
+      </div>
     </form>
     <h2>Backup and restore</h2>
     <div class="card grid">
@@ -424,6 +441,22 @@
   <dialog id="disclaimer-pop" class="detail-pop" aria-label="Before you start">
     <div class="detail-inner"><h2 tabindex="-1" autofocus>Before you start</h2><div class="disclaimer-body"></div>
       <div class="row"><button type="button" class="primary" id="disclaimer-ok">I understand</button></div></div>
+  </dialog>
+
+  <!-- Before the assistant may use a hosted provider (Settings → Assistant). -->
+  <dialog id="ai-remote-pop" class="detail-pop" aria-label="Send your data to a hosted provider?">
+    <div class="detail-inner"><h2 tabindex="-1" autofocus>Send your data to a hosted provider?</h2>
+      <p>With a hosted provider, the assistant runs on another company's computers. That company can read everything you type in the chat and everything the assistant sends it to answer you:</p>
+      <ul>
+        <li>a summary of your holdings, with every question</li>
+        <li>the records it looks up: amounts, dates, prices, account and wallet names, transaction IDs and addresses</li>
+      </ul>
+      <p>Together these can show how much bitcoin you have and where it is. This app doesn't remove any of it before sending, and it can't control what the provider keeps, logs, learns from or hands over. Once something is sent, it can't be taken back.</p>
+      <p class="muted">Your records themselves stay on this server. With Ollama on your own network, nothing leaves it.</p>
+      <p class="ai-remote-type">To continue, type this sentence (pasting is off):</p>
+      <p class="ai-remote-phrase" data-no-i18n>I accept my data leaking to a provider</p>
+      <input id="ai-remote-typed" aria-label="Type the sentence" autocomplete="off" spellcheck="false">
+      <div class="row"><button type="button" id="ai-remote-cancel">Keep it local</button><button type="button" class="primary" id="ai-remote-ok" disabled>Use a hosted provider</button></div></div>
   </dialog>
 
   <!-- A record's details, over Flow or Overview. -->

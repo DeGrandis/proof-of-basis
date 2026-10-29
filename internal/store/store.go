@@ -2,9 +2,15 @@
 package store
 
 import (
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +52,7 @@ CREATE TABLE IF NOT EXISTS imports (
   imported_at TEXT NOT NULL,
   rows INTEGER NOT NULL,
   warnings TEXT NOT NULL DEFAULT '[]',
+  data TEXT NOT NULL DEFAULT '', -- the file as dropped, gzipped then base64 ('' before this was kept)
   UNIQUE (account_id, sha256)
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -80,6 +87,7 @@ func Open(path string) (*Store, error) {
 	}
 	// Added after the first version; fails harmlessly when present.
 	db.Exec(`ALTER TABLE events ADD COLUMN uid TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE imports ADD COLUMN data TEXT NOT NULL DEFAULT ''`)
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS events_uid ON events(account_id, uid) WHERE uid != ''`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -194,6 +202,7 @@ type Import struct {
 	ImportedAt string              `json:"importedAt"`
 	Rows       int                 `json:"rows"`
 	Warnings   []importers.Warning `json:"warnings"`
+	HasFile    bool                `json:"hasFile"` // the original file was kept
 }
 
 var ErrDuplicate = errors.New("this file was already imported for this account")
@@ -235,7 +244,7 @@ func (s *Store) AddImport(accountID int64, handler, filename, sha string, evs []
 }
 
 func (s *Store) Imports() ([]Import, error) {
-	rows, err := s.db.Query(`SELECT i.id,i.account_id,a.name,i.handler,i.filename,i.sha256,i.imported_at,i.rows,i.warnings
+	rows, err := s.db.Query(`SELECT i.id,i.account_id,a.name,i.handler,i.filename,i.sha256,i.imported_at,i.rows,i.warnings,i.data != ''
 		FROM imports i JOIN accounts a ON a.id=i.account_id ORDER BY i.id`)
 	if err != nil {
 		return nil, err
@@ -245,7 +254,7 @@ func (s *Store) Imports() ([]Import, error) {
 	for rows.Next() {
 		var im Import
 		var wj string
-		if err := rows.Scan(&im.ID, &im.AccountID, &im.Account, &im.Handler, &im.Filename, &im.SHA256, &im.ImportedAt, &im.Rows, &wj); err != nil {
+		if err := rows.Scan(&im.ID, &im.AccountID, &im.Account, &im.Handler, &im.Filename, &im.SHA256, &im.ImportedAt, &im.Rows, &wj, &im.HasFile); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(wj), &im.Warnings)
@@ -309,6 +318,50 @@ func (s *Store) Reparse() (changed int, err error) {
 func (s *Store) DeleteImport(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM imports WHERE id=?`, id)
 	return err
+}
+
+// SaveImportFile keeps the file an import was read from, byte for byte, so
+// it can be downloaded again. Stored gzipped (CSVs shrink several times
+// over), then as base64 so backups, which are text, carry it intact.
+func (s *Store) SaveImportFile(id int64, body []byte) error {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zw.Write(body)
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE imports SET data=? WHERE id=?`, base64.StdEncoding.EncodeToString(buf.Bytes()), id)
+	return err
+}
+
+// ErrNoImportFile: the import is from before files were kept.
+var ErrNoImportFile = errors.New("this import's file wasn't kept: it was imported before this version")
+
+// ImportFile returns the file an import was read from, checked against the
+// hash taken when it was imported.
+func (s *Store) ImportFile(id int64) (filename string, body []byte, err error) {
+	var sum, enc string
+	if err := s.db.QueryRow(`SELECT filename, sha256, data FROM imports WHERE id=?`, id).Scan(&filename, &sum, &enc); err != nil {
+		return "", nil, err
+	}
+	if enc == "" {
+		return filename, nil, ErrNoImportFile
+	}
+	z, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil {
+		return filename, nil, err
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(z))
+	if err != nil {
+		return filename, nil, err
+	}
+	if body, err = io.ReadAll(zr); err != nil {
+		return filename, nil, err
+	}
+	if got := sha256.Sum256(body); hex.EncodeToString(got[:]) != sum {
+		return filename, nil, errors.New("the kept file doesn't match what was imported")
+	}
+	return filename, body, nil
 }
 
 // ExchangeEvents returns all imported events keyed for tracing.

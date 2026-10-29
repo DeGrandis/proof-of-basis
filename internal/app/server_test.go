@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -470,5 +471,48 @@ func TestDipExplainsUncountedReceipt(t *testing.T) {
 	}
 	if len(d.Uncounted) != 1 || d.Uncounted[0] != "tx:bb:0" || d.UncountedSats != 5_700_000 {
 		t.Errorf("uncounted %v %d", d.Uncounted, d.UncountedSats)
+	}
+}
+
+// A dropped file is kept byte for byte, comes back from the Imports page,
+// and survives deleting the import and undoing that.
+func TestImportKeepsTheFile(t *testing.T) {
+	st, h := newTest(t)
+	river, err := os.ReadFile("../importers/testdata/river.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A byte-order mark and Windows line endings, as Excel saves: kept as they are.
+	orig := "\xef\xbb\xbf" + strings.ReplaceAll(strings.ReplaceAll(string(river), "\r\n", "\n"), "\n", "\r\n")
+	if w := upload(h, "river export.csv", orig, ""); w.Code != 200 {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	ims, _ := st.Imports()
+	if len(ims) != 1 || !ims[0].HasFile {
+		t.Fatalf("imports: %+v", ims)
+	}
+	id := strconv.FormatInt(ims[0].ID, 10)
+	get := func() *httptest.ResponseRecorder { return call(h, "GET", "/api/imports/"+id+"/file", "") }
+	w := get()
+	if w.Code != 200 || w.Body.String() != orig || w.Header().Get("Content-Type") != "text/csv" ||
+		w.Header().Get("Content-Disposition") != `attachment; filename="river export.csv"` {
+		t.Fatalf("download: %d %q %v", w.Code, w.Header(), w.Body.Len())
+	}
+	call(h, "DELETE", "/api/imports/"+id, "")
+	if w := get(); w.Code != 404 {
+		t.Errorf("after delete: %d", w.Code)
+	}
+	a := lastAction(t, st)
+	if w := call(h, "POST", "/api/actions/"+strconv.FormatInt(a.ID, 10)+"/undo", ""); w.Code != 200 {
+		t.Fatalf("undo: %d %s", w.Code, w.Body.String())
+	}
+	if w := get(); w.Code != 200 || w.Body.String() != orig {
+		t.Errorf("after undo: %d", w.Code)
+	}
+	// An import from before files were kept says so.
+	acct, _ := st.ExchangeAccount("Old", "coinbase")
+	oldID, _, _ := st.AddImport(acct, "coinbase", "old.csv", "old", nil, nil)
+	if w := call(h, "GET", "/api/imports/"+strconv.FormatInt(oldID, 10)+"/file", ""); w.Code != 404 || !strings.Contains(w.Body.String(), "wasn't kept") {
+		t.Errorf("old import: %d %s", w.Code, w.Body.String())
 	}
 }

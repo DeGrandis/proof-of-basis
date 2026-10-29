@@ -20,7 +20,8 @@ import (
 	"github.com/DeGrandis/proof-of-basis/internal/store"
 )
 
-// The assistant: an optional chat backed by the user's own Ollama server.
+// The assistant: an optional chat backed by the user's own Ollama server,
+// or a hosted provider when the user has chosen one (see ai_remote.go).
 // The server builds the context (a summary plus the page being looked at),
 // runs read-only lookup tools the model asks for, and streams the answer
 // to the browser. Prompts and answers are saved as chats in the database
@@ -56,6 +57,15 @@ func (s *Server) aiStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"enabled": true, "ok": true, "model": s.demo.AI.Name(), "host": "AWS Bedrock", "demo": true})
 		return
 	}
+	if s.remote() { // not checked here: that would reach the provider on every page load
+		rc, err := s.remoteClient()
+		if err != nil {
+			writeJSON(w, map[string]any{"enabled": false})
+			return
+		}
+		writeJSON(w, map[string]any{"enabled": true, "ok": true, "model": rc.Name(), "host": rc.Host(), "remote": true})
+		return
+	}
 	c, model, err := s.aiClient()
 	if err != nil {
 		writeJSON(w, map[string]any{"enabled": false})
@@ -72,11 +82,19 @@ func (s *Server) aiStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// aiModels lists the models at an address, for Settings.
+// aiModels lists the models at an address, for Settings: an Ollama server,
+// or a hosted provider with remote set.
 func (s *Server) aiModels(w http.ResponseWriter, r *http.Request) {
-	var in struct{ URL string }
+	var in struct {
+		URL, Key, Model string
+		Remote          bool
+	}
 	if err := decode(r, &in); err != nil {
 		fail(w, 400, err)
+		return
+	}
+	if in.Remote {
+		s.remoteModels(w, r, in.URL, in.Key, in.Model)
 		return
 	}
 	c, err := ollama.New(in.URL)
@@ -119,7 +137,7 @@ func (s *Server) aiChats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) aiNewChat(w http.ResponseWriter, r *http.Request) {
-	id, err := s.st.NewChat("New chat", s.st.Setting("aiModel", ""), time.Now())
+	id, err := s.st.NewChat("New chat", s.aiModelName(), time.Now())
 	if err != nil {
 		fail(w, 500, err)
 		return
@@ -303,8 +321,8 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	// The model: the user's Ollama, or the demo's hosted one (which counts
-	// against the visitor's allowance).
+	// The model: the user's Ollama, the hosted provider they chose, or the
+	// demo's hosted one (which counts against the visitor's allowance).
 	var c *ollama.Client
 	var llm interface {
 		Chat(context.Context, ollama.ChatRequest, func(string), func(string)) (ollama.Message, error)
@@ -322,6 +340,13 @@ func (s *Server) aiSend(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		llm, model = s.demo.AI, s.demo.AI.Name()
+	} else if s.remote() {
+		rc, err := s.remoteClient()
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		llm, model = rc, rc.Name()
 	} else {
 		c, model, err = s.aiClient()
 		if err != nil {

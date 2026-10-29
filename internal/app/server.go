@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"github.com/DeGrandis/proof-of-basis/internal/importers"
 	"github.com/DeGrandis/proof-of-basis/internal/lots"
 	"github.com/DeGrandis/proof-of-basis/internal/ollama"
+	"github.com/DeGrandis/proof-of-basis/internal/openai"
 	"github.com/DeGrandis/proof-of-basis/internal/prices"
 	"github.com/DeGrandis/proof-of-basis/internal/store"
 	"github.com/DeGrandis/proof-of-basis/internal/tax"
@@ -87,6 +89,12 @@ var defaults = map[string]string{
 	"aiCtx":        "16384",
 	"aiThink":      "true",
 	"aiAutoApply":  "false",
+	// Where the assistant runs: "local" (Ollama, the default) or "remote", a
+	// hosted provider in the OpenAI format. Its key is write-only, like the
+	// node's rune, and switching to remote takes the sentence in remoteConsent.
+	"aiMode":        "local",
+	"aiRemoteUrl":   "",
+	"aiRemoteModel": "",
 }
 
 func (s *Server) settings() map[string]string {
@@ -113,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/imports/freshness", s.importFreshness)
 	mux.HandleFunc("POST /api/imports", s.postImport)
 	mux.HandleFunc("DELETE /api/imports/{id}", s.deleteImport)
+	mux.HandleFunc("GET /api/imports/{id}/file", s.importFile)
 	mux.HandleFunc("GET /api/report", s.getReport)
 	mux.HandleFunc("POST /api/labels", s.postLabel)
 	mux.HandleFunc("DELETE /api/labels/{key}", s.deleteLabel)
@@ -235,10 +244,14 @@ func decode(r *http.Request, v any) error {
 	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
 }
 
-// The node's rune is write-only: it is saved but never sent back.
+// The node's rune and the assistant provider's key are write-only: they are
+// saved but never sent back.
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	m := s.settings()
 	m["clnRuneSet"] = strconv.FormatBool(s.st.Setting("clnRune", "") != "")
+	m["aiRemoteKeySet"] = strconv.FormatBool(s.st.Setting("aiRemoteKey", "") != "")
+	m["aiRemoteConsent"] = s.st.Setting("aiRemoteConsent", "")
+	m["aiRemotePhrase"] = remoteConsent
 	m["fromNode"] = s.fromNode()
 	writeJSON(w, m)
 }
@@ -285,6 +298,9 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	delete(in, "clnRuneSet")
+	if !s.remoteSettings(w, in) {
+		return
+	}
 	for k, v := range in {
 		if _, ok := defaults[k]; !ok && !strings.HasPrefix(k, "method:") {
 			fail(w, 400, fmt.Errorf("unknown setting %q", k))
@@ -319,6 +335,19 @@ func (s *Server) postSettings(w http.ResponseWriter, r *http.Request) {
 		case "aiUrl":
 			if v = strings.TrimSpace(v); v != "" {
 				if _, err := ollama.New(v); err != nil {
+					fail(w, 400, err)
+					return
+				}
+			}
+			in[k] = v
+		case "aiMode":
+			if v != "local" && v != "remote" {
+				fail(w, 400, errors.New("aiMode must be local or remote"))
+				return
+			}
+		case "aiRemoteUrl":
+			if v = strings.TrimSpace(v); v != "" {
+				if _, err := openai.New(v, "", ""); err != nil {
 					fail(w, 400, err)
 					return
 				}
@@ -990,12 +1019,40 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
+	if err := s.st.SaveImportFile(id, body); err != nil {
+		log.Printf("import %d: keeping the original file: %v", id, err) // the import itself is saved
+	}
 	sets := importSets(id)
 	if !existed {
 		sets = append([]store.RowSet{{Table: "accounts", Col: "id", Val: acctID}}, sets...)
 	}
 	s.logAdded("import", fmt.Sprintf("Imported %s into %s (%d records)", hdr.Filename, name, len(evs)-skipped), sets)
 	writeJSON(w, map[string]any{"id": id, "handler": h.ID(), "account": name, "events": len(evs) - skipped, "alreadyImported": skipped, "warnings": warns})
+}
+
+// importFile sends an import's original file back, as it was dropped.
+func (s *Server) importFile(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	name, body, err := s.st.ImportFile(id)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		fail(w, 404, errors.New("no such import"))
+		return
+	case errors.Is(err, store.ErrNoImportFile):
+		fail(w, 404, err)
+		return
+	case err != nil:
+		fail(w, 500, err)
+		return
+	}
+	typ := "application/octet-stream"
+	if strings.HasSuffix(strings.ToLower(name), ".csv") {
+		typ = "text/csv"
+	}
+	w.Header().Set("Content-Type", typ)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.Write(body)
 }
 
 func (s *Server) deleteImport(w http.ResponseWriter, r *http.Request) {
