@@ -32,6 +32,10 @@ type Store struct {
 
 const schema = `
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Automatic backup: where it goes, its keys and how the last run went. Kept
+-- out of settings so it is never in a backup, a restore leaves it alone
+-- and a run's own bookkeeping doesn't change what the next run compares.
+CREATE TABLE IF NOT EXISTS remote_backup (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS accounts (
   id INTEGER PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('exchange','wallet')),
@@ -585,7 +589,7 @@ func (s *Store) Wipe() error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, t := range []string{"tax_forms", "forms_1099da", "identifications", "attachments", "ai_exports", "actions", "chat_messages", "chats", "labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings"} {
+	for _, t := range []string{"tax_forms", "forms_1099da", "identifications", "attachments", "ai_exports", "actions", "chat_messages", "chats", "labels", "events", "imports", "wallet_txs", "accounts", "raw_txs", "headers", "prices", "ln_events", "settings", "remote_backup"} {
 		if _, err := tx.Exec(`DELETE FROM ` + t); err != nil {
 			return err
 		}

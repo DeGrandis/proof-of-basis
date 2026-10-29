@@ -18,11 +18,12 @@ type Tables map[string][]map[string]any
 // restore satisfies foreign keys.
 var backupTables = []string{"settings", "accounts", "imports", "events", "wallet_txs", "raw_txs", "headers", "labels", "prices", "ln_events", "chats", "chat_messages", "forms_1099da", "identifications", "attachments", "tax_forms"}
 
-// Dump reads every table into memory.
+// Dump reads every table into memory, in a fixed order, so the same data
+// always gives the same backup hash.
 func (s *Store) Dump() (Tables, error) {
 	out := Tables{}
 	for _, t := range backupTables {
-		rows, err := s.db.Query(`SELECT * FROM ` + t)
+		rows, err := s.db.Query(`SELECT * FROM ` + t + ` ORDER BY rowid`)
 		if err != nil {
 			return nil, err
 		}

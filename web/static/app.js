@@ -2014,6 +2014,7 @@ async function loadSettings() {
   const hs = handlers = await api("/api/handlers");
   $("#handler-select").innerHTML = `<option value="">Detect automatically</option>` + hs.map((h) => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join("");
   $("#platforms-ok").innerHTML = hs.map((h) => `<span class="p">${esc(h.name)}</span>`).join("");
+  loadRemote();
 }
 $("#settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2036,6 +2037,91 @@ $("#fetch-prices-btn").addEventListener("click", async () => {
     loadSettings();
     refresh();
   } catch (e) { toast("Price update failed: " + e.message); }
+});
+// Advanced backup: an encrypted file sent to S3-compatible storage or a
+// mounted folder, on a schedule or on click. The secret key and passphrase
+// are write-only, like the node's rune.
+const remoteForm = $("#remote-form");
+function remoteShow() {
+  const tg = remoteForm.querySelector("[name=target]:checked").value;
+  $(".remote-s3", remoteForm).hidden = tg !== "s3";
+  $(".remote-folder", remoteForm).hidden = tg !== "folder";
+  $(".remote-on", remoteForm).hidden = !tg;
+  for (const id of ["remote-test", "remote-run"]) $("#" + id).hidden = !tg;
+}
+function remoteFill(d) {
+  const f = remoteForm;
+  for (const k of ["s3Endpoint", "s3Region", "s3Bucket", "s3Prefix", "s3AccessKey", "folderPath", "every", "keep"]) f.elements[k].value = d[k] || "";
+  f.elements.s3PathStyle.checked = d.s3PathStyle !== "false";
+  for (const r of f.querySelectorAll("[name=target]")) r.checked = r.value === (d.target || "");
+  f.elements.s3SecretKey.value = ""; f.elements.passphrase.value = ""; f.elements.passphrase2.value = "";
+  f.elements.s3SecretKey.placeholder = d.s3SecretSet ? "Saved (hidden). Paste a new one to replace it" : "";
+  f.elements.passphrase.placeholder = d.passphraseSet ? "Saved (hidden). Type a new one to change it" : "at least 8 characters";
+  remoteShow();
+  const when = (x) => x ? new Date(x).toLocaleString() : "";
+  let line = "";
+  if (d.running) line = "Backing up now…";
+  else if (d.lastResult === "failed") line = `<span class="warn">Last check ${esc(when(d.lastCheck))} failed: ${esc(d.lastError)}</span>`;
+  else if (d.lastCheck) line = `Last check ${esc(when(d.lastCheck))}: ${d.lastResult === "uploaded" ? "uploaded" : "unchanged, nothing uploaded"}.` + (d.lastUpload ? ` Last upload ${esc(when(d.lastUpload))}.` : "");
+  else if (d.target) line = "No backup made yet.";
+  $("#remote-status").innerHTML = line;
+  $("#remote-files").hidden = !d.target;
+  if ($("#remote-files").open) remoteList();
+}
+async function loadRemote() {
+  if (document.body.classList.contains("demo")) return;
+  try { remoteFill(await api("/api/backup/remote")); } catch (e) { $("#remote-status").textContent = e.message; }
+}
+function remoteBody() {
+  const f = remoteForm, out = {};
+  for (const k of ["s3Endpoint", "s3Region", "s3Bucket", "s3Prefix", "s3AccessKey", "s3SecretKey", "folderPath", "every", "keep", "passphrase"]) out[k] = f.elements[k].value;
+  out.target = f.querySelector("[name=target]:checked").value;
+  out.s3PathStyle = String(f.elements.s3PathStyle.checked);
+  return out;
+}
+function remotePassOK() {
+  const f = remoteForm;
+  if (f.elements.passphrase.value !== f.elements.passphrase2.value) { toast("The passphrases don't match."); return false; }
+  return true;
+}
+async function remoteList() {
+  const box = $("#remote-list");
+  box.textContent = "Loading…";
+  try {
+    const d = await api("/api/backup/remote/files");
+    box.innerHTML = d.files.length
+      ? d.files.map((x) => `<a href="/api/backup/remote/files/${encodeURIComponent(x.name)}" download>${esc(new Date(x.created).toLocaleString())}</a>`).join("") + `<div class="muted">${d.files.length} in ${esc(d.where)}. Download one, then use Restore from a backup.</div>`
+      : `<span class="muted">None in ${esc(d.where)} yet.</span>`;
+  } catch (e) { box.textContent = e.message; }
+}
+for (const r of remoteForm.querySelectorAll("[name=target]")) r.addEventListener("change", remoteShow);
+$("#remote-files").addEventListener("toggle", () => { if ($("#remote-files").open) remoteList(); });
+remoteForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!remotePassOK()) return;
+  try { remoteFill(await post("/api/backup/remote", remoteBody())); toast("Saved"); } catch (err) { toast(err.message); }
+});
+$("#remote-test").addEventListener("click", async (e) => {
+  if (!remotePassOK()) return;
+  const b = e.target; b.disabled = true; b.textContent = "Testing…";
+  try {
+    const d = await post("/api/backup/remote/test", remoteBody());
+    toast(`Connected: wrote, read and removed a test file in ${d.where}. ${d.backups} backup${d.backups === 1 ? "" : "s"} there. Save to keep these settings.`);
+  } catch (err) { toast(err.message); }
+  b.disabled = false; b.textContent = "Test connection";
+});
+$("#remote-run").addEventListener("click", async (e) => {
+  const b = e.target; b.disabled = true; b.textContent = "Backing up…";
+  try {
+    const d = await post("/api/backup/remote/run", {});
+    toast(d.result === "uploaded" ? `Uploaded ${d.file} to ${d.where}` + (d.removed ? `; removed ${d.removed} older` : "") : `Nothing changed since ${d.file}, so nothing was uploaded.`);
+  } catch (err) { toast(err.message); }
+  b.disabled = false; b.textContent = "Back up now";
+  loadRemote();
+});
+$("#remote-forget").addEventListener("click", async () => {
+  if (!confirm(t("Turn off advanced backup and forget its keys and passphrase? Backups already there stay where they are."))) return;
+  try { remoteFill(await post("/api/backup/remote", { forget: "true" })); toast("Advanced backup is off"); } catch (err) { toast(err.message); }
 });
 // Backup: one file with all data, encrypted by default. Restore checks the
 // file's version and integrity, asks before replacing anything, and the

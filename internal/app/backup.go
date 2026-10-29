@@ -53,6 +53,11 @@ func makeBackup(t store.Tables, pass string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return sealBackup(plain, pass)
+}
+
+// sealBackup makes the file from the dumped tables' JSON.
+func sealBackup(plain []byte, pass string) ([]byte, error) {
 	sum := sha256.Sum256(plain)
 	var gz bytes.Buffer
 	zw := gzip.NewWriter(&gz)

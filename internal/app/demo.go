@@ -49,6 +49,8 @@ func (s *Server) demoRoutes() *http.ServeMux {
 		m.HandleFunc(p, off(demoUploadsOff))
 	}
 	m.HandleFunc("POST /api/prices/fetch", off("The demo has its prices built in."))
+	m.HandleFunc("/api/backup/remote", off("Advanced backup is off in the demo."))
+	m.HandleFunc("/api/backup/remote/", off("Advanced backup is off in the demo."))
 	m.HandleFunc("POST /api/wipe", off("To begin again, use Start over in the demo banner."))
 	m.HandleFunc("POST /api/auth/", off("The demo has no login."))
 	m.HandleFunc("POST /api/ai/models", off("In the demo, the assistant runs on a hosted model."))

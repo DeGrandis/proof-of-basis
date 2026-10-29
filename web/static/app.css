@@ -446,6 +446,9 @@ main > .tab > :empty:first-child + *, main > .tab > .season-head:first-of-type {
 #disclaimer-pop .row, #ai-remote-pop .row { justify-content: flex-end; margin-top: var(--s-3); }
 /* Assistant settings: the local and hosted fields sit in the form's own grid. */
 #ai-settings .ai-local:not([hidden]), #ai-settings .ai-remote:not([hidden]) { display: contents; }
+#remote-form .remote-s3:not([hidden]), #remote-form .remote-folder:not([hidden]), #remote-form .remote-on:not([hidden]) { display: contents; }
+#remote-list { margin-top: var(--s-2); }
+#remote-list a { display: block; padding: 2px 0; }
 #ai-remote-pop ul { padding-left: 1.2em; margin: 0 0 var(--s-3); }
 #ai-remote-pop li { margin: 0 0 var(--s-1); }
 #ai-remote-pop .ai-remote-type { margin: var(--s-4) 0 var(--s-2); }

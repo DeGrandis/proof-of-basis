@@ -46,6 +46,8 @@ type Server struct {
 
 	recheck rechecker
 
+	backups remoteBackups
+
 	demo *DemoOptions // set on a public demo copy
 }
 
@@ -162,6 +164,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/recheck", s.noted("recheck", "Rechecked wallets for links", s.startRecheck))
 	mux.HandleFunc("POST /api/lightning/sync", s.noted("lightning", "Synced the Lightning node", s.syncLightning))
 	mux.HandleFunc("POST /api/backup", s.postBackup)
+	mux.HandleFunc("GET /api/backup/remote", s.getRemoteBackup)
+	mux.HandleFunc("POST /api/backup/remote", s.postRemoteBackup)
+	mux.HandleFunc("POST /api/backup/remote/test", s.testRemoteBackup)
+	mux.HandleFunc("POST /api/backup/remote/run", s.postRemoteBackupRun)
+	mux.HandleFunc("GET /api/backup/remote/files", s.listRemoteBackups)
+	mux.HandleFunc("GET /api/backup/remote/files/{name}", s.getRemoteBackupFile)
 	mux.HandleFunc("POST /api/restore", s.noted("restore", "Restored from a backup (replaced all data; can't be undone here)", s.postRestore))
 	mux.HandleFunc("GET /api/recheck", s.recheckStatus)
 	mux.HandleFunc("GET /api/ai/status", s.aiStatus)

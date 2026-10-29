@@ -1,0 +1,39 @@
+# Self-hosted S3-compatible servers for testing Advanced backup locally.
+# Start with ./setup.sh, which makes the keys and buckets. Everything listens
+# on 127.0.0.1 only; the app reaches them over the pob-s3 network by name.
+name: pob-s3
+services:
+  garage:
+    image: dxflrs/garage:v2.5.0
+    volumes:
+      - ./_secrets/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    ports:
+      - "127.0.0.1:3900:3900"
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.51
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - ./_secrets/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+      - seaweedfs-data:/data
+    ports:
+      - "127.0.0.1:8333:8333"
+  rustfs:
+    image: rustfs/rustfs:1.0.4
+    env_file: ./_secrets/rustfs.env
+    environment:
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "127.0.0.1:9100:9000" # S3 API
+      - "127.0.0.1:9101:9001" # web console, to look inside the bucket
+volumes:
+  garage-meta:
+  garage-data:
+  seaweedfs-data:
+  rustfs-data:
+networks:
+  default:
+    name: pob-s3

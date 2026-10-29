@@ -73,6 +73,7 @@ func main() {
 		srv.UseNodeServices(nodeSet)
 		log.Printf("using the node's services as defaults: %d settings", len(nodeSet))
 	}
+	srv.StartRemoteBackups()
 	if err := srv.ApplyEnvPassword(os.Getenv("BTCTAX_PASSWORD")); err != nil {
 		log.Fatal(err)
 	}

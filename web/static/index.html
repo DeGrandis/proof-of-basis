@@ -423,6 +423,37 @@
         <div class="wide row"><button type="submit">Restore…</button></div>
       </form>
     </div>
+    <h2 class="no-demo">Advanced backup (optional)</h2>
+    <form id="remote-form" class="card grid no-demo" autocomplete="off">
+      <div class="wide seg" role="radiogroup" aria-label="Where backups go">
+        <label><input type="radio" name="target" value="" checked> Off</label>
+        <label><input type="radio" name="target" value="s3"> S3-compatible storage</label>
+        <label><input type="radio" name="target" value="folder"> A folder</label>
+      </div>
+      <div class="remote-s3" hidden>
+        <label class="wide">Endpoint <input name="s3Endpoint" placeholder="http://minio:9000 or https://s3.us-west-002.backblazeb2.com (empty for AWS)" spellcheck="false"></label>
+        <label>Bucket <input name="s3Bucket" spellcheck="false"></label>
+        <label>Folder in the bucket <input name="s3Prefix" placeholder="proof-of-basis" spellcheck="false"></label>
+        <label>Region <input name="s3Region" placeholder="us-east-1" spellcheck="false"></label>
+        <label class="check inline"><input type="checkbox" name="s3PathStyle" checked> Bucket in the path (leave on unless your provider says otherwise)</label>
+        <label>Access key ID <input name="s3AccessKey" spellcheck="false"></label>
+        <label>Secret key <input name="s3SecretKey" type="password" spellcheck="false"></label>
+      </div>
+      <div class="remote-folder" hidden>
+        <label class="wide">Folder <input name="folderPath" placeholder="/backup" spellcheck="false"></label>
+        <div class="wide small muted">A path inside the app. To use a share on your network, mount it there. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">With Docker Compose, add a volume such as - /mnt/nas/proof-of-basis:/backup (a share the host has mounted), or a named volume with the nfs or cifs driver. Without a mount, the folder doesn't exist and saving says so, rather than writing inside the container where a rebuild would lose it.</span></span></div>
+      </div>
+      <div class="remote-on" hidden>
+        <label>Passphrase <input name="passphrase" type="password" autocomplete="new-password" placeholder="at least 8 characters"></label>
+        <label>Repeat it <input name="passphrase2" type="password" autocomplete="new-password"></label>
+        <label>How often <select name="every"><option value="off">Only when I click Back up now</option><option value="hour">Check every hour</option><option value="day">Check every day</option><option value="week">Check every week</option></select></label>
+        <label>Keep the newest <input name="keep" type="number" min="1" max="1000" step="1"></label>
+        <div class="wide small muted">Always encrypted. A check uploads only if your data changed since the newest backup there. <span class="info"><button type="button" class="info-btn" aria-label="More">ⓘ</button><span class="info-tip" role="tooltip">Each check compares a fingerprint (SHA-256) of your data with the one in the newest backup's name, so an unchanged day costs one listing and no upload. The keys and passphrase are saved on this server, never shown again, and left out of backups. There's no way to recover a forgotten passphrase. To restore, download a backup below and use Restore from a backup.</span></span></div>
+      </div>
+      <div class="wide row"><button type="submit" class="primary">Save</button><button type="button" id="remote-test">Test connection</button><button type="button" id="remote-run">Back up now</button><button type="button" id="remote-forget" class="link">Turn off and forget keys</button></div>
+      <div class="wide small" id="remote-status"></div>
+      <details class="wide" id="remote-files"><summary class="small">Backups there</summary><div class="small" id="remote-list"></div></details>
+    </form>
     <h2>Recheck everything</h2>
     <div class="card">
       <div class="row"><button type="button" id="recheck-btn">Recheck everything</button>

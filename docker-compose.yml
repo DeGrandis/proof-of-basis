@@ -25,5 +25,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - btctax-data:/data
+      # Optional, for Settings → Advanced backup → A folder: a share this
+      # machine has mounted, for example from a NAS.
+      # - /mnt/nas/proof-of-basis:/backup
 volumes:
   btctax-data:
